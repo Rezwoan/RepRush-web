@@ -1,0 +1,179 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * RepRush — "Electric Athletic" theme
+ * Palette sampled directly from the logo: cobalt blue (#0462B2) + volt gold (#FABA0C)
+ * on cool, blue-tinted slate neutrals. Dark-first.
+ */
+
+@layer base {
+  :root {
+    --background: 216 33% 7%;
+    --foreground: 210 30% 96%;
+
+    --card: 216 28% 10%;
+    --card-foreground: 210 30% 96%;
+    --elevated: 215 24% 14%;
+
+    --popover: 216 30% 9%;
+    --popover-foreground: 210 30% 96%;
+
+    --primary: 210 92% 50%;          /* brand blue */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 215 24% 16%;
+    --secondary-foreground: 210 30% 92%;
+
+    --accent: 44 96% 51%;            /* volt gold */
+    --accent-foreground: 30 85% 9%;
+
+    --muted: 215 24% 14%;
+    --muted-foreground: 215 16% 62%;
+
+    --success: 152 60% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 94% 52%;
+    --warning-foreground: 30 85% 9%;
+
+    --destructive: 0 76% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 215 20% 18%;
+    --input: 215 24% 15%;
+    --ring: 210 92% 56%;
+
+    --radius: 0.9rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01';
+    /* subtle brand glow anchored top-center, like stage light over the logo */
+    background-image:
+      radial-gradient(1100px 520px at 50% -8%, hsl(210 92% 50% / 0.10), transparent 70%),
+      radial-gradient(900px 500px at 100% 0%, hsl(44 96% 51% / 0.05), transparent 60%);
+    background-attachment: fixed;
+  }
+  ::selection {
+    background: hsl(var(--primary) / 0.3);
+  }
+  /* Tabular numbers everywhere stats live */
+  .nums {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+  }
+}
+
+/* ── PWA safe areas ──────────────────────────────────────────────── */
+.safe-top { padding-top: env(safe-area-inset-top); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+
+/* ── Scrollbar ───────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 99px;
+  border: 2px solid hsl(var(--background));
+}
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.6); }
+
+@layer components {
+  /* Surfaces ------------------------------------------------------- */
+  .surface {
+    @apply bg-card border border-border rounded-2xl shadow-card;
+  }
+  .glass {
+    background: hsl(var(--card) / 0.72);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    @apply border border-border;
+  }
+
+  /* Text gradients ------------------------------------------------- */
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(120deg, #3b97f5 0%, #0a80f5 45%, #faba0c 115%);
+  }
+  .text-brand-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(120deg, #7fb2f5, #0a80f5);
+  }
+
+  /* Focus ring ----------------------------------------------------- */
+  .focus-ring {
+    @apply outline-none ring-offset-2 ring-offset-background transition-shadow;
+  }
+  .focus-ring:focus-visible {
+    @apply ring-2 ring-ring;
+  }
+  .field {
+    @apply w-full bg-input border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground
+           placeholder:text-muted-foreground/70 transition-all duration-200;
+  }
+  .field:focus {
+    @apply outline-none border-brand-500/60 ring-4 ring-brand-500/15;
+  }
+
+  /* Loading -------------------------------------------------------- */
+  .loader-ring {
+    width: 34px; height: 34px;
+    border: 3px solid hsl(var(--border));
+    border-top-color: hsl(var(--primary));
+    border-right-color: hsl(var(--accent));
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 25%,
+      hsl(var(--elevated)) 50%,
+      hsl(var(--muted)) 75%
+    );
+    background-size: 200% 100%;
+    @apply animate-shimmer rounded-lg;
+  }
+
+  /* Divider with spark accent ------------------------------------- */
+  .hr-spark {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, hsl(var(--border)), transparent);
+  }
+}
+
+@layer utilities {
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, hsl(var(--border) / 0.5) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--border) / 0.5) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+  /* tap feedback fallback for non-motion elements */
+  .press {
+    transition: transform 0.12s cubic-bezier(0.2, 0, 0, 1);
+  }
+  .press:active { transform: scale(0.96); }
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
