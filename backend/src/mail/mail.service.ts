@@ -12,7 +12,7 @@ type MailPayload = {
   html: string;
 };
 
-const emailBase = (content: string, preheader = '') => `
+const emailBase = (content: string, preheader = '', logoUrl = 'https://reprush.rezwoan.me/icon.png') => `
 <!DOCTYPE html>
 <html>
 <head>
@@ -34,7 +34,7 @@ const emailBase = (content: string, preheader = '') => `
               <table role="presentation" cellpadding="0" cellspacing="0">
                 <tr>
                   <td style="padding-right:12px;vertical-align:middle;">
-                    <img src="${LOGO_BASE64}" width="46" height="46" alt="RepRush"
+                    <img src="${logoUrl}" width="46" height="46" alt="RepRush"
                       style="border-radius:12px;display:block;background:#ffffff;" />
                   </td>
                   <td style="vertical-align:middle;">
@@ -88,8 +88,10 @@ const emailBase = (content: string, preheader = '') => `
 export class MailService {
   private readonly logger = new Logger(MailService.name);
   private resend?: Resend;
+  private readonly logoUrl: string;
 
   constructor(private config: ConfigService) {
+    this.logoUrl = (config.get<string>('FRONTEND_URL') || 'https://reprush.rezwoan.me') + '/icon.png';
     const apiKey = config.get<string>('RESEND_API_KEY');
     if (apiKey && apiKey !== 're_xxxxxxxxxxxx') {
       this.resend = new Resend(apiKey);
@@ -173,7 +175,7 @@ export class MailService {
     `;
 
     if (this.resend) {
-      return this.sendEmail({ from, to: email, subject: "You're invited to RepRush ⚡", html: emailBase(content, `Your RepRush account is ready — set your password and start training.`) }, 'Invitation email');
+      return this.sendEmail({ from, to: email, subject: "You're invited to RepRush ⚡", html: emailBase(content, `Your RepRush account is ready — set your password and start training.`, this.logoUrl) }, 'Invitation email');
     }
     this.logger.log(`=== INVITATION (dev) === To: ${email} | URL: ${inviteUrl} | Pass: ${tempPassword}`);
     return null;
@@ -196,7 +198,7 @@ export class MailService {
 
     if (this.resend) {
       await this.sendEmail(
-        { from, to: email, subject: `Your ${period} workout report — RepRush`, html: emailBase(content, `Your ${period} training summary is in.`) },
+        { from, to: email, subject: `Your ${period} workout report — RepRush`, html: emailBase(content, `Your ${period} training summary is in.`, this.logoUrl) },
         'Workout report',
       );
       return;
@@ -229,7 +231,7 @@ export class MailService {
     `;
 
     if (this.resend) {
-      await this.sendEmail({ from, to: email, subject: 'RepRush — Password Reset 🔒', html: emailBase(content, 'Your RepRush password has been reset.') }, 'Password reset email');
+      await this.sendEmail({ from, to: email, subject: 'RepRush — Password Reset 🔒', html: emailBase(content, 'Your RepRush password has been reset.', this.logoUrl) }, 'Password reset email');
       return;
     }
     this.logger.log(`=== PASSWORD RESET (dev) === To: ${email} | New Pass: ${newPassword}`);

@@ -8,15 +8,35 @@ import { useAuth } from '@/lib/auth-context';
 import { Logo } from '@/components/ui/logo';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { ImageCropper } from '@/components/ui/image-cropper';
 import { spring } from '@/lib/motion';
 
 type Step = 'photo' | 'measurements' | 'prs' | 'done';
+type Lift = { weight: string; when: string; customDate: string };
 
 const stepAnim = {
   initial: { opacity: 0, x: 30 },
   animate: { opacity: 1, x: 0, transition: spring.soft },
   exit: { opacity: 0, x: -30, transition: { duration: 0.2 } },
 };
+
+const WHENS = [
+  { k: '1w', label: '1 week ago' },
+  { k: '1mo', label: '1 month ago' },
+  { k: '3mo', label: '3 months ago' },
+  { k: 'custom', label: 'Custom' },
+];
+
+const TODAY = new Date().toISOString().split('T')[0];
+
+function whenToDate(when: string, custom: string): string | undefined {
+  const d = new Date();
+  if (when === '1w') d.setDate(d.getDate() - 7);
+  else if (when === '1mo') d.setMonth(d.getMonth() - 1);
+  else if (when === '3mo') d.setMonth(d.getMonth() - 3);
+  else if (when === 'custom') return custom || undefined;
+  return d.toISOString().split('T')[0];
+}
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -26,11 +46,12 @@ export default function OnboardingPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [height, setHeight] = useState('');
   const [weight, setWeight] = useState('');
-  const [bench, setBench] = useState({ weight: '', reps: '', season: '' });
-  const [squat, setSquat] = useState({ weight: '', reps: '', season: '' });
-  const [deadlift, setDeadlift] = useState({ weight: '', reps: '', season: '' });
+  const [bench, setBench] = useState<Lift>({ weight: '', when: '1mo', customDate: '' });
+  const [squat, setSquat] = useState<Lift>({ weight: '', when: '1mo', customDate: '' });
+  const [deadlift, setDeadlift] = useState<Lift>({ weight: '', when: '1mo', customDate: '' });
 
   const steps: Step[] = ['photo', 'measurements', 'prs', 'done'];
   const stepIndex = steps.indexOf(step);
@@ -40,45 +61,48 @@ export default function OnboardingPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => setImagePreview(reader.result as string);
+    reader.onload = () => setCropSrc(reader.result as string);
     reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
-  const savePhoto = async () => {
-    if (!imagePreview) { setStep('measurements'); return; }
-    setSaving(true);
-    try { await usersApi.uploadImage(imagePreview); await refresh(); setStep('measurements'); }
-    finally { setSaving(false); }
+  // Optimistic: advance instantly, persist in the background (these stay on-page).
+  const savePhoto = () => {
+    if (imagePreview) usersApi.uploadImage(imagePreview).then(() => refresh()).catch(console.error);
+    setStep('measurements');
+  };
+  const saveMeasurements = () => {
+    if (height || weight) {
+      usersApi.updateProfile({
+        heightCm: height ? parseFloat(height) : undefined,
+        weightKg: weight ? parseFloat(weight) : undefined,
+      }).catch(console.error);
+    }
+    setStep('prs');
   };
 
-  const saveMeasurements = async () => {
-    if (!height && !weight) { setStep('prs'); return; }
-    setSaving(true);
-    try {
-      await usersApi.updateProfile({ heightCm: height ? parseFloat(height) : undefined, weightKg: weight ? parseFloat(weight) : undefined });
-      setStep('prs');
-    } finally { setSaving(false); }
-  };
-
+  // Final step → awaits because we navigate away right after.
   const savePRs = async () => {
     setSaving(true);
     try {
-      const prList = [
-        { type: 'bench', data: bench }, { type: 'squat', data: squat }, { type: 'deadlift', data: deadlift },
-      ].filter((p) => p.data.weight && p.data.reps);
-      await Promise.all(prList.map((p) => workoutsApi.createPR({
-        exerciseType: p.type, weightKg: parseFloat(p.data.weight), reps: parseInt(p.data.reps),
-        season: p.data.season || String(new Date().getFullYear()),
+      const list = [
+        { type: 'bench', ...bench }, { type: 'squat', ...squat }, { type: 'deadlift', ...deadlift },
+      ].filter((p) => p.weight);
+      await Promise.all(list.map((p) => workoutsApi.createPR({
+        exerciseType: p.type,
+        weightKg: parseFloat(p.weight),
+        reps: 1,
+        date: whenToDate(p.when, p.customDate),
       })));
       setStep('done');
     } finally { setSaving(false); }
   };
 
-  const LIFT_STANDARDS = {
-    bench: { beginner: '0.5× BW', advanced: '1.5× BW' },
-    squat: { beginner: '0.75× BW', advanced: '2× BW' },
-    deadlift: { beginner: '1× BW', advanced: '2.5× BW' },
-  };
+  const lifts: { label: string; state: Lift; setState: (l: Lift) => void; type: string }[] = [
+    { label: 'Bench Press', state: bench, setState: setBench, type: 'bench' },
+    { label: 'Squat', state: squat, setState: setSquat, type: 'squat' },
+    { label: 'Deadlift', state: deadlift, setState: setDeadlift, type: 'deadlift' },
+  ];
 
   return (
     <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden">
@@ -117,7 +141,7 @@ export default function OnboardingPage() {
               </motion.div>
               <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelect} />
               <div className="flex gap-2">
-                <Button onClick={savePhoto} disabled={saving} className="flex-1">{saving ? 'Saving…' : imagePreview ? 'Save & Continue' : 'Continue'}</Button>
+                <Button onClick={savePhoto} className="flex-1">{imagePreview ? 'Save & Continue' : 'Continue'}</Button>
                 <Button variant="ghost" onClick={() => setStep('measurements')}><SkipForward size={14} /> Skip</Button>
               </div>
             </motion.div>
@@ -134,7 +158,7 @@ export default function OnboardingPage() {
                   <input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="75" step="0.5" className="field" /></div>
               </div>
               <div className="flex gap-2">
-                <Button onClick={saveMeasurements} disabled={saving} className="flex-1">{saving ? 'Saving…' : 'Continue'}</Button>
+                <Button onClick={saveMeasurements} className="flex-1">Continue</Button>
                 <Button variant="ghost" onClick={() => setStep('prs')}><SkipForward size={14} /> Skip</Button>
               </div>
             </motion.div>
@@ -142,23 +166,30 @@ export default function OnboardingPage() {
 
           {step === 'prs' && (
             <motion.div key="prs" {...stepAnim} className="glass rounded-2xl p-6 space-y-4">
-              <h2 className="text-lg font-display font-bold">Your PRs &amp; Last Season</h2>
-              <p className="text-sm text-muted-foreground">Enter your best lifts and when you hit them. Used to calibrate your baseline.</p>
-              {[
-                { label: 'Bench Press', state: bench, setState: setBench, type: 'bench' },
-                { label: 'Squat', state: squat, setState: setSquat, type: 'squat' },
-                { label: 'Deadlift', state: deadlift, setState: setDeadlift, type: 'deadlift' },
-              ].map(({ label, state, setState, type }) => (
-                <div key={type}>
+              <h2 className="text-lg font-display font-bold">Your personal bests</h2>
+              <p className="text-sm text-muted-foreground">Your heaviest single rep (1RM) for each lift, and roughly when you hit it. Used to calibrate your baseline.</p>
+              {lifts.map(({ label, state, setState, type }) => (
+                <div key={type} className="rounded-xl border border-border bg-card/40 p-3.5">
                   <label className="text-sm font-medium mb-2 block">{label}</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    <input type="number" value={state.weight} onChange={(e) => setState({ ...state, weight: e.target.value })} placeholder="Weight" className="field !px-2.5" />
-                    <input type="number" value={state.reps} onChange={(e) => setState({ ...state, reps: e.target.value })} placeholder="Reps" className="field !px-2.5" />
-                    <input type="text" value={state.season} onChange={(e) => setState({ ...state, season: e.target.value })} placeholder="Season" className="field !px-2.5" />
+                  <div className="relative mb-3">
+                    <input type="number" value={state.weight} onChange={(e) => setState({ ...state, weight: e.target.value })} placeholder="Heaviest single rep" step="0.5" className="field pr-10" />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">kg</span>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Beginner: {LIFT_STANDARDS[type as keyof typeof LIFT_STANDARDS].beginner} · Advanced: {LIFT_STANDARDS[type as keyof typeof LIFT_STANDARDS].advanced}
-                  </p>
+                  <p className="text-xs text-muted-foreground mb-1.5">When did you hit it?</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {WHENS.map((w) => {
+                      const active = state.when === w.k;
+                      return (
+                        <button key={w.k} type="button" onClick={() => setState({ ...state, when: w.k })}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${active ? 'bg-brand-500/15 border-brand-500/40 text-brand-300' : 'bg-secondary border-border text-muted-foreground hover:text-foreground'}`}>
+                          {w.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {state.when === 'custom' && (
+                    <input type="date" max={TODAY} value={state.customDate} onChange={(e) => setState({ ...state, customDate: e.target.value })} className="field mt-2" />
+                  )}
                 </div>
               ))}
               <div className="flex gap-2">
@@ -181,6 +212,8 @@ export default function OnboardingPage() {
           )}
         </AnimatePresence>
       </div>
+
+      <ImageCropper src={cropSrc} onCancel={() => setCropSrc(null)} onConfirm={(dataUrl) => { setImagePreview(dataUrl); setCropSrc(null); }} />
     </div>
   );
 }

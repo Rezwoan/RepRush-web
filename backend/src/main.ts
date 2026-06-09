@@ -2,10 +2,15 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import * as cookieParser from 'cookie-parser';
+import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Allow base64 profile-image uploads (default express limit is ~100kb)
+  app.use(json({ limit: '12mb' }));
+  app.use(urlencoded({ extended: true, limit: '12mb' }));
 
   // Cookie parser for JWT httpOnly cookies
   app.use(cookieParser());

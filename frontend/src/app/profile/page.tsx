@@ -5,11 +5,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Camera, Save, Key, LogOut, Download, Ruler, Weight } from 'lucide-react';
 import { usersApi, workoutsApi, authApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
-import { getInitials, epley1RM } from '@/lib/utils';
+import { getInitials } from '@/lib/utils';
 import OnboardingBanner from '@/components/layout/onboarding-banner';
 import { PageTransition, Item } from '@/components/ui/motion-primitives';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { ImageCropper } from '@/components/ui/image-cropper';
 
 export default function ProfilePage() {
   const { refresh, logout } = useAuth();
@@ -26,6 +27,8 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [pwaInstallable, setPwaInstallable] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [uploadingImg, setUploadingImg] = useState(false);
 
   useEffect(() => {
     usersApi.getProfile().then((r) => {
@@ -52,16 +55,27 @@ export default function ProfilePage() {
     } finally { setSaving(false); }
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = async () => {
-      await usersApi.uploadImage(reader.result as string);
-      await refresh();
-      usersApi.getProfile().then((r) => setProfile(r.data));
-    };
+    reader.onload = () => setCropSrc(reader.result as string);
     reader.readAsDataURL(file);
+    e.target.value = ''; // allow re-selecting the same file
+  };
+
+  const handleCroppedUpload = async (dataUrl: string) => {
+    setUploadingImg(true);
+    try {
+      await usersApi.uploadImage(dataUrl);
+      setProfile((p: any) => ({ ...p, profileImage: dataUrl })); // instant
+      setCropSrc(null);
+      refresh();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setUploadingImg(false);
+    }
   };
 
   const changePassword = async () => {
@@ -111,7 +125,7 @@ export default function ProfilePage() {
                 className="absolute -bottom-1.5 -right-1.5 w-7 h-7 bg-volt-gradient rounded-full flex items-center justify-center shadow-lg">
                 <Camera size={13} className="text-volt-900" />
               </motion.button>
-              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelect} />
             </div>
 
             <div className="flex-1">
@@ -160,7 +174,7 @@ export default function ProfilePage() {
                 {pr ? (
                   <>
                     <p className="text-xl font-display font-bold text-volt-400 nums">{pr.weightKg} kg</p>
-                    <p className="text-xs text-muted-foreground mt-0.5 nums">× {pr.reps} · ~{epley1RM(pr.weightKg, pr.reps)} 1RM</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">1 rep max</p>
                   </>
                 ) : <p className="text-muted-foreground text-xl font-bold">—</p>}
               </div>
@@ -209,6 +223,8 @@ export default function ProfilePage() {
         className="w-full flex items-center justify-center gap-2 py-3 text-muted-foreground border border-border rounded-2xl hover:border-destructive/40 hover:text-destructive hover:bg-destructive/5 transition-colors text-sm font-medium">
         <LogOut size={16} /> Sign out
       </motion.button>
+
+      <ImageCropper src={cropSrc} busy={uploadingImg} onCancel={() => setCropSrc(null)} onConfirm={handleCroppedUpload} />
     </PageTransition>
   );
 }
