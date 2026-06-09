@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User, UserRole } from '../users/user.entity';
@@ -39,6 +39,18 @@ export class AdminService {
     const { user, inviteToken } = await this.usersService.createOrRefreshInvite(email, name, tempPassword);
     await this.mailService.sendInvitation(email, name, inviteToken, tempPassword);
     return { message: `Invitation sent to ${email}`, userId: user.id };
+  }
+
+  async resendInvite(userId: number) {
+    const user = await this.usersService.findById(userId);
+    if (!user) throw new NotFoundException('User not found');
+    if (user.isActivated) {
+      throw new ConflictException('User has already activated their account — use Reset Password instead.');
+    }
+    const tempPassword = generatePassword();
+    const { inviteToken } = await this.usersService.createOrRefreshInvite(user.email, user.name, tempPassword);
+    await this.mailService.sendInvitation(user.email, user.name, inviteToken, tempPassword);
+    return { message: `Invitation resent to ${user.email}` };
   }
 
   async resetUserPassword(userId: number) {

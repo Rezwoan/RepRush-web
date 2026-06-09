@@ -41,6 +41,11 @@ export class AdminController {
     return this.adminService.inviteUser(body.email, body.name);
   }
 
+  @Post('users/:id/resend-invite')
+  resendInvite(@Param('id', ParseIntPipe) id: number) {
+    return this.adminService.resendInvite(id);
+  }
+
   @Post('users/:id/reset-password')
   resetPassword(@Param('id', ParseIntPipe) id: number) {
     return this.adminService.resetUserPassword(id);

@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, Dumbbell, Plus, Mail, Trash2, RotateCcw, Shield, BarChart2,
-  CheckCircle, Clock, Pencil, X, Save,
+  CheckCircle, Clock, Pencil, X, Save, Send,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -84,6 +84,12 @@ export default function AdminPage() {
   const deletePlan = async (id: number, name: string) => {
     if (!confirm(`Delete "${name}"? This will remove it from all users.`)) return;
     try { await adminApi.deletePlan(id); reload(); } catch { alert('Failed to delete plan.'); }
+  };
+  const resendInvite = async (userId: number) => {
+    setReportStatus({ ...reportStatus, [userId]: 'Resending…' });
+    try { await adminApi.resendInvite(userId); setReportStatus({ ...reportStatus, [userId]: 'Invite resent ✓' }); }
+    catch (e: any) { setReportStatus({ ...reportStatus, [userId]: e?.response?.data?.message || 'Resend failed' }); }
+    setTimeout(() => setReportStatus((s) => { const n = { ...s }; delete n[userId]; return n; }), 4000);
   };
   const sendReport = async (userId: number, period: 'weekly' | 'monthly') => {
     setReportStatus({ ...reportStatus, [userId]: 'Sending...' });
@@ -191,6 +197,9 @@ export default function AdminPage() {
                               <button onClick={() => sendReport(u.id, 'weekly')} className="p-1.5 text-xs text-muted-foreground hover:text-brand-400 border border-border rounded-lg transition-colors" title="Weekly report">W</button>
                               <button onClick={() => sendReport(u.id, 'monthly')} className="p-1.5 text-xs text-muted-foreground hover:text-brand-400 border border-border rounded-lg transition-colors" title="Monthly report">M</button>
                             </>
+                          )}
+                          {!u.isActivated && !reportStatus[u.id] && (
+                            <button onClick={() => resendInvite(u.id)} className="p-2 text-muted-foreground hover:text-volt-400 transition-colors" title="Resend invite email"><Send size={14} /></button>
                           )}
                           <button onClick={() => resetPassword(u.id)} className="p-2 text-muted-foreground hover:text-brand-400 transition-colors" title="Reset password"><RotateCcw size={14} /></button>
                           <button onClick={() => deleteUser(u.id)} className="p-2 text-muted-foreground hover:text-destructive transition-colors" title="Delete member"><Trash2 size={14} /></button>

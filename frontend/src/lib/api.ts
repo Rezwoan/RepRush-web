@@ -119,6 +119,7 @@ export const adminApi = {
   getUserDetail: (id: number) => api.get(`/admin/users/${id}`),
   inviteUser: (email: string, name: string) =>
     api.post('/admin/users/invite', { email, name }),
+  resendInvite: (id: number) => api.post(`/admin/users/${id}/resend-invite`),
   resetPassword: (id: number) => api.post(`/admin/users/${id}/reset-password`),
   deleteUser: (id: number) => api.delete(`/admin/users/${id}`),
   compare: (userIds: number[]) =>
