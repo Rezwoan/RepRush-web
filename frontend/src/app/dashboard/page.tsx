@@ -9,9 +9,10 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import { useAuth } from '@/lib/auth-context';
-import { workoutsApi, creatineApi, bodyWeightApi } from '@/lib/api';
+import { workoutsApi, creatineApi, bodyWeightApi, supplementsApi } from '@/lib/api';
 import HeatmapCalendar from '@/components/dashboard/heatmap-calendar';
 import CreatineTracker from '@/components/dashboard/creatine-tracker';
+import SupplementTracker from '@/components/dashboard/supplement-tracker';
 import OnboardingBanner from '@/components/layout/onboarding-banner';
 import { PageTransition, Stagger, Item } from '@/components/ui/motion-primitives';
 import { Card, CardHeader } from '@/components/ui/card';
@@ -29,6 +30,7 @@ export default function DashboardPage() {
   const [recentSessions, setRecentSessions] = useState<any[]>([]);
   const [bodyWeightHistory, setBodyWeightHistory] = useState<any[]>([]);
   const [prs, setPRs] = useState<any[]>([]);
+  const [supplementHeatmap, setSupplementHeatmap] = useState<Record<string, any>>({});
 
   const year = new Date().getFullYear();
 
@@ -39,8 +41,11 @@ export default function DashboardPage() {
       workoutsApi.getSessions().then((r) => setRecentSessions(r.data.slice(0, 5))),
       bodyWeightApi.getHistory(60).then((r) => setBodyWeightHistory(r.data)),
       workoutsApi.getPRs().then((r) => setPRs(r.data)),
+      supplementsApi.getHeatmap(year).then((r) => setSupplementHeatmap(r.data)),
     ]).catch(() => {});
   }, [year]);
+
+  const refreshSupplementHeatmap = () => supplementsApi.getHeatmap(year).then((r) => setSupplementHeatmap(r.data)).catch(() => {});
 
   const totalDays = Object.keys(heatmapData).length;
   const currentStreak = computeStreak(heatmapData);
@@ -92,7 +97,7 @@ export default function DashboardPage() {
             title="Training Calendar"
             action={<span className="text-xs text-muted-foreground">{totalDays} total sessions</span>}
           />
-          <HeatmapCalendar data={heatmapData} year={year} />
+          <HeatmapCalendar data={heatmapData} year={year} supplementData={supplementHeatmap} />
         </Card>
       </Item>
 
@@ -162,9 +167,14 @@ export default function DashboardPage() {
         </Item>
       )}
 
-      {/* Creatine */}
+      {/* Creatine — kept front; most common, daily must */}
       <Item standalone>
         <CreatineTracker today={creatineToday} onLogged={() => creatineApi.getToday().then((r) => setCreatineToday(r.data))} />
+      </Item>
+
+      {/* Other supplements */}
+      <Item standalone>
+        <SupplementTracker onChange={refreshSupplementHeatmap} />
       </Item>
 
       {/* Recent sessions */}

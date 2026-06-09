@@ -12,7 +12,7 @@ import { ImageCropper } from '@/components/ui/image-cropper';
 import { spring } from '@/lib/motion';
 
 type Step = 'photo' | 'measurements' | 'prs' | 'done';
-type Lift = { weight: string; when: string; customDate: string };
+type Lift = { weight: string; when: string; customNum: string; customUnit: string };
 
 const stepAnim = {
   initial: { opacity: 0, x: 30 },
@@ -27,14 +27,17 @@ const WHENS = [
   { k: 'custom', label: 'Custom' },
 ];
 
-const TODAY = new Date().toISOString().split('T')[0];
-
-function whenToDate(when: string, custom: string): string | undefined {
+function whenToDate(when: string, customNum: string, customUnit: string): string | undefined {
   const d = new Date();
   if (when === '1w') d.setDate(d.getDate() - 7);
   else if (when === '1mo') d.setMonth(d.getMonth() - 1);
   else if (when === '3mo') d.setMonth(d.getMonth() - 3);
-  else if (when === 'custom') return custom || undefined;
+  else if (when === 'custom') {
+    const n = parseInt(customNum);
+    if (!n || n <= 0) return undefined;
+    if (customUnit === 'years') d.setFullYear(d.getFullYear() - n);
+    else d.setMonth(d.getMonth() - n);
+  }
   return d.toISOString().split('T')[0];
 }
 
@@ -49,9 +52,9 @@ export default function OnboardingPage() {
   const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [height, setHeight] = useState('');
   const [weight, setWeight] = useState('');
-  const [bench, setBench] = useState<Lift>({ weight: '', when: '1mo', customDate: '' });
-  const [squat, setSquat] = useState<Lift>({ weight: '', when: '1mo', customDate: '' });
-  const [deadlift, setDeadlift] = useState<Lift>({ weight: '', when: '1mo', customDate: '' });
+  const [bench, setBench] = useState<Lift>({ weight: '', when: '1mo', customNum: '', customUnit: 'years' });
+  const [squat, setSquat] = useState<Lift>({ weight: '', when: '1mo', customNum: '', customUnit: 'years' });
+  const [deadlift, setDeadlift] = useState<Lift>({ weight: '', when: '1mo', customNum: '', customUnit: 'years' });
 
   const steps: Step[] = ['photo', 'measurements', 'prs', 'done'];
   const stepIndex = steps.indexOf(step);
@@ -92,7 +95,7 @@ export default function OnboardingPage() {
         exerciseType: p.type,
         weightKg: parseFloat(p.weight),
         reps: 1,
-        date: whenToDate(p.when, p.customDate),
+        date: whenToDate(p.when, p.customNum, p.customUnit),
       })));
       setStep('done');
     } finally { setSaving(false); }
@@ -188,7 +191,13 @@ export default function OnboardingPage() {
                     })}
                   </div>
                   {state.when === 'custom' && (
-                    <input type="date" max={TODAY} value={state.customDate} onChange={(e) => setState({ ...state, customDate: e.target.value })} className="field mt-2" />
+                    <div className="flex gap-2 mt-2">
+                      <input type="number" min={1} value={state.customNum} onChange={(e) => setState({ ...state, customNum: e.target.value })} placeholder="e.g. 2" className="field w-24" />
+                      <select value={state.customUnit} onChange={(e) => setState({ ...state, customUnit: e.target.value })} className="field flex-1">
+                        <option value="months">months ago</option>
+                        <option value="years">years ago</option>
+                      </select>
+                    </div>
                   )}
                 </div>
               ))}

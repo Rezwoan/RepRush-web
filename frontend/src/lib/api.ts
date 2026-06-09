@@ -91,6 +91,18 @@ export const creatineApi = {
   deleteLog: (id: number) => api.delete(`/creatine/${id}`),
 };
 
+// ─── Supplements ──────────────────────────────────────────────────────────────
+export const supplementsApi = {
+  list: () => api.get('/supplements'),
+  add: (data: { name: string; unit?: string; defaultDose?: number; dailyTarget?: number }) =>
+    api.post('/supplements', data),
+  remove: (id: number) => api.delete(`/supplements/${id}`),
+  getToday: () => api.get('/supplements/today'),
+  logDose: (id: number, amount: number) => api.post(`/supplements/${id}/log`, { amount }),
+  deleteLog: (logId: number) => api.delete(`/supplements/log/${logId}`),
+  getHeatmap: (year?: number) => api.get('/supplements/heatmap', { params: { year } }),
+};
+
 // ─── Exercises ────────────────────────────────────────────────────────────────
 export const exercisesApi = {
   getMyPlans: () => api.get('/exercises/my-plans'),
