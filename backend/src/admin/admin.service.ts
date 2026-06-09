@@ -132,24 +132,30 @@ export class AdminService {
     const report = await this.getUserReport(userId, period);
     const { user } = report;
 
+    const row = (label: string, value: string, accent = false) =>
+      `<tr>
+        <td style="padding:9px 0;color:#8a97a8;font-size:14px;border-bottom:1px solid #1c2430;">${label}</td>
+        <td style="padding:9px 0;color:${accent ? '#faba0c' : '#ffffff'};font-weight:700;text-align:right;font-size:14px;border-bottom:1px solid #1c2430;">${value}</td>
+      </tr>`;
+    const card = (title: string, rows: string) =>
+      `<div style="background:#0b0f17;border:1px solid #232c3a;border-radius:12px;padding:20px 22px;margin-bottom:16px;">
+        <h3 style="margin:0 0 8px;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#3b97f5;">${title}</h3>
+        <table role="presentation" style="width:100%;border-collapse:collapse;">${rows}</table>
+      </div>`;
+    const kg = (n: number) => (n > 0 ? Math.round(n) + ' kg' : '—');
+
     const reportHtml = `
-      <div style="background:#1a1a1a;border-radius:8px;padding:20px;margin-bottom:16px;">
-        <h3 style="color:#f97316;margin-top:0;">${period === 'weekly' ? 'Weekly' : 'Monthly'} Summary</h3>
-        <table style="width:100%;border-collapse:collapse;">
-          <tr><td style="padding:8px 0;color:#9ca3af;">Sessions completed</td><td style="color:#ffffff;font-weight:bold;text-align:right;">${report.sessions}</td></tr>
-          <tr><td style="padding:8px 0;color:#9ca3af;">Total sets</td><td style="color:#ffffff;font-weight:bold;text-align:right;">${report.totalSets}</td></tr>
-          <tr><td style="padding:8px 0;color:#9ca3af;">Total volume lifted</td><td style="color:#ffffff;font-weight:bold;text-align:right;">${report.totalVolume.toLocaleString()} kg</td></tr>
-          ${report.topWorkout ? `<tr><td style="padding:8px 0;color:#9ca3af;">Favourite workout</td><td style="color:#ffffff;font-weight:bold;text-align:right;">${report.topWorkout}</td></tr>` : ''}
-        </table>
-      </div>
-      <div style="background:#1a1a1a;border-radius:8px;padding:20px;margin-bottom:16px;">
-        <h3 style="color:#f97316;margin-top:0;">Big Three Estimated 1RMs</h3>
-        <table style="width:100%;border-collapse:collapse;">
-          <tr><td style="padding:8px 0;color:#9ca3af;">Bench Press</td><td style="color:#ffffff;font-weight:bold;text-align:right;">${report.lifts.bench > 0 ? Math.round(report.lifts.bench) + ' kg' : '—'}</td></tr>
-          <tr><td style="padding:8px 0;color:#9ca3af;">Squat</td><td style="color:#ffffff;font-weight:bold;text-align:right;">${report.lifts.squat > 0 ? Math.round(report.lifts.squat) + ' kg' : '—'}</td></tr>
-          <tr><td style="padding:8px 0;color:#9ca3af;">Deadlift</td><td style="color:#ffffff;font-weight:bold;text-align:right;">${report.lifts.deadlift > 0 ? Math.round(report.lifts.deadlift) + ' kg' : '—'}</td></tr>
-        </table>
-      </div>
+      ${card(`${period === 'weekly' ? 'Weekly' : 'Monthly'} Summary`,
+        row('Sessions completed', String(report.sessions), true) +
+        row('Total sets', String(report.totalSets)) +
+        row('Total volume lifted', `${report.totalVolume.toLocaleString()} kg`) +
+        (report.topWorkout ? row('Favourite workout', report.topWorkout) : ''),
+      )}
+      ${card('Big Three — Estimated 1RMs',
+        row('Bench Press', kg(report.lifts.bench)) +
+        row('Squat', kg(report.lifts.squat)) +
+        row('Deadlift', kg(report.lifts.deadlift)),
+      )}
     `;
 
     await this.mailService.sendWorkoutReport(user.email, user.name, period, reportHtml);

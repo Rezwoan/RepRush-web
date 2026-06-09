@@ -12,31 +12,33 @@ type MailPayload = {
   html: string;
 };
 
-const emailBase = (content: string) => `
+const emailBase = (content: string, preheader = '') => `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="supported-color-schemes" content="dark light" />
 </head>
-<body style="margin:0;padding:0;background:#0a0a0a;font-family:'Helvetica Neue',Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0a;padding:40px 16px;">
+<body style="margin:0;padding:0;background:#0b0f17;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+  ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#0b0f17;">${preheader}</div>` : ''}
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0b0f17;background-image:radial-gradient(900px 360px at 50% -10%, rgba(10,128,245,0.16), transparent 70%);padding:44px 16px;">
     <tr>
       <td align="center">
-        <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;">
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;">
 
           <!-- Header -->
           <tr>
-            <td style="padding-bottom:32px;" align="center">
-              <table cellpadding="0" cellspacing="0">
+            <td style="padding-bottom:28px;" align="center">
+              <table role="presentation" cellpadding="0" cellspacing="0">
                 <tr>
                   <td style="padding-right:12px;vertical-align:middle;">
-                    <img src="${LOGO_BASE64}" width="48" height="48"
-                      alt="RepRush"
-                      style="border-radius:12px;display:block;" />
+                    <img src="${LOGO_BASE64}" width="46" height="46" alt="RepRush"
+                      style="border-radius:12px;display:block;background:#ffffff;" />
                   </td>
                   <td style="vertical-align:middle;">
-                    <span style="font-size:26px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">Rep</span><span style="font-size:26px;font-weight:800;color:#f97316;letter-spacing:-0.5px;">Rush</span>
+                    <span style="font-size:27px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">Rep</span><span style="font-size:27px;font-weight:800;color:#faba0c;letter-spacing:-0.5px;">Rush</span>
                   </td>
                 </tr>
               </table>
@@ -45,17 +47,17 @@ const emailBase = (content: string) => `
 
           <!-- Card -->
           <tr>
-            <td style="background:#141414;border-radius:16px;border:1px solid #262626;overflow:hidden;">
-              <!-- Orange accent bar -->
-              <table width="100%" cellpadding="0" cellspacing="0">
+            <td style="background:#11151e;border-radius:18px;border:1px solid #232c3a;overflow:hidden;box-shadow:0 18px 50px -24px rgba(0,0,0,0.8);">
+              <!-- Blue → gold accent bar -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                 <tr>
-                  <td style="height:4px;background:linear-gradient(90deg,#f97316,#fb923c,#fdba74);"></td>
+                  <td style="height:5px;background:#0a80f5;background-image:linear-gradient(90deg,#0a80f5 0%,#3b97f5 48%,#faba0c 115%);font-size:0;line-height:0;">&nbsp;</td>
                 </tr>
               </table>
               <!-- Content -->
-              <table width="100%" cellpadding="0" cellspacing="0">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                 <tr>
-                  <td style="padding:36px 36px 32px;">
+                  <td style="padding:38px 38px 34px;">
                     ${content}
                   </td>
                 </tr>
@@ -65,9 +67,12 @@ const emailBase = (content: string) => `
 
           <!-- Footer -->
           <tr>
-            <td style="padding-top:24px;" align="center">
-              <p style="margin:0;font-size:12px;color:#404040;letter-spacing:0.3px;">
-                RepRush &mdash; Track every rep. Own every result.
+            <td style="padding-top:26px;" align="center">
+              <p style="margin:0 0 4px;font-size:13px;color:#8a97a8;font-weight:600;letter-spacing:0.2px;">
+                Rep<span style="color:#faba0c;">Rush</span>
+              </p>
+              <p style="margin:0;font-size:12px;color:#46505f;letter-spacing:0.3px;">
+                Track every rep. Own every result.
               </p>
             </td>
           </tr>
@@ -118,28 +123,29 @@ export class MailService {
     const inviteUrl = `${frontendUrl}/login?token=${token}&email=${encodeURIComponent(email)}`;
 
     const content = `
-      <h1 style="margin:0 0 6px;font-size:24px;font-weight:800;color:#ffffff;">
+      <p style="margin:0 0 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#3b97f5;">Welcome aboard ⚡</p>
+      <h1 style="margin:0 0 8px;font-size:25px;font-weight:800;color:#ffffff;letter-spacing:-0.3px;">
         You're in, ${name || 'there'}.
       </h1>
-      <p style="margin:0 0 28px;font-size:15px;color:#737373;line-height:1.6;">
-        Your RepRush account is ready. Set your password and start tracking your gains.
+      <p style="margin:0 0 28px;font-size:15px;color:#8a97a8;line-height:1.6;">
+        Your RepRush account is ready. Set your password and start tracking every rep, PR, and streak.
       </p>
 
       <!-- Credentials box -->
-      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
         <tr>
-          <td style="background:#0d0d0d;border:1px solid #262626;border-radius:10px;padding:20px 24px;">
-            <table width="100%" cellpadding="0" cellspacing="0">
+          <td style="background:#0b0f17;border:1px solid #232c3a;border-radius:12px;padding:22px 24px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
               <tr>
-                <td style="padding-bottom:12px;">
-                  <p style="margin:0 0 2px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#525252;">Email</p>
-                  <p style="margin:0;font-size:15px;color:#e5e5e5;font-weight:500;">${email}</p>
+                <td style="padding-bottom:16px;border-bottom:1px solid #1c2430;">
+                  <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:#5b6677;">Email</p>
+                  <p style="margin:0;font-size:15px;color:#e8edf3;font-weight:500;">${email}</p>
                 </td>
               </tr>
               <tr>
-                <td>
-                  <p style="margin:0 0 2px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#525252;">Temporary Password</p>
-                  <p style="margin:0;font-size:15px;color:#f97316;font-weight:700;font-family:monospace;letter-spacing:1px;">${tempPassword}</p>
+                <td style="padding-top:16px;">
+                  <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:#5b6677;">Temporary Password</p>
+                  <p style="margin:0;font-size:18px;color:#faba0c;font-weight:700;font-family:'SF Mono',Consolas,monospace;letter-spacing:1.5px;">${tempPassword}</p>
                 </td>
               </tr>
             </table>
@@ -148,26 +154,26 @@ export class MailService {
       </table>
 
       <!-- CTA -->
-      <table cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
         <tr>
-          <td style="background:#f97316;border-radius:10px;">
+          <td bgcolor="#0a80f5" style="background:#0a80f5;background-image:linear-gradient(90deg,#0a80f5,#046cc8);border-radius:12px;">
             <a href="${inviteUrl}"
-               style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;letter-spacing:0.3px;">
-              Accept Invitation
+               style="display:inline-block;padding:15px 36px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;letter-spacing:0.3px;">
+              Accept Invitation &rarr;
             </a>
           </td>
         </tr>
       </table>
 
-      <p style="margin:0;font-size:13px;color:#525252;line-height:1.6;">
-        Or copy this link:<br/>
-        <a href="${inviteUrl}" style="color:#f97316;word-break:break-all;font-size:12px;">${inviteUrl}</a>
+      <p style="margin:0;font-size:13px;color:#5b6677;line-height:1.6;">
+        Or copy this link into your browser:<br/>
+        <a href="${inviteUrl}" style="color:#3b97f5;word-break:break-all;font-size:12px;">${inviteUrl}</a>
       </p>
-      <p style="margin:16px 0 0;font-size:12px;color:#404040;">Change your password after your first login.</p>
+      <p style="margin:18px 0 0;font-size:12px;color:#46505f;">Tip: change your password after your first login.</p>
     `;
 
     if (this.resend) {
-      return this.sendEmail({ from, to: email, subject: "You're invited to RepRush", html: emailBase(content) }, 'Invitation email');
+      return this.sendEmail({ from, to: email, subject: "You're invited to RepRush ⚡", html: emailBase(content, `Your RepRush account is ready — set your password and start training.`) }, 'Invitation email');
     }
     this.logger.log(`=== INVITATION (dev) === To: ${email} | URL: ${inviteUrl} | Pass: ${tempPassword}`);
     return null;
@@ -177,19 +183,20 @@ export class MailService {
     const from = this.config.get<string>('RESEND_FROM_EMAIL') || 'RepRush <onboarding@resend.dev>';
 
     const content = `
-      <h1 style="margin:0 0 6px;font-size:24px;font-weight:800;color:#ffffff;">
+      <p style="margin:0 0 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#3b97f5;">${period} report 📊</p>
+      <h1 style="margin:0 0 8px;font-size:25px;font-weight:800;color:#ffffff;letter-spacing:-0.3px;">
         Hey ${name || 'there'}.
       </h1>
-      <p style="margin:0 0 28px;font-size:15px;color:#737373;line-height:1.6;">
-        Here is your ${period} workout summary.
+      <p style="margin:0 0 26px;font-size:15px;color:#8a97a8;line-height:1.6;">
+        Here's your ${period} training summary — the numbers don't lie.
       </p>
       ${reportHtml}
-      <p style="margin:24px 0 0;font-size:12px;color:#404040;">Sent by your RepRush admin. Keep pushing.</p>
+      <p style="margin:24px 0 0;font-size:12px;color:#46505f;">Sent by your RepRush coach. Keep pushing. 💪</p>
     `;
 
     if (this.resend) {
       await this.sendEmail(
-        { from, to: email, subject: `Your ${period} workout report - RepRush`, html: emailBase(content) },
+        { from, to: email, subject: `Your ${period} workout report — RepRush`, html: emailBase(content, `Your ${period} training summary is in.`) },
         'Workout report',
       );
       return;
@@ -201,27 +208,28 @@ export class MailService {
     const from = this.config.get<string>('RESEND_FROM_EMAIL') || 'RepRush <onboarding@resend.dev>';
 
     const content = `
-      <h1 style="margin:0 0 6px;font-size:24px;font-weight:800;color:#ffffff;">
-        Password Reset
+      <p style="margin:0 0 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#3b97f5;">Account security 🔒</p>
+      <h1 style="margin:0 0 8px;font-size:25px;font-weight:800;color:#ffffff;letter-spacing:-0.3px;">
+        Password reset
       </h1>
-      <p style="margin:0 0 28px;font-size:15px;color:#737373;line-height:1.6;">
-        Your RepRush password has been reset by the admin.
+      <p style="margin:0 0 28px;font-size:15px;color:#8a97a8;line-height:1.6;">
+        Your RepRush password was reset by an admin. Use the temporary password below to sign in.
       </p>
 
-      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
         <tr>
-          <td style="background:#0d0d0d;border:1px solid #262626;border-radius:10px;padding:20px 24px;">
-            <p style="margin:0 0 2px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#525252;">New Temporary Password</p>
-            <p style="margin:0;font-size:18px;color:#f97316;font-weight:700;font-family:monospace;letter-spacing:2px;">${newPassword}</p>
+          <td style="background:#0b0f17;border:1px solid #232c3a;border-radius:12px;padding:22px 24px;">
+            <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:#5b6677;">New Temporary Password</p>
+            <p style="margin:0;font-size:20px;color:#faba0c;font-weight:700;font-family:'SF Mono',Consolas,monospace;letter-spacing:2px;">${newPassword}</p>
           </td>
         </tr>
       </table>
 
-      <p style="margin:0;font-size:13px;color:#525252;">Log in and change your password immediately.</p>
+      <p style="margin:0;font-size:13px;color:#5b6677;line-height:1.6;">For your security, log in and change your password right away. If you didn't expect this, contact your admin.</p>
     `;
 
     if (this.resend) {
-      await this.sendEmail({ from, to: email, subject: 'RepRush Password Reset', html: emailBase(content) }, 'Password reset email');
+      await this.sendEmail({ from, to: email, subject: 'RepRush — Password Reset 🔒', html: emailBase(content, 'Your RepRush password has been reset.') }, 'Password reset email');
       return;
     }
     this.logger.log(`=== PASSWORD RESET (dev) === To: ${email} | New Pass: ${newPassword}`);
