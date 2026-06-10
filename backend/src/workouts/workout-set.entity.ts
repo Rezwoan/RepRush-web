@@ -35,6 +35,9 @@ export class WorkoutSet {
   @Column({ type: 'real' })
   weightKg: number;
 
+  @Column({ default: false })
+  isWarmup: boolean;
+
   @CreateDateColumn()
   loggedAt: Date;
 }

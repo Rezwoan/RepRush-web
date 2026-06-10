@@ -4,6 +4,24 @@ import { UsersService } from '../users/users.service';
 import { ExercisesService } from '../exercises/exercises.service';
 import { UserRole } from '../users/user.entity';
 
+// Lower-bound numeric of an estimated-load string ("60kg - 65kg" → 60, "Bodyweight" → 0).
+const parseBaseline = (s: string): number => {
+  const m = String(s || '').match(/[\d.]+/);
+  return m ? parseFloat(m[0]) : 0;
+};
+
+// Build a plan exercise with warm-up sets, working sets, rep range and a baseline load.
+const ex = (
+  name: string,
+  warmUpSets: string[],
+  sets: number,
+  reps: string,
+  estimatedLoad: string,
+  bwMultiplier: number,
+  rest: number,
+  notes: string,
+) => ({ name, warmUpSets, sets, reps, estimatedLoad, baselineWeight: parseBaseline(estimatedLoad), bwMultiplier, rest, notes });
+
 const ULPPL_PLANS = [
   {
     name: 'Upper Power',
@@ -12,11 +30,11 @@ const ULPPL_PLANS = [
       type: 'Upper Power',
       focus: 'Strength & Power',
       exercises: [
-        { name: 'Barbell Bench Press', sets: 4, reps: '4-6', bwMultiplier: 0.65, rest: 180, notes: 'Full range of motion, control the descent' },
-        { name: 'Lat Pulldowns Wide Grip', sets: 4, reps: '4-6', bwMultiplier: 0.5, rest: 180, notes: 'Squeeze lats at bottom' },
-        { name: 'Overhead Press', sets: 3, reps: '4-6', bwMultiplier: 0.4, rest: 180, notes: 'Brace core, neutral spine' },
-        { name: 'Barbell Rows', sets: 4, reps: '4-6', bwMultiplier: 0.55, rest: 180, notes: 'Pull to lower chest, retract scapulae' },
-        { name: 'Barbell Bicep Curls', sets: 3, reps: '8-10', bwMultiplier: 0.2, rest: 90, notes: 'No swinging' },
+        ex('Barbell Bench Press', ['20kg x 15', '40kg x 8', '50kg x 4'], 3, '5-8', '60kg - 65kg', 0.65, 180, 'Full range of motion, control the descent'),
+        ex('Lat Pulldowns (Wide Grip)', ['35kg x 10'], 3, '5-8', '50kg - 55kg', 0.5, 180, 'Squeeze lats at bottom'),
+        ex('Overhead Press', ['20kg x 10'], 3, '5-8', '35kg - 40kg', 0.4, 180, 'Brace core, neutral spine'),
+        ex('Barbell Rows', ['40kg x 8'], 3, '5-8', '50kg - 55kg', 0.55, 180, 'Pull to lower chest, retract scapulae'),
+        ex('Barbell Bicep Curls', ['10kg x 10'], 3, '8-10', '20kg - 25kg', 0.2, 90, 'No swinging'),
       ],
     },
   },
@@ -27,11 +45,11 @@ const ULPPL_PLANS = [
       type: 'Lower Power',
       focus: 'Strength & Power',
       exercises: [
-        { name: 'Barbell Squats', sets: 4, reps: '4-6', bwMultiplier: 0.9, rest: 240, notes: 'Below parallel, drive through heels' },
-        { name: 'Romanian Deadlifts', sets: 4, reps: '6-8', bwMultiplier: 0.7, rest: 180, notes: 'Hinge at hips, slight knee bend' },
-        { name: 'Leg Press', sets: 4, reps: '8-10', bwMultiplier: 1.2, rest: 180, notes: 'Full range, no locking knees at top' },
-        { name: 'Lying Leg Curls', sets: 3, reps: '10-12', bwMultiplier: 0.25, rest: 90, notes: 'Slow eccentric' },
-        { name: 'Standing Calf Raises', sets: 4, reps: '12-15', bwMultiplier: 0.5, rest: 60, notes: 'Full range, pause at top' },
+        ex('Barbell Squats', ['20kg x 15', '40kg x 8', '60kg x 4'], 3, '5-8', '70kg - 75kg', 0.9, 240, 'Below parallel, drive through heels'),
+        ex('Romanian Deadlifts', ['60kg x 8'], 3, '5-8', '80kg - 85kg', 0.7, 180, 'Hinge at hips, slight knee bend'),
+        ex('Leg Press', ['100kg x 8'], 3, '5-8', '130kg - 150kg', 1.2, 180, 'Full range, no locking knees at top'),
+        ex('Lying Leg Curls', ['Muscle already warm'], 3, '5-8', '35kg - 45kg', 0.25, 90, 'Slow eccentric'),
+        ex('Standing Calf Raises', ['Muscle already warm'], 3, '8-10', '60kg - 70kg', 0.5, 60, 'Full range, pause at top'),
       ],
     },
   },
@@ -42,11 +60,11 @@ const ULPPL_PLANS = [
       type: 'Push Hypertrophy',
       focus: 'Chest, Shoulders, Triceps',
       exercises: [
-        { name: 'Incline DB Press', sets: 4, reps: '8-12', bwMultiplier: 0.25, rest: 120, notes: '30-45 degree incline' },
-        { name: 'Seated DB Press', sets: 3, reps: '10-12', bwMultiplier: 0.2, rest: 90, notes: 'Controlled, full extension' },
-        { name: 'DB Lateral Raises', sets: 4, reps: '12-15', bwMultiplier: 0.08, rest: 60, notes: 'Lead with elbows, slight forward lean' },
-        { name: 'Pec Deck Machine Flyes', sets: 3, reps: '12-15', bwMultiplier: 0.3, rest: 60, notes: 'Squeeze at contraction' },
-        { name: 'EZ Bar Skullcrushers', sets: 3, reps: '10-12', bwMultiplier: 0.15, rest: 90, notes: 'Elbows in, controlled' },
+        ex('Incline DB Press', ['10kg DBs x 10', '15kg DBs x 6'], 3, '5-8', '22.5kg - 25kg DBs', 0.25, 120, '30-45 degree incline'),
+        ex('Seated DB Press', ['Muscle already warm'], 3, '5-8', '15kg - 17.5kg DBs', 0.2, 90, 'Controlled, full extension'),
+        ex('DB Lateral Raises', ['5kg DBs x 10'], 3, '8-12', '7.5kg - 10kg DBs', 0.08, 60, 'Lead with elbows, slight forward lean'),
+        ex('Pec Deck Machine Flyes', ['Muscle already warm'], 3, '8-12', '40kg - 50kg', 0.3, 60, 'Squeeze at contraction'),
+        ex('EZ Bar Skullcrushers', ['10kg x 10'], 3, '8-12', '20kg - 25kg', 0.15, 90, 'Elbows in, controlled'),
       ],
     },
   },
@@ -57,11 +75,11 @@ const ULPPL_PLANS = [
       type: 'Pull Hypertrophy',
       focus: 'Back, Biceps, Rear Delts',
       exercises: [
-        { name: 'V-Grip Lat Pulldowns', sets: 4, reps: '10-12', bwMultiplier: 0.45, rest: 90, notes: 'Full stretch at top' },
-        { name: 'Chest-Supported T-Bar Row', sets: 4, reps: '10-12', bwMultiplier: 0.35, rest: 90, notes: 'Squeeze at the top' },
-        { name: 'DB Rear Delt Flyes', sets: 3, reps: '12-15', bwMultiplier: 0.08, rest: 60, notes: 'Slight bend in elbows' },
-        { name: 'Incline DB Curls', sets: 3, reps: '10-12', bwMultiplier: 0.1, rest: 60, notes: 'Full stretch at bottom' },
-        { name: 'DB Hammer Curls', sets: 3, reps: '10-12', bwMultiplier: 0.1, rest: 60, notes: 'Neutral grip throughout' },
+        ex('V-Grip Lat Pulldowns', ['35kg x 10'], 3, '5-8', '50kg - 55kg', 0.45, 90, 'Full stretch at top'),
+        ex('Chest-Supported T-Bar Row', ['20kg plate x 10'], 3, '5-8', '40kg - 50kg (plates)', 0.35, 90, 'Squeeze at the top'),
+        ex('DB Rear Delt Flyes', ['Muscle already warm'], 3, '10-15', '5kg - 7.5kg DBs', 0.08, 60, 'Slight bend in elbows'),
+        ex('Incline DB Curls', ['5kg DBs x 10'], 3, '8-12', '10kg - 12.5kg DBs', 0.1, 60, 'Full stretch at bottom'),
+        ex('DB Hammer Curls', ['Muscle already warm'], 3, '8-12', '12.5kg - 15kg DBs', 0.1, 60, 'Neutral grip throughout'),
       ],
     },
   },
@@ -72,11 +90,11 @@ const ULPPL_PLANS = [
       type: 'Legs & Core',
       focus: 'Quads, Hamstrings, Calves, Core',
       exercises: [
-        { name: 'Hack Squats', sets: 4, reps: '8-12', bwMultiplier: 0.8, rest: 180, notes: 'Deep range, controlled' },
-        { name: 'Leg Extensions', sets: 4, reps: '12-15', bwMultiplier: 0.25, rest: 60, notes: 'Squeeze quads at top' },
-        { name: 'Seated Leg Curls', sets: 3, reps: '12-15', bwMultiplier: 0.2, rest: 60, notes: 'Full range of motion' },
-        { name: 'Seated Calf Raises', sets: 4, reps: '15-20', bwMultiplier: 0.3, rest: 45, notes: 'Slow and controlled' },
-        { name: 'Core Exercise (User Choice)', sets: 3, reps: '15-20', bwMultiplier: 0, rest: 60, notes: 'Choose: planks, hanging leg raises, cable crunches' },
+        ex('Hack Squats', ['Machine empty x 10', '+40kg x 6'], 3, '5-8', '80kg - 100kg', 0.8, 180, 'Deep range, controlled'),
+        ex('Leg Extensions', ['Muscle already warm'], 3, '5-8', '40kg - 50kg', 0.25, 60, 'Squeeze quads at top'),
+        ex('Seated Leg Curls', ['Muscle already warm'], 3, '5-8', '40kg - 45kg', 0.2, 60, 'Full range of motion'),
+        ex('Seated Calf Raises', ['Muscle already warm'], 3, '10-15', '30kg - 40kg', 0.3, 45, 'Slow and controlled'),
+        ex('Core Exercise (User Choice)', ['Muscle already warm'], 3, '8-15', 'Bodyweight or weighted', 0, 60, 'Choose: lying leg raises, cable crunches, decline sit-ups, or ab wheel'),
       ],
     },
   },
@@ -142,11 +160,14 @@ export class SeedService implements OnModuleInit {
     if (existing.length > 0) {
       // Make sure user has all plans assigned
       const userPlans = await this.exercisesService.getUserPlans(userId);
-      if (userPlans.length === 0 && existing.length > 0) {
+      if (userPlans.length === 0) {
         for (const plan of existing) {
           await this.exercisesService.assignPlanToUser(userId, plan.id).catch(() => {});
         }
       }
+      // Refresh the canonical ULPPL plans in place (keeps ids + assignments) so
+      // warm-up sets / estimated loads land on already-seeded installs.
+      await this.backfillPlans(existing);
       return;
     }
 
@@ -157,6 +178,28 @@ export class SeedService implements OnModuleInit {
         this.logger.log(`Created and assigned plan: ${plan.name}`);
       } catch (e) {
         this.logger.warn(`Failed to seed plan ${plan.name}: ${e.message}`);
+      }
+    }
+  }
+
+  /**
+   * One-time, idempotent upgrade of already-seeded ULPPL plans: if a plan's
+   * exercises don't yet carry warm-up sets, replace its exercise list with the
+   * canonical version (matched by plan name). Plan ids and user assignments are
+   * preserved, and custom (non-ULPPL) plans are left untouched.
+   */
+  private async backfillPlans(existing: any[]) {
+    const norm = (s: string) => String(s || '').trim().toLowerCase();
+    for (const canonical of ULPPL_PLANS) {
+      const match = existing.find((p) => norm(p.name) === norm(canonical.name));
+      if (!match) continue;
+      const firstEx = match.exercises?.exercises?.[0];
+      if (firstEx && firstEx.warmUpSets) continue; // already upgraded
+      try {
+        await this.exercisesService.updatePlan(match.id, undefined, canonical.exercises);
+        this.logger.log(`Backfilled warm-up/estimated-load data for plan: ${canonical.name}`);
+      } catch (e) {
+        this.logger.warn(`Failed to backfill plan ${canonical.name}: ${e.message}`);
       }
     }
   }

@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Dumbbell, ChevronLeft, Play, Clock, Target, RotateCcw } from 'lucide-react';
+import { Dumbbell, ChevronLeft, Play, Clock, Target, RotateCcw, Flame } from 'lucide-react';
 import { exercisesApi, workoutsApi, usersApi } from '@/lib/api';
 import { PageTransition, Stagger, Item } from '@/components/ui/motion-primitives';
 import { Card } from '@/components/ui/card';
@@ -16,6 +16,8 @@ interface Exercise {
   bwMultiplier: number;
   rest: number;
   notes?: string;
+  warmUpSets?: string[];
+  estimatedLoad?: string;
 }
 
 export default function WorkoutPreviewPage() {
@@ -44,10 +46,13 @@ export default function WorkoutPreviewPage() {
   };
 
   const getStartWeight = (ex: Exercise): string => {
+    if (ex.estimatedLoad) return ex.estimatedLoad;
     if (!ex.bwMultiplier || ex.bwMultiplier === 0) return 'Bodyweight';
     const rounded = Math.round((userWeight * ex.bwMultiplier) / 2.5) * 2.5;
     return `${rounded} kg`;
   };
+  const warmCount = (ex: Exercise) =>
+    (ex.warmUpSets || []).filter((w) => /x/i.test(w)).length;
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="loader-ring" /></div>;
   if (!plan) return <div className="text-center py-20 text-muted-foreground">Plan not found.</div>;
@@ -91,6 +96,7 @@ export default function WorkoutPreviewPage() {
               <div className="flex flex-wrap gap-2 ml-9">
                 <span className="text-xs bg-secondary text-foreground px-2.5 py-1 rounded-lg font-medium nums">{ex.sets} sets × {ex.reps} reps</span>
                 <span className="text-xs bg-volt-400/15 text-volt-400 px-2.5 py-1 rounded-lg font-medium nums">{getStartWeight(ex)}</span>
+                {warmCount(ex) > 0 && <span className="text-xs bg-brand-500/10 text-brand-300 px-2.5 py-1 rounded-lg font-medium nums flex items-center gap-1"><Flame size={10} />{warmCount(ex)} warm-up{warmCount(ex) > 1 ? 's' : ''}</span>}
                 {ex.rest && <span className="text-xs text-muted-foreground flex items-center gap-1 nums"><Clock size={10} />{ex.rest}s rest</span>}
               </div>
               {ex.notes && <p className="text-xs text-muted-foreground/70 mt-2 ml-9 italic">{ex.notes}</p>}

@@ -84,16 +84,17 @@ export class WorkoutsService {
     actualReps: number,
     weightKg: number,
     targetReps?: number,
+    isWarmup = false,
   ) {
     // Verify session belongs to user
     const session = await this.sessionRepo.findOne({ where: { id: sessionId, userId } });
     if (!session) throw new NotFoundException('Session not found');
 
-    const set = this.setRepo.create({ sessionId, exerciseName, setNumber, actualReps, weightKg, targetReps });
+    const set = this.setRepo.create({ sessionId, exerciseName, setNumber, actualReps, weightKg, targetReps, isWarmup });
     const saved = await this.setRepo.save(set);
 
-    // Auto-update PR if applicable
-    await this.checkAndUpdatePR(userId, exerciseName, weightKg, actualReps);
+    // Warm-up sets are ramp-up only — they never count toward PRs.
+    if (!isWarmup) await this.checkAndUpdatePR(userId, exerciseName, weightKg, actualReps);
 
     return saved;
   }
@@ -176,9 +177,9 @@ export class WorkoutsService {
     const lastSession = sessions[0];
     const suggestions: Record<string, { weightKg: number; reps: number; reason: string }> = {};
 
-    // Group sets by exercise in last session
+    // Group working sets by exercise in last session (warm-ups never inform estimation)
     const exerciseMap: Record<string, WorkoutSet[]> = {};
-    lastSession.sets.forEach((s) => {
+    lastSession.sets.filter((s) => !s.isWarmup).forEach((s) => {
       if (!exerciseMap[s.exerciseName]) exerciseMap[s.exerciseName] = [];
       exerciseMap[s.exerciseName].push(s);
     });

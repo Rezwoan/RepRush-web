@@ -4,7 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, CheckCircle2, Check, RotateCcw, Timer, Trash2, Dumbbell,
-  ArrowLeft, Pencil, ChevronDown, CheckSquare, ListChecks,
+  ArrowLeft, Pencil, ChevronDown, CheckSquare, ListChecks, Flame,
 } from 'lucide-react';
 import { workoutsApi, exercisesApi, usersApi } from '@/lib/api';
 import { epley1RM } from '@/lib/utils';
@@ -13,11 +13,22 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { spring } from '@/lib/motion';
 
-interface SetLog { id?: number; exerciseName: string; setNumber: number; actualReps: number; weightKg: number; targetReps?: number; }
-interface PlanExercise { name: string; sets: number; reps: string; bwMultiplier: number; rest: number; notes?: string; }
+interface SetLog { id?: number; exerciseName: string; setNumber: number; actualReps: number; weightKg: number; targetReps?: number; isWarmup?: boolean; }
+interface PlanExercise { name: string; sets: number; reps: string; bwMultiplier: number; rest: number; notes?: string; warmUpSets?: string[]; estimatedLoad?: string; baselineWeight?: number; }
 
 const firstNum = (s: string) => { const m = String(s || '').match(/\d+/); return m ? m[0] : ''; };
 const round25 = (n: number) => Math.round(n / 2.5) * 2.5;
+
+// Parse a warm-up string ("40kg x 8", "Machine empty x 10", "+40kg x 6") → { weight, reps }.
+// Returns null for guidance-only entries like "Muscle already warm".
+const parseWarm = (str: string): { weight: number; reps: number } | null => {
+  const parts = String(str || '').toLowerCase().split('x');
+  if (parts.length < 2) return null;
+  const repsM = parts[1].match(/\d+/);
+  if (!repsM) return null;
+  const wM = parts[0].match(/[\d.]+/);
+  return { weight: wM ? parseFloat(wM[0]) : 0, reps: parseInt(repsM[0]) };
+};
 
 export default function SessionPage() {
   const { id } = useParams<{ id: string }>();
@@ -31,6 +42,7 @@ export default function SessionPage() {
   const [sets, setSets] = useState<SetLog[]>([]);
   const [inputs, setInputs] = useState<Record<string, { weight: string; reps: string }>>({});
   const [addedSlots, setAddedSlots] = useState<Record<string, number>>({});
+  const [skipWarmup, setSkipWarmup] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
   const [abandoning, setAbandoning] = useState(false);
@@ -47,7 +59,7 @@ export default function SessionPage() {
   const loadSets = useCallback((data: any) => {
     setSets((data?.sets || []).map((s: any) => ({
       id: s.id, exerciseName: s.exerciseName, setNumber: s.setNumber,
-      actualReps: s.actualReps, weightKg: s.weightKg, targetReps: s.targetReps,
+      actualReps: s.actualReps, weightKg: s.weightKg, targetReps: s.targetReps, isWarmup: !!s.isWarmup,
     })));
   }, []);
 
@@ -76,57 +88,89 @@ export default function SessionPage() {
 
   const fmtTime = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
-  const byExercise = sets.reduce((acc: Record<string, SetLog[]>, s) => {
-    (acc[s.exerciseName] ||= []).push(s);
+  // Working sets and warm-ups live in the same table — split them by the flag.
+  const group = (arr: SetLog[]) => {
+    const acc: Record<string, SetLog[]> = {};
+    arr.forEach((s) => { (acc[s.exerciseName] ||= []).push(s); });
+    Object.values(acc).forEach((a) => a.sort((x, y) => x.setNumber - y.setNumber));
     return acc;
-  }, {});
-  Object.values(byExercise).forEach((arr) => arr.sort((a, b) => a.setNumber - b.setNumber));
+  };
+  const working = sets.filter((s) => !s.isWarmup);
+  const warm = sets.filter((s) => s.isWarmup);
+  const byExercise = group(working);
+  const warmByExercise = group(warm);
 
-  // First session → bodyweight-scaled; 2nd+ → progressive-overload suggestion
-  const suggestedWeight = (ex: PlanExercise): number => {
+  // First session of an exercise → baseline; 2nd+ → progression suggestion. Always a hint.
+  const hintWeight = (ex: PlanExercise): number => {
     const sug = suggestion?.suggestions?.[ex.name];
     if (sug?.weightKg) return sug.weightKg;
+    if (ex.baselineWeight) return ex.baselineWeight;
     if (ex.bwMultiplier) return round25(userWeight * ex.bwMultiplier);
     return 0;
   };
+  const hintReps = (ex: PlanExercise): number => {
+    const sug = suggestion?.suggestions?.[ex.name];
+    if (sug?.reps) return sug.reps;
+    return parseInt(firstNum(ex.reps)) || 0;
+  };
 
-  const slotKey = (name: string, n: number) => `${name}#${n}`;
-  const getSlot = (name: string, n: number, field: 'weight' | 'reps', fallback: string) =>
-    inputs[slotKey(name, n)]?.[field] ?? fallback;
-  const setSlot = (name: string, n: number, field: 'weight' | 'reps', value: string) =>
+  const getInp = (key: string, field: 'weight' | 'reps', fallback: string) => inputs[key]?.[field] ?? fallback;
+  const setInp = (key: string, field: 'weight' | 'reps', value: string) =>
     setInputs((prev) => {
-      const k = slotKey(name, n);
-      const cur = prev[k] ?? { weight: '', reps: '' };
-      return { ...prev, [k]: { ...cur, [field]: value } };
+      const cur = prev[key] ?? { weight: '', reps: '' };
+      return { ...prev, [key]: { ...cur, [field]: value } };
     });
 
-  type Slot =
+  const exDone = (ex: PlanExercise) => (byExercise[ex.name]?.length || 0);
+  const exTotal = (ex: PlanExercise) => Math.max(ex.sets + (addedSlots[ex.name] || 0), byExercise[ex.name]?.length || 0);
+
+  type WSlot =
     | { type: 'logged'; set: SetLog; setNumber: number }
     | { type: 'pending'; setNumber: number; weight: string; reps: string; target?: number; phW: string; phR: string };
 
-  const exSlots = (ex: PlanExercise): Slot[] => {
+  const exSlots = (ex: PlanExercise): WSlot[] => {
     const logged = byExercise[ex.name] || [];
-    const total = Math.max(ex.sets + (addedSlots[ex.name] || 0), logged.length);
-    const sw = suggestedWeight(ex);
-    const sugReps = suggestion?.suggestions?.[ex.name]?.reps;
-    const out: Slot[] = [];
+    const total = exTotal(ex);
+    const hw = hintWeight(ex), hr = hintReps(ex);
+    const out: WSlot[] = [];
     for (let i = 0; i < total; i++) {
       const setNumber = i + 1;
       if (i < logged.length) out.push({ type: 'logged', set: logged[i], setNumber });
       else out.push({
         type: 'pending', setNumber,
-        weight: getSlot(ex.name, setNumber, 'weight', sw ? String(sw) : ''),
-        reps: getSlot(ex.name, setNumber, 'reps', sugReps ? String(sugReps) : firstNum(ex.reps)),
+        weight: getInp(`W:${ex.name}:${setNumber}`, 'weight', ''),
+        reps: getInp(`W:${ex.name}:${setNumber}`, 'reps', ''),
         target: parseInt(firstNum(ex.reps)) || undefined,
-        phW: sw ? String(sw) : 'kg',
-        phR: sugReps ? String(sugReps) : (firstNum(ex.reps) || 'reps'),
+        phW: hw ? String(hw) : 'kg',
+        phR: hr ? String(hr) : 'reps',
       });
     }
     return out;
   };
 
-  const exDone = (ex: PlanExercise) => (byExercise[ex.name]?.length || 0);
-  const exTotal = (ex: PlanExercise) => Math.max(ex.sets + (addedSlots[ex.name] || 0), byExercise[ex.name]?.length || 0);
+  type USlot =
+    | { type: 'logged'; set: SetLog; setNumber: number }
+    | { type: 'pending'; setNumber: number; weight: string; reps: string; phW: string; phR: string };
+
+  const warmSlots = (ex: PlanExercise): USlot[] => {
+    const parsed = (ex.warmUpSets || []).map(parseWarm).filter(Boolean) as { weight: number; reps: number }[];
+    const logged = warmByExercise[ex.name] || [];
+    const total = Math.max(parsed.length, logged.length);
+    const out: USlot[] = [];
+    for (let i = 0; i < total; i++) {
+      const setNumber = i + 1;
+      if (i < logged.length) { out.push({ type: 'logged', set: logged[i], setNumber }); continue; }
+      const p = parsed[i];
+      out.push({
+        type: 'pending', setNumber,
+        weight: getInp(`U:${ex.name}:${setNumber}`, 'weight', ''),
+        reps: getInp(`U:${ex.name}:${setNumber}`, 'reps', ''),
+        phW: p ? String(p.weight) : '0',
+        phR: p ? String(p.reps) : 'reps',
+      });
+    }
+    return out;
+  };
 
   // Default-expand the first unfinished exercise once data is loaded.
   useEffect(() => {
@@ -138,38 +182,49 @@ export default function SessionPage() {
 
   const refresh = async () => { const fresh = await workoutsApi.getSession(sessionId); loadSets(fresh.data); return fresh.data; };
   const advanceFrom = (data: any) => {
-    const next = planExercises.find((e) => ((data.sets || []).filter((s: any) => s.exerciseName === e.name).length) < e.sets);
+    const next = planExercises.find((e) => ((data.sets || []).filter((s: any) => s.exerciseName === e.name && !s.isWarmup).length) < e.sets);
     if (next) setExpanded(next.name);
   };
 
-  const logSlot = async (ex: PlanExercise, slot: Extract<Slot, { type: 'pending' }>) => {
+  const logWorking = async (ex: PlanExercise, slot: Extract<WSlot, { type: 'pending' }>) => {
     const w = parseFloat(slot.weight || slot.phW), r = parseInt(slot.reps || slot.phR);
     if (!w || !r) return;
     try {
-      await workoutsApi.logSet(sessionId, { exerciseName: ex.name, setNumber: slot.setNumber, actualReps: r, weightKg: w, targetReps: slot.target });
+      await workoutsApi.logSet(sessionId, { exerciseName: ex.name, setNumber: slot.setNumber, actualReps: r, weightKg: w, targetReps: slot.target, isWarmup: false });
       const data = await refresh();
       setTimer(0); setTimerActive(true);
-      const done = (data.sets || []).filter((s: any) => s.exerciseName === ex.name).length;
+      const done = (data.sets || []).filter((s: any) => s.exerciseName === ex.name && !s.isWarmup).length;
       if (done >= exTotal(ex)) advanceFrom(data);
+    } catch (e) { console.error(e); }
+  };
+
+  const logWarmup = async (ex: PlanExercise, slot: Extract<USlot, { type: 'pending' }>) => {
+    const r = parseInt(slot.reps || slot.phR);
+    if (!r) return;
+    const wRaw = slot.weight !== '' ? parseFloat(slot.weight) : parseFloat(slot.phW);
+    const w = isNaN(wRaw) ? 0 : wRaw; // warm-ups may be bodyweight / empty machine
+    try {
+      await workoutsApi.logSet(sessionId, { exerciseName: ex.name, setNumber: slot.setNumber, actualReps: r, weightKg: w, isWarmup: true });
+      await refresh();
     } catch (e) { console.error(e); }
   };
 
   const logNext = async () => {
     const ex = planExercises.find((e) => e.name === expanded);
     if (!ex) return;
-    const next = exSlots(ex).find((s) => s.type === 'pending') as Extract<Slot, { type: 'pending' }> | undefined;
-    if (next) await logSlot(ex, next);
+    const next = exSlots(ex).find((s) => s.type === 'pending') as Extract<WSlot, { type: 'pending' }> | undefined;
+    if (next) await logWorking(ex, next);
   };
 
   const logAll = async () => {
     const ex = planExercises.find((e) => e.name === expanded);
     if (!ex) return;
-    const pend = exSlots(ex).filter((s) => s.type === 'pending') as Extract<Slot, { type: 'pending' }>[];
+    const pend = exSlots(ex).filter((s) => s.type === 'pending') as Extract<WSlot, { type: 'pending' }>[];
     try {
       for (const s of pend) {
         const w = parseFloat(s.weight || s.phW), r = parseInt(s.reps || s.phR);
         if (!w || !r) continue;
-        await workoutsApi.logSet(sessionId, { exerciseName: ex.name, setNumber: s.setNumber, actualReps: r, weightKg: w, targetReps: s.target });
+        await workoutsApi.logSet(sessionId, { exerciseName: ex.name, setNumber: s.setNumber, actualReps: r, weightKg: w, targetReps: s.target, isWarmup: false });
       }
       const data = await refresh();
       setTimer(0); setTimerActive(true);
@@ -189,14 +244,14 @@ export default function SessionPage() {
     if (!extra.name || !w || !r) return;
     const setNum = (byExercise[extra.name.trim()]?.length || 0) + 1;
     try {
-      await workoutsApi.logSet(sessionId, { exerciseName: extra.name.trim(), setNumber: setNum, actualReps: r, weightKg: w });
+      await workoutsApi.logSet(sessionId, { exerciseName: extra.name.trim(), setNumber: setNum, actualReps: r, weightKg: w, isWarmup: false });
       await refresh();
       setExtra({ name: '', weight: '', reps: '' });
     } catch (e) { console.error(e); }
   };
 
   const completeSession = async () => {
-    if (!sets.length) return;
+    if (!working.length) return;
     setCompleting(true);
     try { await workoutsApi.completeSession(sessionId, notes); router.replace('/workout'); }
     catch (e) { console.error(e); } finally { setCompleting(false); }
@@ -225,7 +280,7 @@ export default function SessionPage() {
           </button>
           <div className="min-w-0">
             <h1 className="text-lg font-display font-bold truncate">{session.workoutType || 'Workout'}</h1>
-            <p className="text-[11px] text-muted-foreground nums">{sets.length} set{sets.length !== 1 ? 's' : ''} logged</p>
+            <p className="text-[11px] text-muted-foreground nums">{working.length} working set{working.length !== 1 ? 's' : ''} logged</p>
           </div>
           <button onClick={() => setShowNotes((v) => !v)} className={`p-1 rounded-md transition-colors ${showNotes ? 'text-brand-400' : 'text-muted-foreground/70 hover:text-foreground'}`}>
             <Pencil size={14} />
@@ -260,8 +315,11 @@ export default function SessionPage() {
           const complete = done >= total && total > 0;
           const slots = open ? exSlots(ex) : [];
           const activeSetNumber = slots.find((s) => s.type === 'pending')?.setNumber;
+          const wslots = open ? warmSlots(ex) : [];
+          const warmNote = open && wslots.length === 0 && (ex.warmUpSets?.length || 0) > 0;
+          const skipped = !!skipWarmup[ex.name];
           return (
-            <Card key={idx} className={`overflow-hidden ${open ? 'p-0' : 'p-0'}`}>
+            <Card key={idx} className="overflow-hidden p-0">
               {/* Header row */}
               <button onClick={() => setExpanded(open ? null : ex.name)} className="w-full flex items-center gap-3 p-3.5 text-left">
                 <motion.span animate={{ rotate: open ? 0 : -90 }} transition={spring.snappy} className="text-muted-foreground flex-shrink-0">
@@ -272,7 +330,7 @@ export default function SessionPage() {
                 </span>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-sm truncate">{ex.name}</p>
-                  {!open && <p className="text-[11px] text-muted-foreground nums">Target {ex.sets} × {ex.reps}</p>}
+                  {!open && <p className="text-[11px] text-muted-foreground nums">Target {ex.sets} × {ex.reps}{ex.estimatedLoad ? ` · ${ex.estimatedLoad}` : ''}</p>}
                 </div>
                 <span className={`text-xs font-medium nums flex-shrink-0 ${complete ? 'text-success' : 'text-muted-foreground'}`}>{done}/{total} Done</span>
               </button>
@@ -282,9 +340,67 @@ export default function SessionPage() {
                 {open && (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
                     <div className="px-3.5 pb-3.5">
+                      {/* Warm-up subsection */}
+                      {(wslots.length > 0 || warmNote) && (
+                        <div className="mb-3 rounded-xl border border-volt-400/20 bg-volt-400/[0.04] p-2.5">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-volt-400">
+                              <Flame size={12} /> Warm-up
+                            </span>
+                            {wslots.length > 0 && (
+                              <button onClick={() => setSkipWarmup((p) => ({ ...p, [ex.name]: !p[ex.name] }))}
+                                className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+                                {skipped ? 'Show' : 'Skip warm-up'}
+                              </button>
+                            )}
+                          </div>
+                          {warmNote ? (
+                            <p className="text-[11px] text-muted-foreground italic">{ex.warmUpSets?.[0] || 'Muscle already warm'} — jump straight into working sets.</p>
+                          ) : skipped ? (
+                            <p className="text-[11px] text-muted-foreground italic">Warm-up skipped.</p>
+                          ) : (
+                            <div className="space-y-1">
+                              {wslots.map((slot) => slot.type === 'logged' ? (
+                                <div key={`wl-${slot.set.id ?? slot.setNumber}`} className="flex items-center gap-2.5 py-1">
+                                  <button onClick={() => deleteSet(slot.set.id)} title="Remove warm-up"
+                                    className="w-5 h-5 rounded-full bg-volt-400/25 text-volt-500 flex items-center justify-center flex-shrink-0 hover:bg-destructive/20 hover:text-destructive transition-colors">
+                                    <Check size={12} />
+                                  </button>
+                                  <span className="w-4 text-center text-[11px] text-muted-foreground">W{slot.setNumber}</span>
+                                  <span className="flex-1 text-sm nums text-muted-foreground">{slot.set.weightKg ? `${slot.set.weightKg} kg` : 'Bodyweight'} × {slot.set.actualReps}</span>
+                                </div>
+                              ) : (
+                                <div key={`wp-${slot.setNumber}`} className="flex items-center gap-2.5 py-1">
+                                  <button onClick={() => logWarmup(ex, slot)} title="Mark warm-up done"
+                                    className="w-5 h-5 rounded-full border-2 border-volt-400/50 text-transparent hover:bg-volt-400/15 flex items-center justify-center flex-shrink-0 transition-colors">
+                                    <Check size={11} />
+                                  </button>
+                                  <span className="w-4 text-center text-[11px] text-muted-foreground">W{slot.setNumber}</span>
+                                  <div className="flex-1 grid grid-cols-2 gap-2">
+                                    <div className="relative">
+                                      <input type="number" inputMode="decimal" step="0.5" value={slot.weight}
+                                        onChange={(e) => setInp(`U:${ex.name}:${slot.setNumber}`, 'weight', e.target.value)}
+                                        placeholder={slot.phW} className="field !py-1 text-center pr-7 text-sm" />
+                                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">KG</span>
+                                    </div>
+                                    <div className="relative">
+                                      <input type="number" inputMode="numeric" value={slot.reps}
+                                        onChange={(e) => setInp(`U:${ex.name}:${slot.setNumber}`, 'reps', e.target.value)}
+                                        placeholder={slot.phR} className="field !py-1 text-center pr-9 text-sm" />
+                                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">Reps</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Working sets */}
                       <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-2 nums">
-                        <span>Target {ex.sets} × {ex.reps} reps</span>
-                        {ex.rest ? <span>{ex.rest}s rest</span> : null}
+                        <span>Working · {ex.sets} × {ex.reps} reps</span>
+                        {ex.estimatedLoad ? <span className="text-volt-400/80">est. {ex.estimatedLoad}</span> : ex.rest ? <span>{ex.rest}s rest</span> : null}
                       </div>
 
                       <div className="space-y-1">
@@ -311,7 +427,7 @@ export default function SessionPage() {
                           return (
                             <div key={`p-${slot.setNumber}`} className={`relative flex items-center gap-2.5 py-1.5 rounded-lg ${active ? 'bg-brand-500/[0.06]' : ''}`}>
                               {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1.5 w-1 h-6 rounded-full bg-success" />}
-                              <button onClick={() => logSlot(ex, slot)} title="Mark set done"
+                              <button onClick={() => logWorking(ex, slot)} title="Mark set done"
                                 className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${active ? 'border-success text-success hover:bg-success/15' : 'border-border text-transparent hover:border-brand-400'}`}>
                                 <Check size={13} />
                               </button>
@@ -319,13 +435,13 @@ export default function SessionPage() {
                               <div className="flex-1 grid grid-cols-2 gap-2">
                                 <div className="relative">
                                   <input type="number" inputMode="decimal" step="0.5" value={slot.weight}
-                                    onChange={(e) => setSlot(ex.name, slot.setNumber, 'weight', e.target.value)}
+                                    onChange={(e) => setInp(`W:${ex.name}:${slot.setNumber}`, 'weight', e.target.value)}
                                     placeholder={slot.phW} className="field !py-1.5 text-center pr-7 text-sm" />
                                   <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">KG</span>
                                 </div>
                                 <div className="relative">
                                   <input type="number" inputMode="numeric" value={slot.reps}
-                                    onChange={(e) => setSlot(ex.name, slot.setNumber, 'reps', e.target.value)}
+                                    onChange={(e) => setInp(`W:${ex.name}:${slot.setNumber}`, 'reps', e.target.value)}
                                     placeholder={slot.phR} className="field !py-1.5 text-center pr-9 text-sm" />
                                   <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">Reps</span>
                                 </div>
@@ -428,9 +544,9 @@ export default function SessionPage() {
               </Button>
             </>
           ) : (
-            <Button size="lg" onClick={completeSession} disabled={!sets.length || completing}
+            <Button size="lg" onClick={completeSession} disabled={!working.length || completing}
               className="flex-1 !bg-success !bg-none !text-white shadow-lg">
-              <CheckCircle2 size={18} /> {completing ? 'Saving…' : `Complete Session · ${sets.length} sets`}
+              <CheckCircle2 size={18} /> {completing ? 'Saving…' : `Complete Session · ${working.length} sets`}
             </Button>
           )}
         </div>
