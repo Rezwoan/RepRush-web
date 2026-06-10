@@ -42,6 +42,12 @@ export class User {
   @Column({ nullable: true })
   creatineColor: string;
 
+  @Column({ default: true })
+  remindWorkouts: boolean;
+
+  @Column({ default: true })
+  remindSupplements: boolean;
+
   @Column({ nullable: true })
   inviteToken: string;
 

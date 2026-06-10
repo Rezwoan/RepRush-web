@@ -253,7 +253,7 @@ export default function SessionPage() {
   const completeSession = async () => {
     if (!working.length) return;
     setCompleting(true);
-    try { await workoutsApi.completeSession(sessionId, notes); router.replace('/workout'); }
+    try { await workoutsApi.completeSession(sessionId, notes); router.replace(`/workout/summary/${sessionId}`); }
     catch (e) { console.error(e); } finally { setCompleting(false); }
   };
   const abandonSession = async () => {

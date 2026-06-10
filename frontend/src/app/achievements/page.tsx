@@ -13,6 +13,7 @@ import { PageTransition, Stagger, Item } from '@/components/ui/motion-primitives
 import { Card, CardHeader } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
+import ExerciseProgress from '@/components/progress/exercise-progress';
 
 const CHART_TOOLTIP = { background: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: 12 };
 const todayStr = () => new Date().toISOString().split('T')[0];
@@ -161,6 +162,11 @@ export default function ProgressPage() {
           </Card>
         </Item>
       )}
+
+      {/* Per-exercise progress */}
+      <Item standalone>
+        <ExerciseProgress />
+      </Item>
 
       {/* Achievements */}
       <Item standalone>

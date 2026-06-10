@@ -55,6 +55,102 @@ export class WorkoutsService {
     });
   }
 
+  /** Celebration summary for a just-completed session. */
+  async getSessionSummary(sessionId: number, userId: number) {
+    const session = await this.sessionRepo.findOne({ where: { id: sessionId, userId }, relations: ['sets'] });
+    if (!session) throw new NotFoundException('Session not found');
+
+    const all = session.sets || [];
+    const working = all.filter((s) => !s.isWarmup);
+    const vol = (sets: WorkoutSet[]) => sets.reduce((a, s) => a + s.weightKg * s.actualReps, 0);
+    const totalVolume = Math.round(vol(working));
+    const totalSets = working.length;
+    const warmupSets = all.length - working.length;
+    const durationSec = session.completedAt
+      ? Math.max(0, Math.round((new Date(session.completedAt).getTime() - new Date(session.startedAt).getTime()) / 1000))
+      : null;
+
+    const byEx: Record<string, WorkoutSet[]> = {};
+    working.forEach((s) => { (byEx[s.exerciseName] ||= []).push(s); });
+    const exercises = Object.entries(byEx).map(([name, sets]) => ({
+      name,
+      sets: sets.length,
+      topWeight: Math.max(...sets.map((s) => s.weightKg)),
+      e1rm: Math.round(Math.max(...sets.map((s) => s.weightKg * (1 + s.actualReps / 30)))),
+      volume: Math.round(vol(sets)),
+    }));
+
+    // Best weight per exercise across all *prior* sessions → weight PRs hit today.
+    const history = await this.sessionRepo.find({ where: { userId }, relations: ['sets'], order: { startedAt: 'ASC' } });
+    const priorBest: Record<string, number> = {};
+    for (const ses of history) {
+      if (ses.id === sessionId || new Date(ses.startedAt) >= new Date(session.startedAt)) continue;
+      (ses.sets || []).filter((s) => !s.isWarmup).forEach((s) => {
+        priorBest[s.exerciseName] = Math.max(priorBest[s.exerciseName] || 0, s.weightKg);
+      });
+    }
+    const prsHit = exercises
+      .filter((e) => e.topWeight > (priorBest[e.name] || 0) && (priorBest[e.name] || 0) > 0)
+      .map((e) => ({ name: e.name, weightKg: e.topWeight }));
+
+    // Compare to previous completed session of the same type.
+    const sameType = history.filter(
+      (s) => s.workoutType === session.workoutType && s.completedAt && s.id !== sessionId && new Date(s.startedAt) < new Date(session.startedAt),
+    );
+    const last = sameType[sameType.length - 1];
+    let vsLast: { date: Date; volumeDelta: number; setsDelta: number } | null = null;
+    if (last) {
+      const lw = (last.sets || []).filter((s) => !s.isWarmup);
+      vsLast = { date: last.startedAt, volumeDelta: totalVolume - Math.round(vol(lw)), setsDelta: totalSets - lw.length };
+    }
+
+    return {
+      id: session.id, workoutType: session.workoutType, startedAt: session.startedAt, completedAt: session.completedAt,
+      durationSec, totalVolume, totalSets, warmupSets, exercises, prsHit, vsLast,
+    };
+  }
+
+  /** Distinct exercises the user has logged, for the per-exercise progress picker. */
+  async getExerciseList(userId: number) {
+    const sessions = await this.sessionRepo.find({ where: { userId }, relations: ['sets'] });
+    const map: Record<string, { name: string; sessions: Set<number>; lastDate: Date; bestWeight: number }> = {};
+    for (const s of sessions) {
+      (s.sets || []).filter((x) => !x.isWarmup).forEach((x) => {
+        const m = (map[x.exerciseName] ||= { name: x.exerciseName, sessions: new Set(), lastDate: s.startedAt, bestWeight: 0 });
+        m.sessions.add(s.id);
+        m.bestWeight = Math.max(m.bestWeight, x.weightKg);
+        if (new Date(s.startedAt) > new Date(m.lastDate)) m.lastDate = s.startedAt;
+      });
+    }
+    return Object.values(map)
+      .map((m) => ({ name: m.name, sessions: m.sessions.size, lastDate: m.lastDate, bestWeight: m.bestWeight }))
+      .sort((a, b) => new Date(b.lastDate).getTime() - new Date(a.lastDate).getTime());
+  }
+
+  /** Per-session progression for one exercise (top weight, est. 1RM, volume, PR flags). */
+  async getExerciseHistory(userId: number, name: string) {
+    const target = (name || '').trim().toLowerCase();
+    const sessions = await this.sessionRepo.find({ where: { userId }, relations: ['sets'], order: { startedAt: 'ASC' } });
+    const points: any[] = [];
+    for (const s of sessions) {
+      const sets = (s.sets || []).filter((x) => !x.isWarmup && x.exerciseName.trim().toLowerCase() === target);
+      if (!sets.length) continue;
+      const top = Math.max(...sets.map((x) => x.weightKg));
+      const best = sets.reduce((b, x) => (x.weightKg > b.weightKg ? x : b), sets[0]);
+      points.push({
+        date: s.startedAt.toISOString().split('T')[0],
+        topWeight: top,
+        e1rm: Math.round(Math.max(...sets.map((x) => x.weightKg * (1 + x.actualReps / 30)))),
+        volume: Math.round(sets.reduce((a, x) => a + x.weightKg * x.actualReps, 0)),
+        reps: best.actualReps,
+        sets: sets.length,
+      });
+    }
+    let runMax = 0;
+    points.forEach((p) => { p.isPR = p.topWeight > runMax; if (p.isPR) runMax = p.topWeight; });
+    return points;
+  }
+
   async getHeatmapData(userId: number, year?: number) {
     const y = year || new Date().getFullYear();
     const start = new Date(`${y}-01-01`);
