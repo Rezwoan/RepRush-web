@@ -9,6 +9,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import { useAuth } from '@/lib/auth-context';
+import { localDateKey } from '@/lib/utils';
 import { workoutsApi, creatineApi, bodyWeightApi, supplementsApi } from '@/lib/api';
 import HeatmapCalendar from '@/components/dashboard/heatmap-calendar';
 import CreatineTracker from '@/components/dashboard/creatine-tracker';
@@ -265,7 +266,7 @@ function computeStreak(data: Record<string, any>): number {
   for (let i = 0; i < 365; i++) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
-    const key = d.toISOString().split('T')[0];
+    const key = localDateKey(d);
     if (data[key]) streak++;
     else if (i > 0) break;
   }

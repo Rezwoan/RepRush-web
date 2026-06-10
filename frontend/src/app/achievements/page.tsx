@@ -8,7 +8,7 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Cell,
 } from 'recharts';
 import { goalsApi, bodyWeightApi, workoutsApi, achievementsApi, exercisesApi } from '@/lib/api';
-import { epley1RM } from '@/lib/utils';
+import { epley1RM, localDateKey } from '@/lib/utils';
 import { PageTransition, Stagger, Item } from '@/components/ui/motion-primitives';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import ExerciseProgress from '@/components/progress/exercise-progress';
 
 const CHART_TOOLTIP = { background: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: 12 };
-const todayStr = () => new Date().toISOString().split('T')[0];
+const todayStr = () => localDateKey();
 const fmtNum = (n: number) => (Number.isInteger(n) ? n : Math.round(n * 10) / 10);
 
 export default function ProgressPage() {

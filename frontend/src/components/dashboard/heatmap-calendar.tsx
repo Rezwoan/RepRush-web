@@ -3,6 +3,11 @@ import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Dumbbell, Pill, X } from 'lucide-react';
 import { spring } from '@/lib/motion';
+import { localDateKey } from '@/lib/utils';
+
+// Distinct, white-text-friendly colours assigned per workout split (deterministic
+// by the sorted set of split names the user actually trains).
+const SPLIT_PALETTE = ['#0a80f5', '#7c3aed', '#e0760a', '#0e9f6e', '#db2777', '#0891b2', '#6366f1', '#ca8a04'];
 
 interface HeatmapData {
   [date: string]: { count: number; types: string[] };
@@ -48,19 +53,17 @@ export default function HeatmapCalendar({
   const prevMonth = () => { setSelected(null); month === 0 ? (setMonth(11), setDisplayYear(displayYear - 1)) : setMonth(month - 1); };
   const nextMonth = () => { setSelected(null); month === 11 ? (setMonth(0), setDisplayYear(displayYear + 1)) : setMonth(month + 1); };
 
-  const todayStr = today.toISOString().split('T')[0];
-  const getLevel = (date: string | null) => (!date ? -1 : Math.min(3, data[date]?.count || 0));
+  const todayStr = localDateKey(today);
 
-  const cellClass = (level: number, isToday: boolean, isSelected: boolean) => {
-    const base = 'relative w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold cursor-pointer';
-    const ring = isSelected ? ' ring-2 ring-brand-400 ring-offset-2 ring-offset-card'
-      : isToday ? ' ring-2 ring-volt-400 ring-offset-2 ring-offset-card' : '';
-    if (level === -1) return `${base} opacity-0 pointer-events-none`;
-    if (level === 0) return `${base} bg-secondary/50 text-muted-foreground/50${ring}`;
-    if (level === 1) return `${base} bg-brand-900 text-brand-200${ring}`;
-    if (level === 2) return `${base} bg-brand-600 text-white${ring}`;
-    return `${base} bg-volt-gradient text-volt-900 shadow-glow-volt${ring}`;
-  };
+  // Stable colour per workout split (sorted set of names → palette).
+  const typeColor = useMemo(() => {
+    const types = new Set<string>();
+    Object.values(data).forEach((v) => (v.types || []).forEach((t) => types.add(t)));
+    const map: Record<string, string> = {};
+    Array.from(types).sort().forEach((t, i) => { map[t] = SPLIT_PALETTE[i % SPLIT_PALETTE.length]; });
+    return map;
+  }, [data]);
+  const colorOf = (t?: string) => (t && typeColor[t]) || SPLIT_PALETTE[0];
 
   const fmtDate = (d: string) =>
     new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -85,27 +88,34 @@ export default function HeatmapCalendar({
         {weeks.map((week, wi) => (
           <div key={`${month}-${wi}`} className="grid grid-cols-7 gap-1">
             {week.map((date, di) => {
-              const level = getLevel(date);
+              if (!date) return <div key={di} className="w-9 h-9" />;
               const isToday = date === todayStr;
-              const dayNum = date ? parseInt(date.split('-')[2]) : null;
-              const supps = date ? supplementData[date] || [] : [];
+              const isSel = selected === date;
+              const dayNum = parseInt(date.split('-')[2]);
+              const types = data[date]?.types || [];
+              const has = types.length > 0;
+              const bg = has ? colorOf(types[0]) : undefined;
+              const supps = supplementData[date] || [];
+              const ring = isToday ? ' ring-2 ring-volt-400 ring-offset-2 ring-offset-card'
+                : isSel ? ' ring-2 ring-brand-400 ring-offset-2 ring-offset-card' : '';
               return (
                 <motion.div
                   key={di}
                   initial={{ opacity: 0, scale: 0.6 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ ...spring.snappy, delay: (wi * 7 + di) * 0.006 }}
-                  whileHover={level >= 0 ? { scale: 1.12, zIndex: 5 } : undefined}
-                  whileTap={level >= 0 ? { scale: 0.92 } : undefined}
-                  onClick={() => date && setSelected(selected === date ? null : date)}
-                  className={cellClass(level, isToday, selected === date)}
+                  whileHover={{ scale: 1.12, zIndex: 5 }}
+                  whileTap={{ scale: 0.92 }}
+                  onClick={() => setSelected(isSel ? null : date)}
+                  style={bg ? { backgroundColor: bg } : undefined}
+                  className={`relative w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold cursor-pointer ${has ? 'text-white' : 'bg-secondary/40 text-muted-foreground/60'}${ring}`}
                 >
                   {/* one concentric inner ring per supplement taken that day */}
                   {supps.slice(0, 4).map((s, i) => (
                     <span key={i} className="absolute rounded-md pointer-events-none"
                       style={{ inset: 2 + i * 2.5, border: `1.5px solid ${s.color || '#34d399'}` }} />
                   ))}
-                  {dayNum && <span className="relative z-10">{dayNum}</span>}
+                  <span className="relative z-10">{dayNum}</span>
                 </motion.div>
               );
             })}
@@ -113,16 +123,13 @@ export default function HeatmapCalendar({
         ))}
       </div>
 
-      <div className="flex items-center justify-between gap-2 pt-1 text-[10px] text-muted-foreground">
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded border-[1.5px] border-success" /> supplement ring</span>
-        <span className="flex items-center gap-1.5">
-          Less
-          <span className="w-3 h-3 rounded bg-secondary/50" />
-          <span className="w-3 h-3 rounded bg-brand-900" />
-          <span className="w-3 h-3 rounded bg-brand-600" />
-          <span className="w-3 h-3 rounded bg-volt-400" />
-          More
-        </span>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pt-1 text-[10px] text-muted-foreground">
+        {Object.entries(typeColor).map(([t, c]) => (
+          <span key={t} className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ backgroundColor: c }} />{t}</span>
+        ))}
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-secondary/60" /> Rest</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded ring-2 ring-inset ring-volt-400" /> Today</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-md border-[1.5px] border-success" /> Supplement</span>
       </div>
 
       {/* Day detail */}
@@ -144,9 +151,14 @@ export default function HeatmapCalendar({
                   <div>
                     {data[selected]?.types?.length ? (
                       <div className="flex flex-wrap gap-1.5">
-                        {data[selected].types.map((t, i) => (
-                          <span key={i} className="text-xs bg-brand-500/15 text-brand-200 px-2 py-0.5 rounded-md">{t}</span>
-                        ))}
+                        {data[selected].types.map((t, i) => {
+                          const c = colorOf(t);
+                          return (
+                            <span key={i} className="text-xs px-2 py-0.5 rounded-md flex items-center gap-1.5" style={{ background: `${c}22`, color: c }}>
+                              <span className="w-1.5 h-1.5 rounded-full" style={{ background: c }} />{t}
+                            </span>
+                          );
+                        })}
                       </div>
                     ) : (
                       <span className="text-xs text-muted-foreground">Rest day — no workout logged</span>

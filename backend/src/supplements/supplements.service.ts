@@ -5,6 +5,7 @@ import { Supplement } from './supplement.entity';
 import { SupplementLog } from './supplement-log.entity';
 import { CreatineLog } from '../creatine/creatine-log.entity';
 import { UsersService } from '../users/users.service';
+import { ymd } from '../common/date.util';
 
 // Creatine lives in its own table but shares the heatmap rings. Default is a
 // distinct emerald not used by supplement DEFAULTS/PALETTE; user-overridable.
@@ -171,7 +172,7 @@ export class SupplementsService {
     });
     const map: Record<string, { name: string; total: number; unit: string; color: string }[]> = {};
     logs.forEach((l) => {
-      const d = l.loggedAt.toISOString().split('T')[0];
+      const d = ymd(l.loggedAt);
       const supp = byId.get(l.supplementId);
       if (!supp) return;
       if (!map[d]) map[d] = [];
@@ -189,7 +190,7 @@ export class SupplementsService {
       order: { loggedAt: 'ASC' },
     });
     creatineLogs.forEach((l) => {
-      const d = l.loggedAt.toISOString().split('T')[0];
+      const d = ymd(l.loggedAt);
       if (!map[d]) map[d] = [];
       const existing = map[d].find((x) => x.name === 'Creatine');
       if (existing) existing.total += l.amountGrams;

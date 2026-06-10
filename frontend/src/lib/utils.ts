@@ -14,6 +14,15 @@ export function formatWeight(kg: number): string {
   return `${kg.toFixed(1)}kg`;
 }
 
+/** Local-time YYYY-MM-DD key — must match the backend's local-date bucketing
+ *  (never use toISOString for day keys; it's UTC and drifts near midnight). */
+export function localDateKey(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export function epley1RM(weight: number, reps: number): number {
   if (reps === 1) return weight;
   return Math.round(weight * (1 + reps / 30) * 10) / 10;

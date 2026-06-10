@@ -1,3 +1,7 @@
+// Lock the server timezone so local-date bucketing is stable regardless of host
+// config. All members are in Asia/Dhaka; override with the TZ env var if needed.
+process.env.TZ = process.env.TZ || 'Asia/Dhaka';
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';

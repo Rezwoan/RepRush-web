@@ -5,6 +5,7 @@ import { GymSession } from './gym-session.entity';
 import { WorkoutSet } from './workout-set.entity';
 import { PersonalRecord } from './personal-record.entity';
 import { UsersService } from '../users/users.service';
+import { ymd } from '../common/date.util';
 
 @Injectable()
 export class WorkoutsService {
@@ -138,7 +139,7 @@ export class WorkoutsService {
       const top = Math.max(...sets.map((x) => x.weightKg));
       const best = sets.reduce((b, x) => (x.weightKg > b.weightKg ? x : b), sets[0]);
       points.push({
-        date: s.startedAt.toISOString().split('T')[0],
+        date: ymd(s.startedAt),
         topWeight: top,
         e1rm: Math.round(Math.max(...sets.map((x) => x.weightKg * (1 + x.actualReps / 30)))),
         volume: Math.round(sets.reduce((a, x) => a + x.weightKg * x.actualReps, 0)),
@@ -162,7 +163,7 @@ export class WorkoutsService {
     // Group by date
     const map: Record<string, { count: number; types: string[] }> = {};
     sessions.forEach((s) => {
-      const d = s.startedAt.toISOString().split('T')[0];
+      const d = ymd(s.startedAt);
       if (!map[d]) map[d] = { count: 0, types: [] };
       map[d].count++;
       if (s.workoutType) map[d].types.push(s.workoutType);

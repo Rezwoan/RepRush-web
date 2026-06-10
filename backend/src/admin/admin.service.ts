@@ -7,6 +7,7 @@ import { WorkoutsService } from '../workouts/workouts.service';
 import { ExercisesService } from '../exercises/exercises.service';
 import { BodyWeightService } from '../body-weight/body-weight.service';
 import { MailService } from '../mail/mail.service';
+import { ymd } from '../common/date.util';
 
 function generatePassword(): string {
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#';
@@ -200,13 +201,13 @@ export class AdminService {
     const perDay: { date: string; sessions: number }[] = [];
     const counts: Record<string, number> = {};
     all.forEach((s) => {
-      const d = new Date(s.startedAt).toISOString().split('T')[0];
+      const d = ymd(new Date(s.startedAt));
       counts[d] = (counts[d] || 0) + 1;
     });
     for (let i = 29; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const key = d.toISOString().split('T')[0];
+      const key = ymd(d);
       perDay.push({ date: key, sessions: counts[key] || 0 });
     }
 

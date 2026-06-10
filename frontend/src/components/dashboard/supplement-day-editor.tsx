@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Plus, Trash2, Check, Pill, Clock } from 'lucide-react';
 import { supplementsApi } from '@/lib/api';
+import { localDateKey } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { spring } from '@/lib/motion';
 
@@ -15,7 +16,7 @@ export default function SupplementDayEditor({ date, onClose, onChanged }: { date
   const [loading, setLoading] = useState(true);
   const [custom, setCustom] = useState<Record<number, string>>({});
   const [editLog, setEditLog] = useState<{ id: number; amount: string } | null>(null);
-  const isToday = date === new Date().toISOString().split('T')[0];
+  const isToday = date === localDateKey();
 
   const load = useCallback(() => {
     return supplementsApi.getByDate(date).then((r) => setItems(r.data)).catch(() => {}).finally(() => setLoading(false));
