@@ -69,7 +69,7 @@ export default function ProgressPage() {
         <Card className="p-5">
           <CardHeader icon={<Weight size={16} />} title="Body Weight"
             action={bodyGoal ? <span className="text-xs text-volt-400 nums">goal {bodyGoal.targetValue}kg</span> : undefined} />
-          {weightData.length > 1 ? (
+          {weightData.length >= 1 ? (
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={weightData} margin={{ top: 6, right: 8, left: -20, bottom: 0 }}>
                 <defs>
@@ -85,11 +85,13 @@ export default function ProgressPage() {
                   <ReferenceLine y={bodyGoal.targetValue} stroke="#faba0c" strokeDasharray="5 4"
                     label={{ value: `Goal ${bodyGoal.targetValue}kg`, fill: '#faba0c', fontSize: 10, position: 'insideTopRight' }} />
                 )}
-                <Line type="monotone" dataKey="weightKg" stroke="url(#bw)" strokeWidth={2.5} dot={false} activeDot={{ r: 5, fill: '#0a80f5' }} />
+                <Line type="monotone" dataKey="weightKg" stroke="url(#bw)" strokeWidth={2.5}
+                  dot={weightData.length <= 4 ? { r: 4, fill: '#0a80f5', strokeWidth: 0 } : false}
+                  activeDot={{ r: 5, fill: '#0a80f5' }} />
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-sm text-muted-foreground mb-2">Log your weight a few times to see the trend.</p>
+            <p className="text-sm text-muted-foreground mb-2">Log your weight to start tracking the trend.</p>
           )}
           <WeightLog weights={weights} onChange={loadWeights} />
         </Card>

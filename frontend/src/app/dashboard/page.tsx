@@ -102,7 +102,7 @@ export default function DashboardPage() {
       </Item>
 
       {/* Body weight */}
-      {bodyWeightHistory.length > 1 && (
+      {bodyWeightHistory.length >= 1 && (
         <Item standalone>
           <Card className="p-5" interactive>
             <CardHeader
@@ -122,7 +122,9 @@ export default function DashboardPage() {
                 <XAxis dataKey="date" tickFormatter={(d) => d.slice(5)} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis domain={['auto', 'auto']} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
                 <Tooltip contentStyle={CHART.tooltip} labelStyle={{ color: 'hsl(var(--muted-foreground))' }} itemStyle={{ color: '#3b97f5' }} formatter={(v: any) => [`${v} kg`, 'Weight']} />
-                <Line type="monotone" dataKey="weightKg" stroke="url(#bw)" strokeWidth={2.5} dot={false} activeDot={{ r: 5, fill: '#0a80f5' }} />
+                <Line type="monotone" dataKey="weightKg" stroke="url(#bw)" strokeWidth={2.5}
+                  dot={bodyWeightHistory.length <= 4 ? { r: 4, fill: '#0a80f5', strokeWidth: 0 } : false}
+                  activeDot={{ r: 5, fill: '#0a80f5' }} />
               </LineChart>
             </ResponsiveContainer>
             <BodyWeightEntry onLogged={() => bodyWeightApi.getHistory(60).then((r) => setBodyWeightHistory(r.data))} />
