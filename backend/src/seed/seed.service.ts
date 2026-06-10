@@ -185,21 +185,30 @@ export class SeedService implements OnModuleInit {
   /**
    * One-time, idempotent upgrade of already-seeded ULPPL plans: if a plan's
    * exercises don't yet carry warm-up sets, replace its exercise list with the
-   * canonical version (matched by plan name). Plan ids and user assignments are
-   * preserved, and custom (non-ULPPL) plans are left untouched.
+   * canonical version. Plans are matched by exercise-name overlap (their display
+   * names may differ, e.g. "Upper" vs "Upper Power"), so plan ids, user
+   * assignments and the user's chosen plan names are all preserved. Custom plans
+   * that don't overlap the ULPPL program are left untouched.
    */
   private async backfillPlans(existing: any[]) {
-    const norm = (s: string) => String(s || '').trim().toLowerCase();
-    for (const canonical of ULPPL_PLANS) {
-      const match = existing.find((p) => norm(p.name) === norm(canonical.name));
-      if (!match) continue;
-      const firstEx = match.exercises?.exercises?.[0];
-      if (firstEx && firstEx.warmUpSets) continue; // already upgraded
-      try {
-        await this.exercisesService.updatePlan(match.id, undefined, canonical.exercises);
-        this.logger.log(`Backfilled warm-up/estimated-load data for plan: ${canonical.name}`);
-      } catch (e) {
-        this.logger.warn(`Failed to backfill plan ${canonical.name}: ${e.message}`);
+    const norm = (s: string) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    for (const plan of existing) {
+      const exs = plan.exercises?.exercises || [];
+      if (!exs.length || exs[0].warmUpSets) continue; // empty or already upgraded
+      const names = new Set(exs.map((e: any) => norm(e.name)));
+      let best: (typeof ULPPL_PLANS)[number] | null = null;
+      let bestScore = 0;
+      for (const c of ULPPL_PLANS) {
+        const score = c.exercises.exercises.filter((e) => names.has(norm(e.name))).length;
+        if (score > bestScore) { bestScore = score; best = c; }
+      }
+      if (best && bestScore >= 2) {
+        try {
+          await this.exercisesService.updatePlan(plan.id, undefined, best.exercises);
+          this.logger.log(`Backfilled warm-up/estimated-load data for plan "${plan.name}" (matched ${best.name}, ${bestScore} exercises)`);
+        } catch (e) {
+          this.logger.warn(`Failed to backfill plan ${plan.name}: ${e.message}`);
+        }
       }
     }
   }
