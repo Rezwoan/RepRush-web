@@ -75,10 +75,10 @@ export class WorkoutsController {
   logSet(
     @CurrentUser() user: User,
     @Param('id', ParseIntPipe) sessionId: number,
-    @Body() body: { exerciseName: string; setNumber: number; actualReps: number; weightKg: number; targetReps?: number; isWarmup?: boolean },
+    @Body() body: { exerciseName: string; setNumber: number; actualReps: number; weightKg: number; targetReps?: number; isWarmup?: boolean; suggestedWeight?: number },
   ) {
     return this.workoutsService.logSet(
-      sessionId, user.id, body.exerciseName, body.setNumber, body.actualReps, body.weightKg, body.targetReps, body.isWarmup,
+      sessionId, user.id, body.exerciseName, body.setNumber, body.actualReps, body.weightKg, body.targetReps, body.isWarmup, body.suggestedWeight,
     );
   }
 

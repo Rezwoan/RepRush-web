@@ -151,6 +151,8 @@ export const pushApi = {
 // ─── Admin ────────────────────────────────────────────────────────────────────
 export const adminApi = {
   getStats: () => api.get('/admin/stats'),
+  getActivity: () => api.get('/admin/activity'),
+  getEstimation: () => api.get('/admin/estimation'),
   getUsers: () => api.get('/admin/users'),
   getUserDetail: (id: number) => api.get(`/admin/users/${id}`),
   inviteUser: (email: string, name: string) =>
