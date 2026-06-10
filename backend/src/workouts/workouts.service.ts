@@ -85,12 +85,16 @@ export class WorkoutsService {
     weightKg: number,
     targetReps?: number,
     isWarmup = false,
+    suggestedWeight?: number,
   ) {
     // Verify session belongs to user
     const session = await this.sessionRepo.findOne({ where: { id: sessionId, userId } });
     if (!session) throw new NotFoundException('Session not found');
 
-    const set = this.setRepo.create({ sessionId, exerciseName, setNumber, actualReps, weightKg, targetReps, isWarmup });
+    const set = this.setRepo.create({
+      sessionId, exerciseName, setNumber, actualReps, weightKg, targetReps, isWarmup,
+      suggestedWeight: isWarmup ? null : suggestedWeight ?? null,
+    });
     const saved = await this.setRepo.save(set);
 
     // Warm-up sets are ramp-up only — they never count toward PRs.
@@ -185,35 +189,40 @@ export class WorkoutsService {
     });
 
     for (const [exercise, sets] of Object.entries(exerciseMap)) {
-      const totalTargetReps = sets.reduce((sum, s) => sum + (s.targetReps || s.actualReps), 0);
-      const totalActualReps = sets.reduce((sum, s) => sum + s.actualReps, 0);
-      const completionRate = totalTargetReps > 0 ? totalActualReps / totalTargetReps : 1;
-      const avgWeight = sets.reduce((sum, s) => sum + s.weightKg, 0) / sets.length;
-      const avgReps = Math.round(totalActualReps / sets.length);
-
-      // Determine user's relative strength vs baseline
-      const relativeBonus = user?.weightKg ? this.getRelativeStrengthBonus(exercise, avgWeight, user.weightKg) : 1;
-
-      let suggestedWeight = avgWeight;
-      let reason = '';
-
-      if (completionRate >= 1.0) {
-        const increment = this.getIncrement(exercise) * relativeBonus;
-        suggestedWeight = Math.round((avgWeight + increment) * 4) / 4; // round to nearest 0.25
-        reason = `Great job! All reps completed. Increase by ${increment}kg.`;
-      } else if (completionRate >= 0.8) {
-        suggestedWeight = avgWeight;
-        reason = `Good effort. Stay at same weight — aim to hit all reps next time.`;
-      } else {
-        const deload = avgWeight * 0.9;
-        suggestedWeight = Math.round(deload * 4) / 4;
-        reason = `Tough session. Reduced weight by 10% to ensure proper form.`;
-      }
-
-      suggestions[exercise] = { weightKg: suggestedWeight, reps: avgReps, reason };
+      suggestions[exercise] = this.predictExerciseWeight(sets, exercise, user?.weightKg);
     }
 
     return { workoutType, suggestions, basedOn: lastSession.startedAt };
+  }
+
+  /**
+   * Pure double-progression prediction for one exercise from a prior session's
+   * working sets. Single source of truth used by both live suggestions and the
+   * admin estimation-accuracy analysis. (Behaviour unchanged from before.)
+   */
+  predictExerciseWeight(sets: WorkoutSet[], exercise: string, bodyWeight?: number) {
+    const totalTargetReps = sets.reduce((sum, s) => sum + (s.targetReps || s.actualReps), 0);
+    const totalActualReps = sets.reduce((sum, s) => sum + s.actualReps, 0);
+    const completionRate = totalTargetReps > 0 ? totalActualReps / totalTargetReps : 1;
+    const avgWeight = sets.reduce((sum, s) => sum + s.weightKg, 0) / sets.length;
+    const avgReps = Math.round(totalActualReps / sets.length);
+
+    const relativeBonus = bodyWeight ? this.getRelativeStrengthBonus(exercise, avgWeight, bodyWeight) : 1;
+
+    let weightKg = avgWeight;
+    let reason = '';
+    if (completionRate >= 1.0) {
+      const increment = this.getIncrement(exercise) * relativeBonus;
+      weightKg = Math.round((avgWeight + increment) * 4) / 4;
+      reason = `Great job! All reps completed. Increase by ${increment}kg.`;
+    } else if (completionRate >= 0.8) {
+      weightKg = avgWeight;
+      reason = 'Good effort. Stay at same weight — aim to hit all reps next time.';
+    } else {
+      weightKg = Math.round(avgWeight * 0.9 * 4) / 4;
+      reason = 'Tough session. Reduced weight by 10% to ensure proper form.';
+    }
+    return { weightKg, reps: avgReps, reason };
   }
 
   private getIncrement(exercise: string): number {

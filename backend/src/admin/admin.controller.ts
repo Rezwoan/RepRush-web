@@ -31,6 +31,11 @@ export class AdminController {
     return this.adminService.getActivity();
   }
 
+  @Get('estimation')
+  getEstimation() {
+    return this.adminService.getEstimationAnalysis();
+  }
+
   @Get('users')
   getAllUsers() {
     return this.adminService.getAllUsers();

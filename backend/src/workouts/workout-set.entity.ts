@@ -38,6 +38,11 @@ export class WorkoutSet {
   @Column({ default: false })
   isWarmup: boolean;
 
+  // The weight the estimator suggested when this set was logged (hint shown to
+  // the user). Captured for accuracy analysis; null for warm-ups / off-plan.
+  @Column({ type: 'real', nullable: true })
+  suggestedWeight: number;
+
   @CreateDateColumn()
   loggedAt: Date;
 }
