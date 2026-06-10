@@ -1,6 +1,6 @@
 'use client';
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import Sidebar from './sidebar';
 import MobileNav from './mobile-nav';
@@ -9,13 +9,21 @@ import { BrandLoader } from '@/components/ui/motion-primitives';
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  const isAdmin = user?.role === 'admin';
+  const onAdmin = pathname.startsWith('/admin');
 
   useEffect(() => {
-    if (!loading && !user) router.replace('/login');
-  }, [user, loading, router]);
+    if (loading) return;
+    if (!user) { router.replace('/login'); return; }
+    // Admins live only in the admin panel; regular users can't reach it.
+    if (isAdmin && !onAdmin) router.replace('/admin');
+    if (!isAdmin && onAdmin) router.replace('/dashboard');
+  }, [user, loading, isAdmin, onAdmin, router]);
 
   if (loading) return <BrandLoader />;
   if (!user) return null;
+  if (isAdmin !== onAdmin) return <BrandLoader />; // redirecting
 
   return (
     <div className="flex h-screen overflow-hidden">

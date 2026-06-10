@@ -8,7 +8,7 @@ interface HeatmapData {
   [date: string]: { count: number; types: string[] };
 }
 interface SupplementDay {
-  [date: string]: { name: string; total: number; unit: string }[];
+  [date: string]: { name: string; total: number; unit: string; color?: string }[];
 }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -86,7 +86,7 @@ export default function HeatmapCalendar({
               const level = getLevel(date);
               const isToday = date === todayStr;
               const dayNum = date ? parseInt(date.split('-')[2]) : null;
-              const tookSupps = date ? (supplementData[date]?.length || 0) > 0 : false;
+              const supps = date ? supplementData[date] || [] : [];
               return (
                 <motion.div
                   key={di}
@@ -98,10 +98,12 @@ export default function HeatmapCalendar({
                   onClick={() => date && setSelected(selected === date ? null : date)}
                   className={cellClass(level, isToday, selected === date)}
                 >
-                  {dayNum && <span>{dayNum}</span>}
-                  {tookSupps && (
-                    <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-success ring-1 ring-card" />
-                  )}
+                  {/* one concentric inner ring per supplement taken that day */}
+                  {supps.slice(0, 4).map((s, i) => (
+                    <span key={i} className="absolute rounded-md pointer-events-none"
+                      style={{ inset: 2 + i * 2.5, border: `1.5px solid ${s.color || '#34d399'}` }} />
+                  ))}
+                  {dayNum && <span className="relative z-10">{dayNum}</span>}
                 </motion.div>
               );
             })}
@@ -110,7 +112,7 @@ export default function HeatmapCalendar({
       </div>
 
       <div className="flex items-center justify-between gap-2 pt-1 text-[10px] text-muted-foreground">
-        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-success" /> supplements</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded border-[1.5px] border-success" /> supplement ring</span>
         <span className="flex items-center gap-1.5">
           Less
           <span className="w-3 h-3 rounded bg-secondary/50" />
@@ -155,9 +157,14 @@ export default function HeatmapCalendar({
                   <div>
                     {supplementData[selected]?.length ? (
                       <div className="flex flex-wrap gap-1.5">
-                        {supplementData[selected].map((s, i) => (
-                          <span key={i} className="text-xs bg-volt-400/15 text-volt-300 px-2 py-0.5 rounded-md nums">{s.name} {fmtNum(s.total)}{s.unit}</span>
-                        ))}
+                        {supplementData[selected].map((s, i) => {
+                          const c = s.color || '#34d399';
+                          return (
+                            <span key={i} className="text-xs px-2 py-0.5 rounded-md nums flex items-center gap-1.5" style={{ background: `${c}22`, color: c }}>
+                              <span className="w-1.5 h-1.5 rounded-full" style={{ background: c }} />{s.name} {fmtNum(s.total)}{s.unit}
+                            </span>
+                          );
+                        })}
                       </div>
                     ) : (
                       <span className="text-xs text-muted-foreground">No supplements logged</span>

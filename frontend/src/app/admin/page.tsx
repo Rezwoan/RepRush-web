@@ -1,15 +1,18 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, Dumbbell, Plus, Mail, Trash2, RotateCcw, Shield, BarChart2,
-  CheckCircle, Clock, Pencil, X, Save, Send,
+  CheckCircle, Clock, Pencil, X, Save, Send, LogOut, Search,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import { adminApi, exercisesApi } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 import { getInitials } from '@/lib/utils';
+import { Logo } from '@/components/ui/logo';
 import { PageTransition, Stagger, Item } from '@/components/ui/motion-primitives';
 import { Card, CardHeader } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
@@ -20,6 +23,10 @@ import { spring } from '@/lib/motion';
 type Tab = 'overview' | 'users' | 'plans' | 'compare';
 
 export default function AdminPage() {
+  const { user, logout } = useAuth();
+  const router = useRouter();
+  const [userSearch, setUserSearch] = useState('');
+  const handleLogout = async () => { await logout(); router.replace('/login'); };
   const [stats, setStats] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [plans, setPlans] = useState<any[]>([]);
@@ -115,11 +122,21 @@ export default function AdminPage() {
 
   return (
     <PageTransition className="space-y-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-display font-extrabold tracking-tight flex items-center gap-2">
-        <Shield size={22} className="text-brand-400" /> Admin Panel
-      </h1>
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Logo size="sm" withText={false} />
+          <div>
+            <h1 className="text-xl lg:text-2xl font-display font-extrabold tracking-tight flex items-center gap-2">
+              <Shield size={18} className="text-brand-400" /> Admin
+            </h1>
+            <p className="text-xs text-muted-foreground truncate max-w-[180px]">{user?.email}</p>
+          </div>
+        </div>
+        <Button variant="secondary" size="sm" onClick={handleLogout}><LogOut size={15} /> Sign out</Button>
+      </div>
 
-      <div className="flex gap-1 bg-secondary rounded-xl p-1 w-fit">
+      <div className="flex gap-1 bg-secondary rounded-xl p-1 w-full sm:w-fit overflow-x-auto">
         {tabs.map((t) => (
           <button key={t.key} onClick={() => setActiveTab(t.key)}
             className={`relative flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === t.key ? 'text-white' : 'text-muted-foreground hover:text-foreground'}`}>
@@ -164,17 +181,21 @@ export default function AdminPage() {
               </Card>
 
               <Card className="overflow-hidden">
-                <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+                <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3 flex-wrap">
                   <h2 className="font-semibold nums">{users.length} Members</h2>
-                  {users.some((u) => !u.isActivated) && (
-                    <span className="text-xs text-volt-400 flex items-center gap-1"><Clock size={12} /> Some invites pending</span>
-                  )}
+                  <div className="relative flex-1 min-w-[160px] max-w-xs">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <input value={userSearch} onChange={(e) => setUserSearch(e.target.value)} placeholder="Search members…" className="field !py-2 pl-9 text-sm" />
+                  </div>
                 </div>
                 {users.length === 0 ? (
                   <div className="px-5 py-10 text-center text-muted-foreground text-sm">No members yet. Use the form above to invite your first member.</div>
                 ) : (
                   <div className="divide-y divide-border">
-                    {users.map((u) => (
+                    {users.filter((u) => {
+                      const q = userSearch.trim().toLowerCase();
+                      return !q || (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q);
+                    }).map((u) => (
                       <div key={u.id} className="px-5 py-4 flex items-center gap-4">
                         <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-sm font-semibold overflow-hidden flex-shrink-0">
                           {u.profileImage ? <img src={u.profileImage} alt={u.name} className="w-full h-full object-cover" /> : getInitials(u.name || u.email)}

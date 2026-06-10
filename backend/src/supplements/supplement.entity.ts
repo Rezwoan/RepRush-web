@@ -27,6 +27,9 @@ export class Supplement {
   @Column({ default: 'mg' })
   unit: string; // mg, g, IU, mcg, ml, capsule
 
+  @Column({ nullable: true })
+  color: string; // hex, for heatmap rings + UI accents
+
   @Column({ type: 'real', nullable: true })
   defaultDose: number;
 

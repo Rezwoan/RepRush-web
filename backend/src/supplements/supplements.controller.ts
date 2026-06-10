@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Body, Param, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators';
 import { User } from '../users/user.entity';
@@ -15,8 +15,18 @@ export class SupplementsController {
   }
 
   @Post()
-  add(@CurrentUser() user: User, @Body() body: { name: string; unit?: string; defaultDose?: number; dailyTarget?: number }) {
+  add(@CurrentUser() user: User, @Body() body: { name: string; unit?: string; defaultDose?: number; dailyTarget?: number; color?: string }) {
     return this.supplementsService.add(user.id, body);
+  }
+
+  @Patch('log/:logId')
+  updateLog(@CurrentUser() user: User, @Param('logId', ParseIntPipe) logId: number, @Body() body: { amount: number }) {
+    return this.supplementsService.updateLog(user.id, logId, body.amount);
+  }
+
+  @Patch(':id')
+  update(@CurrentUser() user: User, @Param('id', ParseIntPipe) id: number, @Body() body: { name?: string; unit?: string; defaultDose?: number; dailyTarget?: number; color?: string }) {
+    return this.supplementsService.update(user.id, id, body);
   }
 
   @Get('today')

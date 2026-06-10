@@ -103,11 +103,14 @@ export const creatineApi = {
 // ─── Supplements ──────────────────────────────────────────────────────────────
 export const supplementsApi = {
   list: () => api.get('/supplements'),
-  add: (data: { name: string; unit?: string; defaultDose?: number; dailyTarget?: number }) =>
+  add: (data: { name: string; unit?: string; defaultDose?: number; dailyTarget?: number; color?: string }) =>
     api.post('/supplements', data),
+  update: (id: number, data: { name?: string; unit?: string; defaultDose?: number; dailyTarget?: number; color?: string }) =>
+    api.patch(`/supplements/${id}`, data),
   remove: (id: number) => api.delete(`/supplements/${id}`),
   getToday: () => api.get('/supplements/today'),
   logDose: (id: number, amount: number) => api.post(`/supplements/${id}/log`, { amount }),
+  updateLog: (logId: number, amount: number) => api.patch(`/supplements/log/${logId}`, { amount }),
   deleteLog: (logId: number) => api.delete(`/supplements/log/${logId}`),
   getHeatmap: (year?: number) => api.get('/supplements/heatmap', { params: { year } }),
 };
