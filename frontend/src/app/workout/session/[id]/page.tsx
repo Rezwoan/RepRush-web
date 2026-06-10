@@ -189,8 +189,9 @@ export default function SessionPage() {
   const logWorking = async (ex: PlanExercise, slot: Extract<WSlot, { type: 'pending' }>) => {
     const w = parseFloat(slot.weight || slot.phW), r = parseInt(slot.reps || slot.phR);
     if (!w || !r) return;
+    const sug = parseFloat(slot.phW); // the hint we showed — recorded for accuracy analysis
     try {
-      await workoutsApi.logSet(sessionId, { exerciseName: ex.name, setNumber: slot.setNumber, actualReps: r, weightKg: w, targetReps: slot.target, isWarmup: false });
+      await workoutsApi.logSet(sessionId, { exerciseName: ex.name, setNumber: slot.setNumber, actualReps: r, weightKg: w, targetReps: slot.target, isWarmup: false, suggestedWeight: isNaN(sug) ? undefined : sug });
       const data = await refresh();
       setTimer(0); setTimerActive(true);
       const done = (data.sets || []).filter((s: any) => s.exerciseName === ex.name && !s.isWarmup).length;
@@ -224,7 +225,8 @@ export default function SessionPage() {
       for (const s of pend) {
         const w = parseFloat(s.weight || s.phW), r = parseInt(s.reps || s.phR);
         if (!w || !r) continue;
-        await workoutsApi.logSet(sessionId, { exerciseName: ex.name, setNumber: s.setNumber, actualReps: r, weightKg: w, targetReps: s.target, isWarmup: false });
+        const sug = parseFloat(s.phW);
+        await workoutsApi.logSet(sessionId, { exerciseName: ex.name, setNumber: s.setNumber, actualReps: r, weightKg: w, targetReps: s.target, isWarmup: false, suggestedWeight: isNaN(sug) ? undefined : sug });
       }
       const data = await refresh();
       setTimer(0); setTimerActive(true);

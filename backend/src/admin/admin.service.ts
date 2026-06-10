@@ -228,6 +228,124 @@ export class AdminService {
     };
   }
 
+  /**
+   * Estimation-accuracy analysis. Two complementary views:
+   *  - retro: replay the (unchanged) algorithm over existing history — for each
+   *    exercise predict each session's weight from the previous session and
+   *    compare to what was actually lifted.
+   *  - live: for sets logged since we began storing `suggestedWeight`, compare
+   *    the shown suggestion to the actual weight (captures user overrides too).
+   */
+  async getEstimationAnalysis() {
+    const users = await this.members();
+    const retro: any[] = [];
+    const live: any[] = [];
+    const r1 = (n: number) => Math.round(n * 10) / 10;
+
+    for (const u of users) {
+      const sessions = (await this.workoutsService.getUserSessions(u.id))
+        .filter((s) => s.completedAt)
+        .sort((a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime());
+
+      const prevByExercise: Record<string, any[]> = {};
+      for (const s of sessions) {
+        const working = (s.sets || []).filter((x: any) => !x.isWarmup);
+        const byEx: Record<string, any[]> = {};
+        working.forEach((st: any) => { (byEx[st.exerciseName] ||= []).push(st); });
+
+        for (const [ex, sets] of Object.entries(byEx)) {
+          const prev = prevByExercise[ex];
+          if (prev && prev.length) {
+            const pred = this.workoutsService.predictExerciseWeight(prev as any, ex, u.weightKg);
+            const actual = sets.reduce((a, st) => a + st.weightKg, 0) / sets.length;
+            if (pred.weightKg > 0 && actual > 0) {
+              retro.push({ user: u.name || u.email, exercise: ex, predicted: r1(pred.weightKg), actual: r1(actual), date: s.startedAt });
+            }
+          }
+          prevByExercise[ex] = sets;
+        }
+
+        // Live: stored suggestion vs actual
+        working.forEach((st: any) => {
+          if (st.suggestedWeight != null && st.suggestedWeight > 0) {
+            live.push({ user: u.name || u.email, exercise: st.exerciseName, suggested: r1(st.suggestedWeight), actual: r1(st.weightKg), date: s.startedAt });
+          }
+        });
+      }
+    }
+
+    return { retro: this.summarizePredictions(retro), live: this.summarizeLive(live) };
+  }
+
+  private withinTolerance(predicted: number, actual: number) {
+    return Math.abs(actual - predicted) <= Math.max(2.5, actual * 0.05);
+  }
+
+  private summarizePredictions(samples: any[]) {
+    const n = samples.length;
+    if (!n) return { count: 0, perExercise: [], buckets: [], samples: [] };
+    let absSum = 0, signedSum = 0, correct = 0;
+    const bucketDefs = [
+      { label: '≤ -5', test: (e: number) => e <= -5 },
+      { label: '-5…-2.5', test: (e: number) => e > -5 && e <= -2.5 },
+      { label: '-2.5…0', test: (e: number) => e > -2.5 && e < 0 },
+      { label: 'spot on', test: (e: number) => e === 0 },
+      { label: '0…2.5', test: (e: number) => e > 0 && e < 2.5 },
+      { label: '2.5…5', test: (e: number) => e >= 2.5 && e < 5 },
+      { label: '≥ 5', test: (e: number) => e >= 5 },
+    ];
+    const buckets = bucketDefs.map((b) => ({ label: b.label, count: 0 }));
+    const perEx: Record<string, { exercise: string; n: number; biasSum: number; correct: number }> = {};
+
+    for (const s of samples) {
+      const err = s.actual - s.predicted; // +ve = lifted more than predicted
+      absSum += Math.abs(err);
+      signedSum += err;
+      const ok = this.withinTolerance(s.predicted, s.actual);
+      if (ok) correct++;
+      buckets[bucketDefs.findIndex((b) => b.test(err))].count++;
+      const pe = (perEx[s.exercise] ||= { exercise: s.exercise, n: 0, biasSum: 0, correct: 0 });
+      pe.n++; pe.biasSum += err; if (ok) pe.correct++;
+    }
+
+    const perExercise = Object.values(perEx)
+      .map((p) => ({ exercise: p.exercise, n: p.n, bias: Math.round((p.biasSum / p.n) * 10) / 10, accuracy: Math.round((p.correct / p.n) * 100) }))
+      .sort((a, b) => b.n - a.n);
+
+    return {
+      count: n,
+      accuracy: Math.round((correct / n) * 100),
+      meanAbsError: Math.round((absSum / n) * 10) / 10,
+      bias: Math.round((signedSum / n) * 10) / 10,
+      perExercise,
+      buckets,
+      samples: [...samples].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 25),
+    };
+  }
+
+  private summarizeLive(samples: any[]) {
+    const n = samples.length;
+    if (!n) return { count: 0, kept: 0, increased: 0, decreased: 0, meanOverride: 0, accuracy: 0, samples: [] };
+    let kept = 0, up = 0, down = 0, overrideSum = 0, correct = 0;
+    for (const s of samples) {
+      const diff = s.actual - s.suggested;
+      if (Math.abs(diff) < 0.01) kept++;
+      else if (diff > 0) up++;
+      else down++;
+      overrideSum += diff;
+      if (this.withinTolerance(s.suggested, s.actual)) correct++;
+    }
+    return {
+      count: n,
+      kept: Math.round((kept / n) * 100),
+      increased: Math.round((up / n) * 100),
+      decreased: Math.round((down / n) * 100),
+      meanOverride: Math.round((overrideSum / n) * 10) / 10,
+      accuracy: Math.round((correct / n) * 100),
+      samples: [...samples].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 25),
+    };
+  }
+
   async getUserReport(userId: number, period: 'weekly' | 'monthly') {
     const user = await this.usersService.findById(userId);
     if (!user) throw new Error('User not found');

@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, Dumbbell, Plus, Mail, Trash2, Shield, BarChart2, TrendingUp,
   CheckCircle, Clock, Pencil, X, Save, Send, LogOut, Search, Copy, UserPlus,
-  Activity, Zap, RefreshCw, Layers, ChevronRight, Flame, Trophy,
+  Activity, Zap, RefreshCw, Layers, ChevronRight, Flame, Trophy, Target,
 } from 'lucide-react';
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -22,8 +22,9 @@ import { AnimatedNumber } from '@/components/ui/animated-number';
 import { spring } from '@/lib/motion';
 import MemberDetailModal from '@/components/admin/member-detail-modal';
 import AssignPlanModal from '@/components/admin/assign-plan-modal';
+import EstimationPanel from '@/components/admin/estimation-panel';
 
-type Tab = 'overview' | 'members' | 'plans' | 'insights';
+type Tab = 'overview' | 'members' | 'plans' | 'insights' | 'estimation';
 type SortKey = 'recent' | 'name' | 'onboarding' | 'volume';
 type FilterKey = 'all' | 'active' | 'pending';
 
@@ -163,6 +164,7 @@ export default function AdminPage() {
     { key: 'members' as Tab, label: 'Members', icon: <Users size={15} /> },
     { key: 'plans' as Tab, label: 'Plans', icon: <Dumbbell size={15} /> },
     { key: 'insights' as Tab, label: 'Insights', icon: <BarChart2 size={15} /> },
+    { key: 'estimation' as Tab, label: 'Estimation', icon: <Target size={15} /> },
   ];
 
   return (
@@ -485,6 +487,9 @@ export default function AdminPage() {
               )}
             </div>
           )}
+
+          {/* ───────── Estimation ───────── */}
+          {activeTab === 'estimation' && <EstimationPanel />}
         </motion.div>
       </AnimatePresence>
 
