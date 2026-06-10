@@ -171,7 +171,7 @@ export default function DashboardPage() {
 
       {/* Creatine — kept front; most common, daily must */}
       <Item standalone>
-        <CreatineTracker today={creatineToday} onLogged={() => creatineApi.getToday().then((r) => setCreatineToday(r.data))} />
+        <CreatineTracker today={creatineToday} onLogged={() => { creatineApi.getToday().then((r) => setCreatineToday(r.data)); refreshSupplementHeatmap(); }} />
       </Item>
 
       {/* Other supplements */}

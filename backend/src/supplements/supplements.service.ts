@@ -3,6 +3,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 import { Supplement } from './supplement.entity';
 import { SupplementLog } from './supplement-log.entity';
+import { CreatineLog } from '../creatine/creatine-log.entity';
+
+// Creatine lives in its own table but shares the heatmap rings. Distinct emerald
+// that isn't used by the supplement DEFAULTS or auto-assign PALETTE.
+const CREATINE_COLOR = '#10b981';
 
 const DEFAULTS = [
   { name: 'Magnesium', unit: 'mg', defaultDose: 400, dailyTarget: 400, color: '#a78bfa', sortOrder: 1 },
@@ -18,6 +23,7 @@ export class SupplementsService {
   constructor(
     @InjectRepository(Supplement) private suppRepo: Repository<Supplement>,
     @InjectRepository(SupplementLog) private logRepo: Repository<SupplementLog>,
+    @InjectRepository(CreatineLog) private creatineRepo: Repository<CreatineLog>,
   ) {}
 
   private dayBounds(d = new Date()) {
@@ -144,6 +150,19 @@ export class SupplementsService {
       const existing = map[d].find((x) => x.name === supp.name);
       if (existing) existing.total += l.amount;
       else map[d].push({ name: supp.name, total: l.amount, unit: supp.unit, color: supp.color || '#34d399' });
+    });
+
+    // Fold in creatine (separate table) so it also draws a ring on the heatmap.
+    const creatineLogs = await this.creatineRepo.find({
+      where: { userId, loggedAt: Between(start, end) },
+      order: { loggedAt: 'ASC' },
+    });
+    creatineLogs.forEach((l) => {
+      const d = l.loggedAt.toISOString().split('T')[0];
+      if (!map[d]) map[d] = [];
+      const existing = map[d].find((x) => x.name === 'Creatine');
+      if (existing) existing.total += l.amountGrams;
+      else map[d].unshift({ name: 'Creatine', total: l.amountGrams, unit: 'g', color: CREATINE_COLOR });
     });
     return map;
   }
