@@ -13,6 +13,7 @@ import { workoutsApi, creatineApi, bodyWeightApi, supplementsApi } from '@/lib/a
 import HeatmapCalendar from '@/components/dashboard/heatmap-calendar';
 import CreatineTracker from '@/components/dashboard/creatine-tracker';
 import SupplementTracker from '@/components/dashboard/supplement-tracker';
+import SupplementDayEditor from '@/components/dashboard/supplement-day-editor';
 import OnboardingBanner from '@/components/layout/onboarding-banner';
 import { PageTransition, Stagger, Item } from '@/components/ui/motion-primitives';
 import { Card, CardHeader } from '@/components/ui/card';
@@ -31,6 +32,8 @@ export default function DashboardPage() {
   const [bodyWeightHistory, setBodyWeightHistory] = useState<any[]>([]);
   const [prs, setPRs] = useState<any[]>([]);
   const [supplementHeatmap, setSupplementHeatmap] = useState<Record<string, any>>({});
+  const [suppEditDate, setSuppEditDate] = useState<string | null>(null);
+  const [suppKey, setSuppKey] = useState(0);
 
   const year = new Date().getFullYear();
 
@@ -97,7 +100,7 @@ export default function DashboardPage() {
             title="Training Calendar"
             action={<span className="text-xs text-muted-foreground">{totalDays} total sessions</span>}
           />
-          <HeatmapCalendar data={heatmapData} year={year} supplementData={supplementHeatmap} />
+          <HeatmapCalendar data={heatmapData} year={year} supplementData={supplementHeatmap} onEditDay={setSuppEditDate} />
         </Card>
       </Item>
 
@@ -176,7 +179,7 @@ export default function DashboardPage() {
 
       {/* Other supplements */}
       <Item standalone>
-        <SupplementTracker onChange={refreshSupplementHeatmap} />
+        <SupplementTracker key={suppKey} onChange={refreshSupplementHeatmap} />
       </Item>
 
       {/* Recent sessions */}
@@ -218,6 +221,14 @@ export default function DashboardPage() {
             </div>
           </Card>
         </Item>
+      )}
+
+      {suppEditDate && (
+        <SupplementDayEditor
+          date={suppEditDate}
+          onClose={() => setSuppEditDate(null)}
+          onChanged={() => { refreshSupplementHeatmap(); setSuppKey((k) => k + 1); }}
+        />
       )}
     </PageTransition>
   );

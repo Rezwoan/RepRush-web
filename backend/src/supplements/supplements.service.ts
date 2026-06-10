@@ -96,11 +96,17 @@ export class SupplementsService {
     return { message: 'Supplement removed' };
   }
 
-  async logDose(userId: number, supplementId: number, amount: number) {
+  async logDose(userId: number, supplementId: number, amount: number, date?: string) {
     const supp = await this.suppRepo.findOne({ where: { id: supplementId, userId } });
     if (!supp) throw new ForbiddenException('Supplement not found');
-    const entry = this.logRepo.create({ userId, supplementId, amount });
-    return this.logRepo.save(entry);
+    const entry = await this.logRepo.save(this.logRepo.create({ userId, supplementId, amount }));
+    // Backdate to a chosen day (e.g. logging last night's dose after midnight).
+    // loggedAt is a CreateDateColumn, so override it with a follow-up update.
+    if (date) {
+      const when = new Date(`${date}T12:00:00`);
+      if (!isNaN(when.getTime())) await this.logRepo.update(entry.id, { loggedAt: when });
+    }
+    return entry;
   }
 
   async updateLog(userId: number, logId: number, amount: number) {
@@ -128,6 +134,26 @@ export class SupplementsService {
       return {
         ...s,
         totalToday: sLogs.reduce((sum, l) => sum + l.amount, 0),
+        logs: sLogs.map((l) => ({ id: l.id, amount: l.amount, loggedAt: l.loggedAt })),
+      };
+    });
+  }
+
+  /** Same shape as getToday but for any chosen day (heatmap date editing). */
+  async getForDate(userId: number, date: string) {
+    await this.ensureDefaults(userId);
+    const supps = await this.suppRepo.find({ where: { userId }, order: { sortOrder: 'ASC', createdAt: 'ASC' } });
+    const ref = new Date(`${date}T12:00:00`);
+    const { start, end } = this.dayBounds(isNaN(ref.getTime()) ? new Date() : ref);
+    const logs = await this.logRepo.find({
+      where: { userId, loggedAt: Between(start, end) },
+      order: { loggedAt: 'ASC' },
+    });
+    return supps.map((s) => {
+      const sLogs = logs.filter((l) => l.supplementId === s.id);
+      return {
+        ...s,
+        total: sLogs.reduce((sum, l) => sum + l.amount, 0),
         logs: sLogs.map((l) => ({ id: l.id, amount: l.amount, loggedAt: l.loggedAt })),
       };
     });

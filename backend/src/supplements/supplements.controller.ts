@@ -34,14 +34,19 @@ export class SupplementsController {
     return this.supplementsService.getToday(user.id);
   }
 
+  @Get('by-date')
+  getByDate(@CurrentUser() user: User, @Query('date') date: string) {
+    return this.supplementsService.getForDate(user.id, date);
+  }
+
   @Get('heatmap')
   getHeatmap(@CurrentUser() user: User, @Query('year') year?: string) {
     return this.supplementsService.getHeatmap(user.id, year ? parseInt(year) : undefined);
   }
 
   @Post(':id/log')
-  logDose(@CurrentUser() user: User, @Param('id', ParseIntPipe) id: number, @Body() body: { amount: number }) {
-    return this.supplementsService.logDose(user.id, id, body.amount);
+  logDose(@CurrentUser() user: User, @Param('id', ParseIntPipe) id: number, @Body() body: { amount: number; date?: string }) {
+    return this.supplementsService.logDose(user.id, id, body.amount, body.date);
   }
 
   @Delete('log/:logId')

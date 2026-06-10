@@ -19,10 +19,12 @@ export default function HeatmapCalendar({
   data,
   year,
   supplementData = {},
+  onEditDay,
 }: {
   data: HeatmapData;
   year: number;
   supplementData?: SupplementDay;
+  onEditDay?: (date: string) => void;
 }) {
   const today = new Date();
   const [month, setMonth] = useState(today.getMonth());
@@ -171,6 +173,13 @@ export default function HeatmapCalendar({
                     )}
                   </div>
                 </div>
+
+                {onEditDay && (
+                  <button onClick={() => onEditDay(selected)}
+                    className="w-full mt-1 py-2 rounded-lg bg-secondary/60 hover:bg-secondary text-xs font-medium text-brand-400 hover:text-brand-300 transition-colors flex items-center justify-center gap-1.5">
+                    <Pill size={13} /> Log / edit supplements for this day
+                  </button>
+                )}
               </div>
             </div>
           </motion.div>
