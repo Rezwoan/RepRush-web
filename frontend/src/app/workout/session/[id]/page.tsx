@@ -2,7 +2,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, CheckCircle2, RotateCcw, Timer, Lightbulb, Trash2, Dumbbell } from 'lucide-react';
+import {
+  Plus, CheckCircle2, Check, RotateCcw, Timer, Trash2, Dumbbell,
+  ArrowLeft, Pencil, ChevronDown, CheckSquare, ListChecks,
+} from 'lucide-react';
 import { workoutsApi, exercisesApi, usersApi } from '@/lib/api';
 import { epley1RM } from '@/lib/utils';
 import { PageTransition } from '@/components/ui/motion-primitives';
@@ -27,10 +30,13 @@ export default function SessionPage() {
   const [userWeight, setUserWeight] = useState(75);
   const [sets, setSets] = useState<SetLog[]>([]);
   const [inputs, setInputs] = useState<Record<string, { weight: string; reps: string }>>({});
+  const [addedSlots, setAddedSlots] = useState<Record<string, number>>({});
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
   const [abandoning, setAbandoning] = useState(false);
   const [confirmAbandon, setConfirmAbandon] = useState(false);
   const [notes, setNotes] = useState('');
+  const [showNotes, setShowNotes] = useState(false);
   const [timer, setTimer] = useState(0);
   const [timerActive, setTimerActive] = useState(false);
 
@@ -74,6 +80,7 @@ export default function SessionPage() {
     (acc[s.exerciseName] ||= []).push(s);
     return acc;
   }, {});
+  Object.values(byExercise).forEach((arr) => arr.sort((a, b) => a.setNumber - b.setNumber));
 
   // First session → bodyweight-scaled; 2nd+ → progressive-overload suggestion
   const suggestedWeight = (ex: PlanExercise): number => {
@@ -83,36 +90,109 @@ export default function SessionPage() {
     return 0;
   };
 
-  const getInput = (name: string, field: 'weight' | 'reps', fallback: string) =>
-    inputs[name]?.[field] ?? fallback;
-  const setInput = (name: string, field: 'weight' | 'reps', value: string) =>
+  const slotKey = (name: string, n: number) => `${name}#${n}`;
+  const getSlot = (name: string, n: number, field: 'weight' | 'reps', fallback: string) =>
+    inputs[slotKey(name, n)]?.[field] ?? fallback;
+  const setSlot = (name: string, n: number, field: 'weight' | 'reps', value: string) =>
     setInputs((prev) => {
-      const cur = prev[name] ?? { weight: '', reps: '' };
-      return { ...prev, [name]: { ...cur, [field]: value } };
+      const k = slotKey(name, n);
+      const cur = prev[k] ?? { weight: '', reps: '' };
+      return { ...prev, [k]: { ...cur, [field]: value } };
     });
 
-  const addSet = async (exerciseName: string, weight: number, reps: number, targetReps?: number) => {
-    if (!exerciseName || !weight || !reps) return;
-    const setNum = (byExercise[exerciseName]?.length || 0) + 1;
+  type Slot =
+    | { type: 'logged'; set: SetLog; setNumber: number }
+    | { type: 'pending'; setNumber: number; weight: string; reps: string; target?: number; phW: string; phR: string };
+
+  const exSlots = (ex: PlanExercise): Slot[] => {
+    const logged = byExercise[ex.name] || [];
+    const total = Math.max(ex.sets + (addedSlots[ex.name] || 0), logged.length);
+    const sw = suggestedWeight(ex);
+    const sugReps = suggestion?.suggestions?.[ex.name]?.reps;
+    const out: Slot[] = [];
+    for (let i = 0; i < total; i++) {
+      const setNumber = i + 1;
+      if (i < logged.length) out.push({ type: 'logged', set: logged[i], setNumber });
+      else out.push({
+        type: 'pending', setNumber,
+        weight: getSlot(ex.name, setNumber, 'weight', sw ? String(sw) : ''),
+        reps: getSlot(ex.name, setNumber, 'reps', sugReps ? String(sugReps) : firstNum(ex.reps)),
+        target: parseInt(firstNum(ex.reps)) || undefined,
+        phW: sw ? String(sw) : 'kg',
+        phR: sugReps ? String(sugReps) : (firstNum(ex.reps) || 'reps'),
+      });
+    }
+    return out;
+  };
+
+  const exDone = (ex: PlanExercise) => (byExercise[ex.name]?.length || 0);
+  const exTotal = (ex: PlanExercise) => Math.max(ex.sets + (addedSlots[ex.name] || 0), byExercise[ex.name]?.length || 0);
+
+  // Default-expand the first unfinished exercise once data is loaded.
+  useEffect(() => {
+    if (expanded !== null || !planExercises.length) return;
+    const target = planExercises.find((ex) => exDone(ex) < ex.sets) || planExercises[0];
+    setExpanded(target.name);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planExercises, sets]);
+
+  const refresh = async () => { const fresh = await workoutsApi.getSession(sessionId); loadSets(fresh.data); return fresh.data; };
+  const advanceFrom = (data: any) => {
+    const next = planExercises.find((e) => ((data.sets || []).filter((s: any) => s.exerciseName === e.name).length) < e.sets);
+    if (next) setExpanded(next.name);
+  };
+
+  const logSlot = async (ex: PlanExercise, slot: Extract<Slot, { type: 'pending' }>) => {
+    const w = parseFloat(slot.weight || slot.phW), r = parseInt(slot.reps || slot.phR);
+    if (!w || !r) return;
     try {
-      await workoutsApi.logSet(sessionId, { exerciseName, setNumber: setNum, actualReps: reps, weightKg: weight, targetReps });
-      const fresh = await workoutsApi.getSession(sessionId);
-      loadSets(fresh.data);
+      await workoutsApi.logSet(sessionId, { exerciseName: ex.name, setNumber: slot.setNumber, actualReps: r, weightKg: w, targetReps: slot.target });
+      const data = await refresh();
       setTimer(0); setTimerActive(true);
+      const done = (data.sets || []).filter((s: any) => s.exerciseName === ex.name).length;
+      if (done >= exTotal(ex)) advanceFrom(data);
+    } catch (e) { console.error(e); }
+  };
+
+  const logNext = async () => {
+    const ex = planExercises.find((e) => e.name === expanded);
+    if (!ex) return;
+    const next = exSlots(ex).find((s) => s.type === 'pending') as Extract<Slot, { type: 'pending' }> | undefined;
+    if (next) await logSlot(ex, next);
+  };
+
+  const logAll = async () => {
+    const ex = planExercises.find((e) => e.name === expanded);
+    if (!ex) return;
+    const pend = exSlots(ex).filter((s) => s.type === 'pending') as Extract<Slot, { type: 'pending' }>[];
+    try {
+      for (const s of pend) {
+        const w = parseFloat(s.weight || s.phW), r = parseInt(s.reps || s.phR);
+        if (!w || !r) continue;
+        await workoutsApi.logSet(sessionId, { exerciseName: ex.name, setNumber: s.setNumber, actualReps: r, weightKg: w, targetReps: s.target });
+      }
+      const data = await refresh();
+      setTimer(0); setTimerActive(true);
+      advanceFrom(data);
     } catch (e) { console.error(e); }
   };
 
   const deleteSet = async (setId?: number) => {
     if (!setId) return;
-    try { await workoutsApi.deleteSet(setId); const fresh = await workoutsApi.getSession(sessionId); loadSets(fresh.data); }
-    catch (e) { console.error(e); }
+    try { await workoutsApi.deleteSet(setId); await refresh(); } catch (e) { console.error(e); }
   };
+
+  const addSetSlot = (name: string) => setAddedSlots((p) => ({ ...p, [name]: (p[name] || 0) + 1 }));
 
   const logExtra = async () => {
     const w = parseFloat(extra.weight), r = parseInt(extra.reps);
     if (!extra.name || !w || !r) return;
-    await addSet(extra.name.trim(), w, r);
-    setExtra({ name: '', weight: '', reps: '' });
+    const setNum = (byExercise[extra.name.trim()]?.length || 0) + 1;
+    try {
+      await workoutsApi.logSet(sessionId, { exerciseName: extra.name.trim(), setNumber: setNum, actualReps: r, weightKg: w });
+      await refresh();
+      setExtra({ name: '', weight: '', reps: '' });
+    } catch (e) { console.error(e); }
   };
 
   const completeSession = async () => {
@@ -132,114 +212,167 @@ export default function SessionPage() {
 
   const planNames = new Set(planExercises.map((e) => e.name));
   const offPlan = Object.keys(byExercise).filter((n) => !planNames.has(n));
-  const isFirstSession = !suggestion?.suggestions;
+  const expandedEx = planExercises.find((e) => e.name === expanded);
+  const expandedHasPending = expandedEx ? exDone(expandedEx) < exTotal(expandedEx) : false;
 
   return (
-    <PageTransition className="space-y-4 max-w-lg mx-auto pb-4">
+    <PageTransition className="max-w-lg mx-auto pb-28">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-display font-bold">{session.workoutType || 'Workout'}</h1>
-          <p className="text-xs text-muted-foreground nums">
-            {new Date(session.startedAt).toLocaleDateString('en-GB')} · {sets.length} sets logged
-          </p>
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <button onClick={() => router.push('/workout')} className="p-1.5 -ml-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+            <ArrowLeft size={20} />
+          </button>
+          <div className="min-w-0">
+            <h1 className="text-lg font-display font-bold truncate">{session.workoutType || 'Workout'}</h1>
+            <p className="text-[11px] text-muted-foreground nums">{sets.length} set{sets.length !== 1 ? 's' : ''} logged</p>
+          </div>
+          <button onClick={() => setShowNotes((v) => !v)} className={`p-1 rounded-md transition-colors ${showNotes ? 'text-brand-400' : 'text-muted-foreground/70 hover:text-foreground'}`}>
+            <Pencil size={14} />
+          </button>
         </div>
-        <div className="text-right">
-          <motion.button
-            onClick={() => (timerActive ? (setTimerActive(false), setTimer(0)) : setTimerActive(true))}
-            whileTap={{ scale: 0.94 }}
-            className={`text-2xl font-display font-bold flex items-center gap-1.5 nums ${timerActive ? 'text-brand-400' : 'text-muted-foreground'}`}
-          >
-            <motion.span animate={timerActive ? { rotate: [0, 8, -8, 0] } : {}} transition={{ duration: 1, repeat: Infinity }}>
-              <Timer size={16} className={timerActive ? 'text-volt-400' : 'text-muted-foreground/50'} />
-            </motion.span>
-            {fmtTime(timer)}
-          </motion.button>
-          <p className="text-[10px] text-muted-foreground">Rest timer</p>
-        </div>
+        <motion.button
+          onClick={() => (timerActive ? (setTimerActive(false), setTimer(0)) : setTimerActive(true))}
+          whileTap={{ scale: 0.94 }}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg nums text-lg font-display font-bold ${timerActive ? 'text-brand-300 bg-brand-500/10' : 'text-muted-foreground bg-secondary/60'}`}
+        >
+          <motion.span animate={timerActive ? { rotate: [0, 8, -8, 0] } : {}} transition={{ duration: 1, repeat: Infinity }}>
+            <Timer size={15} className={timerActive ? 'text-volt-400' : 'text-muted-foreground/50'} />
+          </motion.span>
+          {fmtTime(timer)}
+        </motion.button>
       </div>
 
-      {isFirstSession ? (
-        <div className="rounded-xl border border-border bg-secondary/40 px-3.5 py-2.5 text-xs text-muted-foreground flex items-center gap-2">
-          <Dumbbell size={13} className="text-brand-400 flex-shrink-0" />
-          First session — starting weights are estimated from your bodyweight. Next time you&apos;ll get progression based on today.
-        </div>
-      ) : (
-        <div className="rounded-xl border border-brand-500/20 bg-brand-500/[0.06] px-3.5 py-2.5 text-xs text-brand-200 flex items-center gap-2">
-          <Lightbulb size={13} className="text-brand-400 flex-shrink-0" />
-          Suggested weights are based on your last {session.workoutType} session.
-        </div>
-      )}
+      <AnimatePresence>
+        {showNotes && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mb-3">
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Session notes (optional)…" rows={2} className="field resize-none" />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Plan exercises */}
-      {planExercises.map((ex, idx) => {
-        const logged = byExercise[ex.name] || [];
-        const sw = suggestedWeight(ex);
-        const sugReps = suggestion?.suggestions?.[ex.name]?.reps;
-        const wVal = getInput(ex.name, 'weight', sw ? String(sw) : '');
-        const rVal = getInput(ex.name, 'reps', sugReps ? String(sugReps) : firstNum(ex.reps));
-        return (
-          <Card key={idx} className="p-4">
-            <div className="flex items-start justify-between gap-2 mb-2">
-              <div>
-                <p className="font-semibold text-sm">{ex.name}</p>
-                <p className="text-xs text-muted-foreground nums">Target: {ex.sets} × {ex.reps} reps{ex.rest ? ` · ${ex.rest}s rest` : ''}</p>
-              </div>
-              {sw > 0 && (
-                <span className="text-xs bg-volt-400/15 text-volt-400 px-2 py-0.5 rounded-md font-medium nums whitespace-nowrap">
-                  {logged.length >= ex.sets ? 'done' : `try ${sw}kg`}
+      {/* Exercise accordion */}
+      <div className="space-y-2.5">
+        {planExercises.map((ex, idx) => {
+          const open = expanded === ex.name;
+          const done = exDone(ex);
+          const total = exTotal(ex);
+          const complete = done >= total && total > 0;
+          const slots = open ? exSlots(ex) : [];
+          const activeSetNumber = slots.find((s) => s.type === 'pending')?.setNumber;
+          return (
+            <Card key={idx} className={`overflow-hidden ${open ? 'p-0' : 'p-0'}`}>
+              {/* Header row */}
+              <button onClick={() => setExpanded(open ? null : ex.name)} className="w-full flex items-center gap-3 p-3.5 text-left">
+                <motion.span animate={{ rotate: open ? 0 : -90 }} transition={spring.snappy} className="text-muted-foreground flex-shrink-0">
+                  <ChevronDown size={16} />
+                </motion.span>
+                <span className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${complete ? 'bg-success/15 text-success' : 'bg-brand-500/15 text-brand-400'}`}>
+                  {complete ? <Check size={17} /> : <Dumbbell size={16} />}
                 </span>
-              )}
-            </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm truncate">{ex.name}</p>
+                  {!open && <p className="text-[11px] text-muted-foreground nums">Target {ex.sets} × {ex.reps}</p>}
+                </div>
+                <span className={`text-xs font-medium nums flex-shrink-0 ${complete ? 'text-success' : 'text-muted-foreground'}`}>{done}/{total} Done</span>
+              </button>
 
-            {/* Logged sets */}
-            <AnimatePresence initial={false}>
-              {logged.map((s) => (
-                <motion.div key={s.id ?? s.setNumber} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 8 }}
-                  className="flex items-center justify-between text-sm py-1.5 nums border-b border-border/60 last:border-0">
-                  <span className="text-muted-foreground text-xs w-12">Set {s.setNumber}</span>
-                  <span className="font-semibold flex-1">{s.weightKg} kg × {s.actualReps}</span>
-                  <span className="text-xs text-muted-foreground mr-2">~{epley1RM(s.weightKg, s.actualReps)} 1RM</span>
+              {/* Body */}
+              <AnimatePresence initial={false}>
+                {open && (
+                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+                    <div className="px-3.5 pb-3.5">
+                      <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-2 nums">
+                        <span>Target {ex.sets} × {ex.reps} reps</span>
+                        {ex.rest ? <span>{ex.rest}s rest</span> : null}
+                      </div>
+
+                      <div className="space-y-1">
+                        {slots.map((slot) => {
+                          if (slot.type === 'logged') {
+                            const s = slot.set;
+                            return (
+                              <motion.div key={`l-${s.id ?? s.setNumber}`} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }}
+                                className="flex items-center gap-2.5 py-1.5">
+                                <button onClick={() => deleteSet(s.id)} title="Remove set"
+                                  className="w-6 h-6 rounded-full bg-success/20 text-success flex items-center justify-center flex-shrink-0 hover:bg-destructive/20 hover:text-destructive transition-colors">
+                                  <Check size={14} />
+                                </button>
+                                <span className="w-4 text-center text-xs text-muted-foreground nums">{s.setNumber}</span>
+                                <div className="flex-1 grid grid-cols-2 gap-2">
+                                  <div className="rounded-lg bg-secondary/50 py-1.5 text-center text-sm font-semibold nums">{s.weightKg}<span className="text-[10px] text-muted-foreground ml-1">KG</span></div>
+                                  <div className="rounded-lg bg-secondary/50 py-1.5 text-center text-sm font-semibold nums">{s.actualReps}<span className="text-[10px] text-muted-foreground ml-1">Reps</span></div>
+                                </div>
+                                <span className="text-[10px] text-muted-foreground w-12 text-right nums">~{epley1RM(s.weightKg, s.actualReps)}</span>
+                              </motion.div>
+                            );
+                          }
+                          const active = slot.setNumber === activeSetNumber;
+                          return (
+                            <div key={`p-${slot.setNumber}`} className={`relative flex items-center gap-2.5 py-1.5 rounded-lg ${active ? 'bg-brand-500/[0.06]' : ''}`}>
+                              {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1.5 w-1 h-6 rounded-full bg-success" />}
+                              <button onClick={() => logSlot(ex, slot)} title="Mark set done"
+                                className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${active ? 'border-success text-success hover:bg-success/15' : 'border-border text-transparent hover:border-brand-400'}`}>
+                                <Check size={13} />
+                              </button>
+                              <span className="w-4 text-center text-xs text-muted-foreground nums">{slot.setNumber}</span>
+                              <div className="flex-1 grid grid-cols-2 gap-2">
+                                <div className="relative">
+                                  <input type="number" inputMode="decimal" step="0.5" value={slot.weight}
+                                    onChange={(e) => setSlot(ex.name, slot.setNumber, 'weight', e.target.value)}
+                                    placeholder={slot.phW} className="field !py-1.5 text-center pr-7 text-sm" />
+                                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">KG</span>
+                                </div>
+                                <div className="relative">
+                                  <input type="number" inputMode="numeric" value={slot.reps}
+                                    onChange={(e) => setSlot(ex.name, slot.setNumber, 'reps', e.target.value)}
+                                    placeholder={slot.phR} className="field !py-1.5 text-center pr-9 text-sm" />
+                                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">Reps</span>
+                                </div>
+                              </div>
+                              <span className="w-12" />
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <button onClick={() => addSetSlot(ex.name)}
+                        className="w-full mt-2.5 py-2 rounded-lg bg-secondary/60 hover:bg-secondary text-sm font-medium text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center gap-1.5">
+                        <Plus size={15} /> Add a set
+                      </button>
+                      {ex.notes && <p className="text-[11px] text-muted-foreground/70 mt-2 italic">{ex.notes}</p>}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </Card>
+          );
+        })}
+
+        {/* Off-plan logged exercises */}
+        {offPlan.map((name) => (
+          <Card key={name} className="p-3.5">
+            <div className="flex items-center gap-3 mb-2">
+              <span className="w-9 h-9 rounded-lg bg-volt-400/15 text-volt-400 flex items-center justify-center flex-shrink-0"><Dumbbell size={16} /></span>
+              <p className="font-semibold text-sm flex-1">{name} <span className="text-xs text-muted-foreground font-normal">extra</span></p>
+              <span className="text-xs text-muted-foreground nums">{byExercise[name].length} sets</span>
+            </div>
+            <div className="space-y-1">
+              {byExercise[name].map((s) => (
+                <div key={s.id ?? s.setNumber} className="flex items-center gap-2.5 py-1 nums text-sm">
+                  <span className="w-4 text-center text-xs text-muted-foreground">{s.setNumber}</span>
+                  <span className="flex-1 font-semibold">{s.weightKg} kg × {s.actualReps}</span>
                   <button onClick={() => deleteSet(s.id)} className="text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={13} /></button>
-                </motion.div>
+                </div>
               ))}
-            </AnimatePresence>
-
-            {/* Inline add */}
-            <div className="flex gap-2 mt-2.5">
-              <div className="flex-1">
-                <input type="number" inputMode="decimal" step="0.5" value={wVal} onChange={(e) => setInput(ex.name, 'weight', e.target.value)} placeholder="kg" className="field !py-2 text-center" />
-              </div>
-              <span className="self-center text-muted-foreground text-sm">×</span>
-              <div className="flex-1">
-                <input type="number" inputMode="numeric" value={rVal} onChange={(e) => setInput(ex.name, 'reps', e.target.value)} placeholder="reps" className="field !py-2 text-center" />
-              </div>
-              <Button size="sm" onClick={() => addSet(ex.name, parseFloat(wVal), parseInt(rVal), parseInt(firstNum(ex.reps)) || undefined)} disabled={!wVal || !rVal}>
-                <Plus size={15} />
-              </Button>
             </div>
-            {ex.notes && <p className="text-[11px] text-muted-foreground/70 mt-2 italic">{ex.notes}</p>}
+            <button onClick={() => { setShowExtra(true); setExtra({ name, weight: '', reps: '' }); }} className="text-xs text-brand-400 hover:text-brand-300 mt-2 transition-colors">+ Add another set</button>
           </Card>
-        );
-      })}
-
-      {/* Off-plan logged exercises */}
-      {offPlan.map((name) => (
-        <Card key={name} className="p-4">
-          <p className="font-semibold text-sm mb-1">{name} <span className="text-xs text-muted-foreground font-normal">(extra)</span></p>
-          {byExercise[name].map((s) => (
-            <div key={s.id ?? s.setNumber} className="flex items-center justify-between text-sm py-1.5 nums border-b border-border/60 last:border-0">
-              <span className="text-muted-foreground text-xs w-12">Set {s.setNumber}</span>
-              <span className="font-semibold flex-1">{s.weightKg} kg × {s.actualReps}</span>
-              <button onClick={() => deleteSet(s.id)} className="text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={13} /></button>
-            </div>
-          ))}
-          <button onClick={() => { setShowExtra(true); setExtra({ name, weight: '', reps: '' }); }} className="text-xs text-brand-400 hover:text-brand-300 mt-2 transition-colors">+ Add another set</button>
-        </Card>
-      ))}
+        ))}
+      </div>
 
       {/* Log an off-plan exercise */}
-      <Card className="p-4">
+      <Card className="p-3.5 mt-2.5">
         <button onClick={() => setShowExtra((v) => !v)} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2">
           <Plus size={15} /> Log another exercise
         </button>
@@ -260,22 +393,8 @@ export default function SessionPage() {
         </AnimatePresence>
       </Card>
 
-      {/* Finish */}
-      <AnimatePresence>
-        {sets.length > 0 && (
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-            <Card className="p-4 space-y-3">
-              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Session notes (optional)…" rows={2} className="field resize-none" />
-              <Button onClick={completeSession} disabled={completing} className="w-full !bg-success !bg-none !text-white shadow-none" size="lg">
-                <CheckCircle2 size={18} />{completing ? 'Saving…' : `Complete Session · ${sets.length} sets`}
-              </Button>
-            </Card>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Abandon */}
-      <div className="pt-2">
+      <div className="pt-3">
         <AnimatePresence mode="wait">
           {confirmAbandon ? (
             <motion.div key="confirm" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }}
@@ -294,6 +413,27 @@ export default function SessionPage() {
             </motion.button>
           )}
         </AnimatePresence>
+      </div>
+
+      {/* Sticky action bar */}
+      <div className="fixed left-0 right-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] lg:bottom-5 px-4 z-30 pointer-events-none">
+        <div className="max-w-lg mx-auto flex gap-2 pointer-events-auto">
+          {expandedHasPending ? (
+            <>
+              <Button variant="secondary" size="lg" onClick={logAll} className="!px-3.5 shadow-lg" title="Log all remaining sets">
+                <CheckSquare size={17} /> ALL
+              </Button>
+              <Button size="lg" onClick={logNext} className="flex-1 shadow-glow-brand uppercase tracking-wide font-semibold">
+                <ListChecks size={17} /> Log next set
+              </Button>
+            </>
+          ) : (
+            <Button size="lg" onClick={completeSession} disabled={!sets.length || completing}
+              className="flex-1 !bg-success !bg-none !text-white shadow-lg">
+              <CheckCircle2 size={18} /> {completing ? 'Saving…' : `Complete Session · ${sets.length} sets`}
+            </Button>
+          )}
+        </div>
       </div>
     </PageTransition>
   );
