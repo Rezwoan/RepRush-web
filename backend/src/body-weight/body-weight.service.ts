@@ -9,16 +9,21 @@ export class BodyWeightService {
     @InjectRepository(BodyWeightLog) private repo: Repository<BodyWeightLog>,
   ) {}
 
-  async log(userId: number, weightKg: number, note?: string) {
-    const date = new Date().toISOString().split('T')[0];
-    const existing = await this.repo.findOne({ where: { userId, date } });
+  async log(userId: number, weightKg: number, note?: string, date?: string) {
+    const day = date || new Date().toISOString().split('T')[0];
+    const existing = await this.repo.findOne({ where: { userId, date: day } });
     if (existing) {
       existing.weightKg = weightKg;
       if (note !== undefined) existing.note = note;
       return this.repo.save(existing);
     }
-    const entry = this.repo.create({ userId, weightKg, note: note || null, date });
+    const entry = this.repo.create({ userId, weightKg, note: note || null, date: day });
     return this.repo.save(entry);
+  }
+
+  async deleteEntry(userId: number, id: number) {
+    await this.repo.delete({ id, userId });
+    return { message: 'Entry deleted' };
   }
 
   async getHistory(userId: number, days = 90) {

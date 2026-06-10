@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { LayoutDashboard, Dumbbell, Trophy, Target, User, Shield } from 'lucide-react';
+import { LayoutDashboard, Dumbbell, Trophy, TrendingUp, User, Shield } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { spring } from '@/lib/motion';
 
@@ -10,7 +10,7 @@ const navItems = [
   { href: '/dashboard', label: 'Home', icon: LayoutDashboard },
   { href: '/workout', label: 'Workout', icon: Dumbbell },
   { href: '/leaderboard', label: 'Board', icon: Trophy },
-  { href: '/achievements', label: 'Goals', icon: Target },
+  { href: '/achievements', label: 'Progress', icon: TrendingUp },
   { href: '/profile', label: 'Profile', icon: User },
 ];
 

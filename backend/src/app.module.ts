@@ -8,6 +8,7 @@ import { WorkoutsModule } from './workouts/workouts.module';
 import { ExercisesModule } from './exercises/exercises.module';
 import { CreatineModule } from './creatine/creatine.module';
 import { SupplementsModule } from './supplements/supplements.module';
+import { GoalsModule } from './goals/goals.module';
 import { LeaderboardModule } from './leaderboard/leaderboard.module';
 import { AchievementsModule } from './achievements/achievements.module';
 import { AdminModule } from './admin/admin.module';
@@ -39,6 +40,7 @@ import { SeedModule } from './seed/seed.module';
     ExercisesModule,
     CreatineModule,
     SupplementsModule,
+    GoalsModule,
     LeaderboardModule,
     AchievementsModule,
     AdminModule,

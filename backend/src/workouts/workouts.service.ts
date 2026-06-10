@@ -267,4 +267,17 @@ export class WorkoutsService {
     }
     return result;
   }
+
+  /** Heaviest single set logged for a given exercise name (case-insensitive). */
+  async getBestLift(userId: number, exerciseName: string): Promise<number> {
+    const target = exerciseName.trim().toLowerCase();
+    const sessions = await this.sessionRepo.find({ where: { userId }, relations: ['sets'] });
+    let best = 0;
+    for (const s of sessions) {
+      for (const set of s.sets || []) {
+        if (set.exerciseName?.trim().toLowerCase() === target) best = Math.max(best, set.weightKg);
+      }
+    }
+    return best;
+  }
 }

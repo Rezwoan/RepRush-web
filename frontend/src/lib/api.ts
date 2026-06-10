@@ -74,11 +74,20 @@ export const workoutsApi = {
 
 // ─── Body Weight ──────────────────────────────────────────────────────────────
 export const bodyWeightApi = {
-  log: (weightKg: number, note?: string) =>
-    api.post('/body-weight', { weightKg, note }),
+  log: (weightKg: number, note?: string, date?: string) =>
+    api.post('/body-weight', { weightKg, note, date }),
   getHistory: (days?: number) =>
     api.get('/body-weight/history', { params: { days } }),
   getLatest: () => api.get('/body-weight/latest'),
+  deleteEntry: (id: number) => api.delete(`/body-weight/${id}`),
+};
+
+// ─── Goals ────────────────────────────────────────────────────────────────────
+export const goalsApi = {
+  list: () => api.get('/goals'),
+  create: (data: { type: 'bodyweight' | 'lift'; exerciseName?: string; targetValue: number }) =>
+    api.post('/goals', data),
+  remove: (id: number) => api.delete(`/goals/${id}`),
 };
 
 // ─── Creatine ─────────────────────────────────────────────────────────────────

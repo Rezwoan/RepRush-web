@@ -99,7 +99,7 @@ export default function WorkoutPreviewPage() {
         ))}
       </Stagger>
 
-      <div className="fixed bottom-0 left-0 right-0 p-4 glass border-t border-border lg:relative lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none z-40">
+      <div className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-0 right-0 p-4 glass border-t border-border lg:relative lg:bottom-0 lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none z-40">
         <div className="max-w-lg mx-auto flex gap-3">
           <Button variant="secondary" size="lg" onClick={() => router.back()} className="px-3.5"><RotateCcw size={18} /></Button>
           <Button size="lg" onClick={startSession} disabled={starting} className="flex-1">
