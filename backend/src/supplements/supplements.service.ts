@@ -4,9 +4,10 @@ import { Repository, Between } from 'typeorm';
 import { Supplement } from './supplement.entity';
 import { SupplementLog } from './supplement-log.entity';
 import { CreatineLog } from '../creatine/creatine-log.entity';
+import { UsersService } from '../users/users.service';
 
-// Creatine lives in its own table but shares the heatmap rings. Distinct emerald
-// that isn't used by the supplement DEFAULTS or auto-assign PALETTE.
+// Creatine lives in its own table but shares the heatmap rings. Default is a
+// distinct emerald not used by supplement DEFAULTS/PALETTE; user-overridable.
 const CREATINE_COLOR = '#10b981';
 
 const DEFAULTS = [
@@ -24,6 +25,7 @@ export class SupplementsService {
     @InjectRepository(Supplement) private suppRepo: Repository<Supplement>,
     @InjectRepository(SupplementLog) private logRepo: Repository<SupplementLog>,
     @InjectRepository(CreatineLog) private creatineRepo: Repository<CreatineLog>,
+    private usersService: UsersService,
   ) {}
 
   private dayBounds(d = new Date()) {
@@ -152,7 +154,10 @@ export class SupplementsService {
       else map[d].push({ name: supp.name, total: l.amount, unit: supp.unit, color: supp.color || '#34d399' });
     });
 
-    // Fold in creatine (separate table) so it also draws a ring on the heatmap.
+    // Fold in creatine (separate table) so it also draws a ring on the heatmap,
+    // in the user's chosen creatine colour (defaults to emerald).
+    const user = await this.usersService.findById(userId);
+    const creatineColor = user?.creatineColor || CREATINE_COLOR;
     const creatineLogs = await this.creatineRepo.find({
       where: { userId, loggedAt: Between(start, end) },
       order: { loggedAt: 'ASC' },
@@ -162,7 +167,7 @@ export class SupplementsService {
       if (!map[d]) map[d] = [];
       const existing = map[d].find((x) => x.name === 'Creatine');
       if (existing) existing.total += l.amountGrams;
-      else map[d].unshift({ name: 'Creatine', total: l.amountGrams, unit: 'g', color: CREATINE_COLOR });
+      else map[d].unshift({ name: 'Creatine', total: l.amountGrams, unit: 'g', color: creatineColor });
     });
     return map;
   }

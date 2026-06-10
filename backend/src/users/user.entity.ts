@@ -40,6 +40,9 @@ export class User {
   profileImage: string;
 
   @Column({ nullable: true })
+  creatineColor: string;
+
+  @Column({ nullable: true })
   inviteToken: string;
 
   @Column({ default: false })

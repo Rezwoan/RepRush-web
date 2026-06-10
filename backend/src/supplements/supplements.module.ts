@@ -5,9 +5,10 @@ import { SupplementLog } from './supplement-log.entity';
 import { SupplementsService } from './supplements.service';
 import { SupplementsController } from './supplements.controller';
 import { CreatineLog } from '../creatine/creatine-log.entity';
+import { UsersModule } from '../users/users.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Supplement, SupplementLog, CreatineLog])],
+  imports: [TypeOrmModule.forFeature([Supplement, SupplementLog, CreatineLog]), UsersModule],
   providers: [SupplementsService],
   controllers: [SupplementsController],
   exports: [SupplementsService],

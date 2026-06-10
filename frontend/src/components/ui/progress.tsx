@@ -52,6 +52,7 @@ export function RingProgress({
   size = 72,
   stroke = 7,
   color = 'brand',
+  hex,
   children,
 }: {
   value: number;
@@ -59,18 +60,20 @@ export function RingProgress({
   size?: number;
   stroke?: number;
   color?: 'brand' | 'volt';
+  hex?: string; // arbitrary colour override (e.g. user-chosen creatine colour)
   children?: React.ReactNode;
 }) {
   const pct = Math.min(1, Math.max(0, value / max));
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
-  const stop = color === 'volt' ? '#faba0c' : '#0a80f5';
-  const start = color === 'volt' ? '#e0a009' : '#3b97f5';
+  const gid = hex ? `ring-hex-${hex.replace('#', '')}` : `ring-${color}`;
+  const stop = hex || (color === 'volt' ? '#faba0c' : '#0a80f5');
+  const start = hex || (color === 'volt' ? '#e0a009' : '#3b97f5');
   return (
     <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
         <defs>
-          <linearGradient id={`ring-${color}`} x1="0" y1="0" x2="1" y2="1">
+          <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
             <stop offset="0%" stopColor={start} />
             <stop offset="100%" stopColor={stop} />
           </linearGradient>
@@ -81,7 +84,7 @@ export function RingProgress({
           cy={size / 2}
           r={r}
           fill="none"
-          stroke={`url(#ring-${color})`}
+          stroke={`url(#${gid})`}
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={c}
