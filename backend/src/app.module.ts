@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ScheduleModule } from '@nestjs/schedule';
 import { join } from 'path';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -14,6 +15,7 @@ import { AchievementsModule } from './achievements/achievements.module';
 import { AdminModule } from './admin/admin.module';
 import { MailModule } from './mail/mail.module';
 import { BodyWeightModule } from './body-weight/body-weight.module';
+import { PushModule } from './push/push.module';
 import { SeedModule } from './seed/seed.module';
 
 @Module({
@@ -21,6 +23,7 @@ import { SeedModule } from './seed/seed.module';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -46,6 +49,7 @@ import { SeedModule } from './seed/seed.module';
     AdminModule,
     MailModule,
     BodyWeightModule,
+    PushModule,
     SeedModule,
   ],
 })

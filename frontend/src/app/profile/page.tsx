@@ -11,6 +11,7 @@ import { PageTransition, Item } from '@/components/ui/motion-primitives';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ImageCropper } from '@/components/ui/image-cropper';
+import NotificationSettings from '@/components/profile/notification-settings';
 
 export default function ProfilePage() {
   const { refresh, logout } = useAuth();
@@ -181,6 +182,11 @@ export default function ProfilePage() {
             ))}
           </div>
         </Card>
+      </Item>
+
+      {/* Reminders */}
+      <Item standalone>
+        <NotificationSettings profile={profile} onChanged={() => usersApi.getProfile().then((r) => setProfile(r.data))} />
       </Item>
 
       {/* Change password */}

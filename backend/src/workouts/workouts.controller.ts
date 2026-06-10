@@ -36,6 +36,21 @@ export class WorkoutsController {
     return this.workoutsService.getSession(id, user.id);
   }
 
+  @Get('sessions/:id/summary')
+  getSessionSummary(@CurrentUser() user: User, @Param('id', ParseIntPipe) id: number) {
+    return this.workoutsService.getSessionSummary(id, user.id);
+  }
+
+  @Get('exercises')
+  getExercises(@CurrentUser() user: User) {
+    return this.workoutsService.getExerciseList(user.id);
+  }
+
+  @Get('exercises/history')
+  getExerciseHistory(@CurrentUser() user: User, @Query('name') name: string) {
+    return this.workoutsService.getExerciseHistory(user.id, name);
+  }
+
   @Patch('sessions/:id/complete')
   completeSession(
     @CurrentUser() user: User,

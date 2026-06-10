@@ -30,7 +30,7 @@ export class UsersController {
 
   @Patch('profile')
   async updateProfile(@CurrentUser() user: User, @Body() body: any) {
-    const allowed = ['name', 'heightCm', 'weightKg', 'creatineColor'];
+    const allowed = ['name', 'heightCm', 'weightKg', 'creatineColor', 'remindWorkouts', 'remindSupplements'];
     const updates: any = {};
     allowed.forEach((k) => {
       if (body[k] !== undefined) updates[k] = body[k];

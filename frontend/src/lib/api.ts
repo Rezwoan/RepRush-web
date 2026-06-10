@@ -57,6 +57,9 @@ export const workoutsApi = {
     api.post('/workouts/sessions', { workoutType, workoutPlanId }),
   getSessions: () => api.get('/workouts/sessions'),
   getSession: (id: number) => api.get(`/workouts/sessions/${id}`),
+  getSessionSummary: (id: number) => api.get(`/workouts/sessions/${id}/summary`),
+  getExercises: () => api.get('/workouts/exercises'),
+  getExerciseHistory: (name: string) => api.get('/workouts/exercises/history', { params: { name } }),
   completeSession: (id: number, notes?: string) =>
     api.patch(`/workouts/sessions/${id}/complete`, { notes }),
   resetSession: (id: number) =>
@@ -134,6 +137,15 @@ export const leaderboardApi = {
 // ─── Achievements ─────────────────────────────────────────────────────────────
 export const achievementsApi = {
   getAchievements: () => api.get('/achievements'),
+};
+
+// ─── Push notifications ───────────────────────────────────────────────────────
+export const pushApi = {
+  getVapid: () => api.get('/push/vapid'),
+  getStatus: () => api.get('/push/status'),
+  subscribe: (subscription: any) => api.post('/push/subscribe', { subscription }),
+  unsubscribe: (endpoint: string) => api.post('/push/unsubscribe', { endpoint }),
+  test: () => api.post('/push/test'),
 };
 
 // ─── Admin ────────────────────────────────────────────────────────────────────
