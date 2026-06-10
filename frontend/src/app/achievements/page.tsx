@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 
 const CHART_TOOLTIP = { background: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: 12 };
 const todayStr = () => new Date().toISOString().split('T')[0];
+const fmtNum = (n: number) => (Number.isInteger(n) ? n : Math.round(n * 10) / 10);
 
 export default function ProgressPage() {
   const [goals, setGoals] = useState<any[]>([]);
@@ -43,13 +44,38 @@ export default function ProgressPage() {
   }, [loadGoals, loadWeights]);
 
   const bodyGoal = goals.find((g) => g.type === 'bodyweight');
-  const weightData = [...weights].map((w) => ({ date: w.date, weightKg: w.weightKg }));
+  const weightData = [...weights]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((w) => ({ date: w.date, weightKg: w.weightKg }));
+  const current = weightData.length ? weightData[weightData.length - 1].weightKg : null;
+  const cutoff30 = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+  const within30 = weightData.filter((w) => w.date >= cutoff30);
+  const ref30 = (within30[0] ?? weightData[0])?.weightKg;
+  const delta30 = current != null && ref30 != null ? Math.round((current - ref30) * 10) / 10 : null;
 
   const bigThree = ['bench', 'squat', 'deadlift'].map((type) => {
     const pr = prs.filter((p) => p.exerciseType === type && p.isCurrentSeason).sort((a: any, b: any) => b.weightKg - a.weightKg)[0];
     return { name: type[0].toUpperCase() + type.slice(1), oneRM: pr ? epley1RM(pr.weightKg, pr.reps) : 0 };
   });
   const hasStrength = bigThree.some((b) => b.oneRM > 0);
+
+  // Highlight + label the latest weigh-in; show small dots when the series is short.
+  const renderWeightDot = (p: any) => {
+    const { cx, cy, index } = p;
+    const k = `wd-${index}`;
+    if (cx == null || cy == null) return <g key={k} />;
+    const isLast = index === weightData.length - 1;
+    if (isLast) {
+      return (
+        <g key={k}>
+          <circle cx={cx} cy={cy} r={5} fill="#0a80f5" stroke="hsl(var(--card))" strokeWidth={2} />
+          <text x={cx} y={cy - 11} textAnchor="middle" fontSize={11} fontWeight={700} fill="#3b97f5">{fmtNum(weightData[index].weightKg)}</text>
+        </g>
+      );
+    }
+    if (weightData.length <= 6) return <circle key={k} cx={cx} cy={cy} r={3} fill="#0a80f5" />;
+    return <g key={k} />;
+  };
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="loader-ring" /></div>;
 
@@ -67,27 +93,46 @@ export default function ProgressPage() {
       {/* Body weight */}
       <Item standalone>
         <Card className="p-5">
-          <CardHeader icon={<Weight size={16} />} title="Body Weight"
-            action={bodyGoal ? <span className="text-xs text-volt-400 nums">goal {bodyGoal.targetValue}kg</span> : undefined} />
+          <div className="flex items-start justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <span className="w-7 h-7 rounded-lg bg-brand-500/15 text-brand-400 flex items-center justify-center"><Weight size={16} /></span>
+              <h2 className="font-display font-semibold">Body Weight</h2>
+            </div>
+            {bodyGoal && <span className="text-xs text-volt-400 nums mt-1.5">goal {bodyGoal.targetValue}kg</span>}
+          </div>
+
+          {current != null && (
+            <div className="flex items-end gap-3 mb-4">
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Current (kg)</p>
+                <p className="text-3xl font-display font-extrabold nums leading-none mt-0.5">{fmtNum(current)}</p>
+              </div>
+              {delta30 != null && (
+                <span className={`text-xs font-semibold nums mb-0.5 px-2 py-0.5 rounded-full ${delta30 < 0 ? 'text-success bg-success/10' : delta30 > 0 ? 'text-volt-400 bg-volt-400/10' : 'text-muted-foreground bg-secondary'}`}>
+                  {delta30 > 0 ? '+' : ''}{fmtNum(delta30)} kg · 30d
+                </span>
+              )}
+            </div>
+          )}
+
           {weightData.length >= 1 ? (
-            <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={weightData} margin={{ top: 6, right: 8, left: -20, bottom: 0 }}>
+            <ResponsiveContainer width="100%" height={190}>
+              <LineChart data={weightData} margin={{ top: 18, right: 12, left: -18, bottom: 0 }}>
                 <defs>
                   <linearGradient id="bw" x1="0" y1="0" x2="1" y2="0">
                     <stop offset="0%" stopColor="#3b97f5" /><stop offset="100%" stopColor="#0a80f5" />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="date" tickFormatter={(d) => d.slice(5)} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} interval="preserveStartEnd" />
-                <YAxis domain={['auto', 'auto']} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="date" tickFormatter={(d) => d.slice(5)} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} interval="preserveStartEnd" minTickGap={24} />
+                <YAxis domain={['auto', 'auto']} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} width={34} />
                 <Tooltip contentStyle={CHART_TOOLTIP} labelStyle={{ color: 'hsl(var(--muted-foreground))' }} formatter={(v: any) => [`${v} kg`, 'Weight']} />
                 {bodyGoal && (
                   <ReferenceLine y={bodyGoal.targetValue} stroke="#faba0c" strokeDasharray="5 4"
                     label={{ value: `Goal ${bodyGoal.targetValue}kg`, fill: '#faba0c', fontSize: 10, position: 'insideTopRight' }} />
                 )}
                 <Line type="monotone" dataKey="weightKg" stroke="url(#bw)" strokeWidth={2.5}
-                  dot={weightData.length <= 4 ? { r: 4, fill: '#0a80f5', strokeWidth: 0 } : false}
-                  activeDot={{ r: 5, fill: '#0a80f5' }} />
+                  dot={renderWeightDot} activeDot={{ r: 5, fill: '#0a80f5' }} />
               </LineChart>
             </ResponsiveContainer>
           ) : (
