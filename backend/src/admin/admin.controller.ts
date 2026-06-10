@@ -26,6 +26,11 @@ export class AdminController {
     return this.adminService.getAdminStats();
   }
 
+  @Get('activity')
+  getActivity() {
+    return this.adminService.getActivity();
+  }
+
   @Get('users')
   getAllUsers() {
     return this.adminService.getAllUsers();
