@@ -32,12 +32,16 @@ export default function NotificationSettings({ profile, onChanged }: { profile: 
       } else {
         const res = await enablePush();
         if (res.ok) { setEnabled(true); flash('Reminders on! We sent a test notification.'); await pushApi.test().catch(() => {}); }
-        else flash(
-          res.reason === 'denied' ? 'Permission denied — enable notifications in your browser settings.'
-          : res.reason === 'not-configured' ? 'Push isn’t configured on the server yet.'
-          : res.reason === 'unsupported' ? 'Your browser doesn’t support push notifications.'
-          : 'Could not enable notifications.',
-        );
+        else {
+          const state = typeof Notification !== 'undefined' ? Notification.permission : 'unknown';
+          flash(
+            res.reason === 'denied'
+              ? `Notifications are blocked for this site (status: ${state}). In Chrome: tap the icon left of the address bar → Permissions → Notifications → Allow, then reload this page.`
+            : res.reason === 'not-configured' ? 'Push isn’t configured on the server yet.'
+            : res.reason === 'unsupported' ? 'Your browser doesn’t support push notifications.'
+            : 'Could not enable notifications — please reload and try again.',
+          );
+        }
       }
     } finally { setBusy(false); }
   };

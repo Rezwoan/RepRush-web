@@ -48,7 +48,9 @@ async function getRegistration(timeoutMs = 8000): Promise<ServiceWorkerRegistrat
 export async function enablePush(): Promise<PushResult> {
   if (!pushSupported()) return { ok: false, reason: 'unsupported' };
   try {
-    const perm = await Notification.requestPermission();
+    // Only prompt when undecided; if already granted we must NOT re-request.
+    let perm = Notification.permission;
+    if (perm === 'default') perm = await Notification.requestPermission();
     if (perm !== 'granted') return { ok: false, reason: 'denied' };
 
     const { data } = await pushApi.getVapid();
