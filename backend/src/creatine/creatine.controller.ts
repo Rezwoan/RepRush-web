@@ -10,13 +10,18 @@ export class CreatineController {
   constructor(private creatineService: CreatineService) {}
 
   @Post()
-  logDose(@CurrentUser() user: User, @Body() body: { amountGrams: number; note?: string }) {
-    return this.creatineService.logDose(user.id, body.amountGrams, body.note);
+  logDose(@CurrentUser() user: User, @Body() body: { amountGrams: number; note?: string; date?: string }) {
+    return this.creatineService.logDose(user.id, body.amountGrams, body.note, body.date);
   }
 
   @Get('today')
   getToday(@CurrentUser() user: User) {
     return this.creatineService.getTodayLogs(user.id);
+  }
+
+  @Get('by-date')
+  getByDate(@CurrentUser() user: User, @Query('date') date: string) {
+    return this.creatineService.getForDate(user.id, date);
   }
 
   @Get('history')

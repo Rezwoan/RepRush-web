@@ -154,7 +154,7 @@ export class SupplementsService {
       const sLogs = logs.filter((l) => l.supplementId === s.id);
       return {
         ...s,
-        total: sLogs.reduce((sum, l) => sum + l.amount, 0),
+        totalToday: sLogs.reduce((sum, l) => sum + l.amount, 0),
         logs: sLogs.map((l) => ({ id: l.id, amount: l.amount, loggedAt: l.loggedAt })),
       };
     });

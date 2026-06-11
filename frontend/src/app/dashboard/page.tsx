@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Dumbbell, Flame, Calendar, TrendingUp, Weight, Activity, ArrowRight,
 } from 'lucide-react';
@@ -14,7 +14,6 @@ import { workoutsApi, creatineApi, bodyWeightApi, supplementsApi } from '@/lib/a
 import HeatmapCalendar from '@/components/dashboard/heatmap-calendar';
 import CreatineTracker from '@/components/dashboard/creatine-tracker';
 import SupplementTracker from '@/components/dashboard/supplement-tracker';
-import SupplementDayEditor from '@/components/dashboard/supplement-day-editor';
 import OnboardingBanner from '@/components/layout/onboarding-banner';
 import { PageTransition, Stagger, Item } from '@/components/ui/motion-primitives';
 import { Card, CardHeader } from '@/components/ui/card';
@@ -33,8 +32,10 @@ export default function DashboardPage() {
   const [bodyWeightHistory, setBodyWeightHistory] = useState<any[]>([]);
   const [prs, setPRs] = useState<any[]>([]);
   const [supplementHeatmap, setSupplementHeatmap] = useState<Record<string, any>>({});
-  const [suppEditDate, setSuppEditDate] = useState<string | null>(null);
-  const [suppKey, setSuppKey] = useState(0);
+  // Heatmap selection: when a past date is picked, the creatine/supplement
+  // sections below switch to that date for editing. null = today.
+  const [viewDate, setViewDate] = useState<string | null>(null);
+  const [creatineView, setCreatineView] = useState<{ totalGrams: number; logs: any[] }>({ totalGrams: 0, logs: [] });
 
   const year = new Date().getFullYear();
 
@@ -48,6 +49,12 @@ export default function DashboardPage() {
       supplementsApi.getHeatmap(year).then((r) => setSupplementHeatmap(r.data)),
     ]).catch(() => {});
   }, [year]);
+
+  const loadCreatineToday = () => creatineApi.getToday().then((r) => setCreatineToday(r.data)).catch(() => {});
+  const loadCreatineView = () => (viewDate ? creatineApi.getByDate(viewDate) : creatineApi.getToday())
+    .then((r) => setCreatineView(r.data)).catch(() => {});
+  // Reload the creatine section whenever the viewed date changes.
+  useEffect(() => { loadCreatineView(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [viewDate]);
 
   const refreshSupplementHeatmap = () => supplementsApi.getHeatmap(year).then((r) => setSupplementHeatmap(r.data)).catch(() => {});
 
@@ -101,7 +108,7 @@ export default function DashboardPage() {
             title="Training Calendar"
             action={<span className="text-xs text-muted-foreground">{totalDays} total sessions</span>}
           />
-          <HeatmapCalendar data={heatmapData} year={year} supplementData={supplementHeatmap} onEditDay={setSuppEditDate} />
+          <HeatmapCalendar data={heatmapData} year={year} supplementData={supplementHeatmap} selectedDate={viewDate} onSelectDate={setViewDate} />
         </Card>
       </Item>
 
@@ -173,14 +180,28 @@ export default function DashboardPage() {
         </Item>
       )}
 
+      {/* Editing-a-past-date banner */}
+      <AnimatePresence>
+        {viewDate && (
+          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+            className="flex items-center justify-between gap-3 rounded-xl border border-brand-500/30 bg-brand-500/[0.08] px-4 py-2.5">
+            <p className="text-sm text-brand-200">
+              Editing <span className="font-semibold">{new Date(viewDate + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'long' })}</span>
+            </p>
+            <button onClick={() => setViewDate(null)} className="text-xs font-medium text-brand-400 hover:text-brand-300 transition-colors">Back to today</button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Creatine — kept front; most common, daily must */}
       <Item standalone>
-        <CreatineTracker today={creatineToday} onColorChange={refreshSupplementHeatmap} onLogged={() => { creatineApi.getToday().then((r) => setCreatineToday(r.data)); refreshSupplementHeatmap(); }} />
+        <CreatineTracker today={creatineView} date={viewDate || undefined} onColorChange={refreshSupplementHeatmap}
+          onLogged={() => { loadCreatineView(); loadCreatineToday(); refreshSupplementHeatmap(); }} />
       </Item>
 
       {/* Other supplements */}
       <Item standalone>
-        <SupplementTracker key={suppKey} onChange={refreshSupplementHeatmap} />
+        <SupplementTracker date={viewDate || undefined} onChange={refreshSupplementHeatmap} />
       </Item>
 
       {/* Recent sessions */}
@@ -222,14 +243,6 @@ export default function DashboardPage() {
             </div>
           </Card>
         </Item>
-      )}
-
-      {suppEditDate && (
-        <SupplementDayEditor
-          date={suppEditDate}
-          onClose={() => setSuppEditDate(null)}
-          onChanged={() => { refreshSupplementHeatmap(); setSuppKey((k) => k + 1); }}
-        />
       )}
     </PageTransition>
   );

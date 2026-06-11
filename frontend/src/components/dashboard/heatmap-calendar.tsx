@@ -24,17 +24,21 @@ export default function HeatmapCalendar({
   data,
   year,
   supplementData = {},
-  onEditDay,
+  onSelectDate,
+  selectedDate,
 }: {
   data: HeatmapData;
   year: number;
   supplementData?: SupplementDay;
-  onEditDay?: (date: string) => void;
+  onSelectDate?: (date: string | null) => void;
+  selectedDate?: string | null; // controlled selection (falls back to internal)
 }) {
   const today = new Date();
   const [month, setMonth] = useState(today.getMonth());
   const [displayYear, setDisplayYear] = useState(year);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [internalSel, setInternalSel] = useState<string | null>(null);
+  const selected = selectedDate !== undefined ? selectedDate : internalSel;
+  const select = (d: string | null) => { if (selectedDate === undefined) setInternalSel(d); onSelectDate?.(d); };
 
   const { weeks, sessionsThisMonth } = useMemo(() => {
     const lastDay = new Date(displayYear, month + 1, 0);
@@ -50,8 +54,8 @@ export default function HeatmapCalendar({
     return { weeks, sessionsThisMonth: cells.filter((d) => d && data[d]).length };
   }, [data, month, displayYear]);
 
-  const prevMonth = () => { setSelected(null); month === 0 ? (setMonth(11), setDisplayYear(displayYear - 1)) : setMonth(month - 1); };
-  const nextMonth = () => { setSelected(null); month === 11 ? (setMonth(0), setDisplayYear(displayYear + 1)) : setMonth(month + 1); };
+  const prevMonth = () => { select(null); month === 0 ? (setMonth(11), setDisplayYear(displayYear - 1)) : setMonth(month - 1); };
+  const nextMonth = () => { select(null); month === 11 ? (setMonth(0), setDisplayYear(displayYear + 1)) : setMonth(month + 1); };
 
   const todayStr = localDateKey(today);
 
@@ -106,7 +110,7 @@ export default function HeatmapCalendar({
                   transition={{ ...spring.snappy, delay: (wi * 7 + di) * 0.006 }}
                   whileHover={{ scale: 1.12, zIndex: 5 }}
                   whileTap={{ scale: 0.92 }}
-                  onClick={() => setSelected(isSel ? null : date)}
+                  onClick={() => select(isSel ? null : date)}
                   style={bg ? { backgroundColor: bg } : undefined}
                   className={`relative w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold cursor-pointer ${has ? 'text-white' : 'bg-secondary/40 text-muted-foreground/60'}${ring}`}
                 >
@@ -142,7 +146,7 @@ export default function HeatmapCalendar({
             <div className="mt-1 rounded-xl border border-border bg-secondary/40 p-3.5">
               <div className="flex items-center justify-between mb-2.5">
                 <p className="text-sm font-semibold">{fmtDate(selected)}</p>
-                <button onClick={() => setSelected(null)} className="text-muted-foreground hover:text-foreground transition-colors"><X size={15} /></button>
+                <button onClick={() => select(null)} className="text-muted-foreground hover:text-foreground transition-colors"><X size={15} /></button>
               </div>
 
               <div className="space-y-2.5 text-sm">
@@ -186,12 +190,7 @@ export default function HeatmapCalendar({
                   </div>
                 </div>
 
-                {onEditDay && (
-                  <button onClick={() => onEditDay(selected)}
-                    className="w-full mt-1 py-2 rounded-lg bg-secondary/60 hover:bg-secondary text-xs font-medium text-brand-400 hover:text-brand-300 transition-colors flex items-center justify-center gap-1.5">
-                    <Pill size={13} /> Log / edit supplements for this day
-                  </button>
-                )}
+                <p className="text-[11px] text-muted-foreground pt-0.5">Edit this day’s creatine &amp; supplements in the sections below ↓</p>
               </div>
             </div>
           </motion.div>

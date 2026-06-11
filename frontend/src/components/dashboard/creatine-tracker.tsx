@@ -11,6 +11,7 @@ interface Props {
   today: { totalGrams: number; logs: any[] };
   onLogged: () => void;
   onColorChange?: () => void;
+  date?: string; // when set, log/show for this date instead of today
 }
 
 const QUICK_DOSES = [3, 5, 10, 15];
@@ -18,7 +19,7 @@ const DAILY_TARGET = 5;
 const DEFAULT_COLOR = '#10b981';
 const COLORS = ['#10b981', '#34d399', '#22d3ee', '#60a5fa', '#a78bfa', '#f472b6', '#fb923c', '#faba0c', '#f87171', '#a3e635'];
 
-export default function CreatineTracker({ today, onLogged, onColorChange }: Props) {
+export default function CreatineTracker({ today, onLogged, onColorChange, date }: Props) {
   const [customAmount, setCustomAmount] = useState('');
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
@@ -40,7 +41,7 @@ export default function CreatineTracker({ today, onLogged, onColorChange }: Prop
     if (!amount || amount <= 0) return;
     setLoading(true);
     try {
-      await creatineApi.logDose(amount, noteText);
+      await creatineApi.logDose(amount, noteText, date);
       onLogged();
       setCustomAmount('');
       setNote('');
@@ -144,7 +145,7 @@ export default function CreatineTracker({ today, onLogged, onColorChange }: Prop
       <AnimatePresence initial={false}>
         {today.logs.length > 0 ? (
           <motion.div layout className="space-y-1.5 mt-3 pt-3 border-t border-border">
-            <p className="text-xs text-muted-foreground mb-1">Today&apos;s doses</p>
+            <p className="text-xs text-muted-foreground mb-1">{date ? 'Doses' : "Today's doses"}</p>
             {today.logs.map((log) => (
               <motion.div
                 key={log.id}

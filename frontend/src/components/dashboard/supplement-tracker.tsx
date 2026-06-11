@@ -25,7 +25,7 @@ const PRESETS = [
 const fmt = (n: number) => (Number.isInteger(n) ? n : Number(n.toFixed(1)));
 const blankForm = { name: '', unit: 'mg', defaultDose: '', dailyTarget: '', color: COLORS[0] };
 
-export default function SupplementTracker({ onChange }: { onChange?: () => void }) {
+export default function SupplementTracker({ onChange, date }: { onChange?: () => void; date?: string }) {
   const [items, setItems] = useState<Supp[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -37,14 +37,15 @@ export default function SupplementTracker({ onChange }: { onChange?: () => void 
   const [editLog, setEditLog] = useState<{ id: number; amount: string } | null>(null);
 
   const reload = useCallback(() => {
-    supplementsApi.getToday().then((r) => setItems(r.data)).finally(() => setLoading(false));
-  }, []);
+    const req = date ? supplementsApi.getByDate(date) : supplementsApi.getToday();
+    req.then((r) => setItems(r.data)).finally(() => setLoading(false));
+  }, [date]);
   useEffect(() => { reload(); }, [reload]);
   const after = () => { reload(); onChange?.(); };
 
   const log = async (id: number, amount: number) => {
     if (!amount || amount <= 0) return;
-    await supplementsApi.logDose(id, amount);
+    await supplementsApi.logDose(id, amount, date);
     setCustomFor(null); setCustomAmt('');
     after();
   };
@@ -179,7 +180,7 @@ export default function SupplementTracker({ onChange }: { onChange?: () => void 
                           <p className="text-sm font-medium text-foreground truncate">{s.name}</p>
                           <p className="text-xs text-muted-foreground nums">
                             <span style={s.totalToday > 0 ? { color } : undefined} className={s.totalToday > 0 ? 'font-semibold' : ''}>{fmt(s.totalToday)}{s.unit}</span>
-                            {s.dailyTarget ? <span className="text-muted-foreground"> / {fmt(s.dailyTarget)}{s.unit}</span> : ' today'}{hit && s.totalToday > 0 ? ' ✓' : ''}
+                            {s.dailyTarget ? <span className="text-muted-foreground"> / {fmt(s.dailyTarget)}{s.unit}</span> : (date ? '' : ' today')}{hit && s.totalToday > 0 ? ' ✓' : ''}
                           </p>
                         </div>
                       </div>
@@ -213,7 +214,7 @@ export default function SupplementTracker({ onChange }: { onChange?: () => void 
                     {/* Today's intake — visible, editable, removable */}
                     {s.logs.length > 0 && (
                       <div className="mt-2.5 pt-2.5 border-t border-border/70 space-y-1">
-                        <p className="text-[11px] text-muted-foreground">Today&apos;s intake</p>
+                        <p className="text-[11px] text-muted-foreground">{date ? 'Intake' : "Today's intake"}</p>
                         {s.logs.map((l) => (
                           <div key={l.id} className="flex items-center justify-between text-xs">
                             {editLog?.id === l.id ? (

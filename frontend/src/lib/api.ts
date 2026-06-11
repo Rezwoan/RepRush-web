@@ -95,9 +95,10 @@ export const goalsApi = {
 
 // ─── Creatine ─────────────────────────────────────────────────────────────────
 export const creatineApi = {
-  logDose: (amountGrams: number, note?: string) =>
-    api.post('/creatine', { amountGrams, note }),
+  logDose: (amountGrams: number, note?: string, date?: string) =>
+    api.post('/creatine', { amountGrams, note, date }),
   getToday: () => api.get('/creatine/today'),
+  getByDate: (date: string) => api.get('/creatine/by-date', { params: { date } }),
   getHistory: (days?: number) =>
     api.get('/creatine/history', { params: { days } }),
   deleteLog: (id: number) => api.delete(`/creatine/${id}`),
