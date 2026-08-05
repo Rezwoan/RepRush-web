@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between } from 'typeorm';
+import { Repository, Between, Not, IsNull } from 'typeorm';
 import { GymSession } from './gym-session.entity';
 import { WorkoutSet } from './workout-set.entity';
 import { PersonalRecord } from './personal-record.entity';
@@ -54,6 +54,62 @@ export class WorkoutsService {
       order: { startedAt: 'DESC' },
       relations: ['sets'],
     });
+  }
+
+  /**
+   * Aggregated history of every completed session — one row per session, with
+   * the numbers the progress page needs. Returns totals rather than raw sets so
+   * the payload stays small enough to cache offline.
+   */
+  async getSessionHistory(userId: number) {
+    const sessions = await this.sessionRepo.find({
+      where: { userId, completedAt: Not(IsNull()) },
+      order: { startedAt: 'ASC' },
+      relations: ['sets'],
+    });
+
+    // Running best per exercise, so each session knows which lifts set a PR.
+    const bestSoFar: Record<string, number> = {};
+    const rows = sessions.map((s) => {
+      const working = (s.sets || []).filter((x) => !x.isWarmup);
+      const byEx: Record<string, WorkoutSet[]> = {};
+      working.forEach((x) => { (byEx[x.exerciseName] ||= []).push(x); });
+
+      const prs: string[] = [];
+      const exercises = Object.entries(byEx).map(([name, sets]) => {
+        const topWeight = Math.max(...sets.map((x) => x.weightKg));
+        const prior = bestSoFar[name] || 0;
+        if (prior > 0 && topWeight > prior) prs.push(name);
+        bestSoFar[name] = Math.max(prior, topWeight);
+        return {
+          name,
+          sets: sets.length,
+          topWeight,
+          volume: Math.round(sets.reduce((a, x) => a + x.weightKg * x.actualReps, 0)),
+        };
+      }).sort((a, b) => b.volume - a.volume);
+
+      return {
+        id: s.id,
+        workoutType: s.workoutType,
+        date: ymd(s.startedAt),
+        startedAt: s.startedAt,
+        completedAt: s.completedAt,
+        durationSec: s.completedAt
+          ? Math.max(0, Math.round((new Date(s.completedAt).getTime() - new Date(s.startedAt).getTime()) / 1000))
+          : null,
+        totalVolume: Math.round(working.reduce((a, x) => a + x.weightKg * x.actualReps, 0)),
+        totalSets: working.length,
+        warmupSets: (s.sets || []).length - working.length,
+        totalReps: working.reduce((a, x) => a + x.actualReps, 0),
+        exerciseCount: exercises.length,
+        exercises,
+        prs,
+        notes: s.notes || null,
+      };
+    });
+
+    return rows.reverse(); // newest first for the UI
   }
 
   /** Celebration summary for a just-completed session. */
@@ -182,7 +238,6 @@ export class WorkoutsService {
     weightKg: number,
     targetReps?: number,
     isWarmup = false,
-    suggestedWeight?: number,
   ) {
     // Verify session belongs to user
     const session = await this.sessionRepo.findOne({ where: { id: sessionId, userId } });
@@ -190,7 +245,6 @@ export class WorkoutsService {
 
     const set = this.setRepo.create({
       sessionId, exerciseName, setNumber, actualReps, weightKg, targetReps, isWarmup,
-      suggestedWeight: isWarmup ? null : suggestedWeight ?? null,
     });
     const saved = await this.setRepo.save(set);
 
@@ -260,86 +314,37 @@ export class WorkoutsService {
     }
   }
 
-  // ─── Progressive Overload Algorithm ─────────────────────────────────────────
-
-  async suggestNextSession(userId: number, workoutType: string) {
-    const user = await this.usersService.findById(userId);
-
-    // Get last 4 sessions of same type
-    const sessions = await this.sessionRepo.find({
-      where: { userId, workoutType },
-      order: { startedAt: 'DESC' },
-      take: 4,
-      relations: ['sets'],
-    });
-
-    if (!sessions.length) return null;
-
-    const lastSession = sessions[0];
-    const suggestions: Record<string, { weightKg: number; reps: number; reason: string }> = {};
-
-    // Group working sets by exercise in last session (warm-ups never inform estimation)
-    const exerciseMap: Record<string, WorkoutSet[]> = {};
-    lastSession.sets.filter((s) => !s.isWarmup).forEach((s) => {
-      if (!exerciseMap[s.exerciseName]) exerciseMap[s.exerciseName] = [];
-      exerciseMap[s.exerciseName].push(s);
-    });
-
-    for (const [exercise, sets] of Object.entries(exerciseMap)) {
-      suggestions[exercise] = this.predictExerciseWeight(sets, exercise, user?.weightKg);
-    }
-
-    return { workoutType, suggestions, basedOn: lastSession.startedAt };
-  }
+  // ─── Last-session values (ghost hints) ──────────────────────────────────────
 
   /**
-   * Pure double-progression prediction for one exercise from a prior session's
-   * working sets. Single source of truth used by both live suggestions and the
-   * admin estimation-accuracy analysis. (Behaviour unchanged from before.)
+   * What the user actually did for each exercise the last time they trained this
+   * workout type. Shown verbatim as the ghost/placeholder in the logging fields.
+   *
+   * This is a lookup, not a prediction: nothing is incremented, scaled, or
+   * derived from body weight. Per exercise we return the last session's working
+   * sets in order, so set 2 ghosts set 2's weight rather than an average.
    */
-  predictExerciseWeight(sets: WorkoutSet[], exercise: string, bodyWeight?: number) {
-    const totalTargetReps = sets.reduce((sum, s) => sum + (s.targetReps || s.actualReps), 0);
-    const totalActualReps = sets.reduce((sum, s) => sum + s.actualReps, 0);
-    const completionRate = totalTargetReps > 0 ? totalActualReps / totalTargetReps : 1;
-    const avgWeight = sets.reduce((sum, s) => sum + s.weightKg, 0) / sets.length;
-    const avgReps = Math.round(totalActualReps / sets.length);
+  async getLastSessionValues(userId: number, workoutType: string) {
+    const lastSession = await this.sessionRepo.findOne({
+      where: { userId, workoutType, completedAt: Not(IsNull()) },
+      order: { startedAt: 'DESC' },
+      relations: ['sets'],
+    });
+    if (!lastSession) return null;
 
-    const relativeBonus = bodyWeight ? this.getRelativeStrengthBonus(exercise, avgWeight, bodyWeight) : 1;
+    const byExercise: Record<string, { sets: { setNumber: number; weightKg: number; reps: number }[] }> = {};
+    (lastSession.sets || [])
+      .filter((s) => !s.isWarmup)
+      .sort((a, b) => a.setNumber - b.setNumber)
+      .forEach((s) => {
+        (byExercise[s.exerciseName] ||= { sets: [] }).sets.push({
+          setNumber: s.setNumber,
+          weightKg: s.weightKg,
+          reps: s.actualReps,
+        });
+      });
 
-    let weightKg = avgWeight;
-    let reason = '';
-    if (completionRate >= 1.0) {
-      const increment = this.getIncrement(exercise) * relativeBonus;
-      weightKg = Math.round((avgWeight + increment) * 4) / 4;
-      reason = `Great job! All reps completed. Increase by ${increment}kg.`;
-    } else if (completionRate >= 0.8) {
-      weightKg = avgWeight;
-      reason = 'Good effort. Stay at same weight — aim to hit all reps next time.';
-    } else {
-      weightKg = Math.round(avgWeight * 0.9 * 4) / 4;
-      reason = 'Tough session. Reduced weight by 10% to ensure proper form.';
-    }
-    return { weightKg, reps: avgReps, reason };
-  }
-
-  private getIncrement(exercise: string): number {
-    const compound = ['bench', 'squat', 'deadlift', 'row', 'press'];
-    const isCompound = compound.some((c) => exercise.toLowerCase().includes(c));
-    return isCompound ? 2.5 : 1.25;
-  }
-
-  private getRelativeStrengthBonus(exercise: string, currentWeight: number, bodyWeight: number): number {
-    // Intermediate standards (BW multiples)
-    const standards: Record<string, number> = { bench: 1.0, squat: 1.5, deadlift: 2.0 };
-    const type = Object.keys(standards).find((t) => exercise.toLowerCase().includes(t));
-    if (!type) return 1;
-
-    const target = standards[type] * bodyWeight;
-    const ratio = currentWeight / target;
-
-    // If above standard → more aggressive (+5% bonus)
-    // If below → conservative (no bonus)
-    return ratio >= 1 ? 1.05 : 1.0;
+    return { workoutType, exercises: byExercise, basedOn: lastSession.startedAt };
   }
 
   // ─── Week comparison (for progress rate leaderboard) ────────────────────────

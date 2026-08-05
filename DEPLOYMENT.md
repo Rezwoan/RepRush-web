@@ -104,7 +104,7 @@ After this, every push to `main` runs `.github/workflows/deploy.yml` →
 | `PORT` | `3101` |
 | `FRONTEND_URL` | `https://reprush.rezwoan.codes` |
 | `JWT_SECRET` | auto-generated 96-char hex (Pi only) |
-| `JWT_EXPIRY` | `7d` |
+| `JWT_EXPIRY` | `30d` |
 | `RESEND_API_KEY` | Resend key for invite emails |
 | `RESEND_FROM_EMAIL` | `RepRush <noreply@rezwoan.codes>` |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | seeded admin account |

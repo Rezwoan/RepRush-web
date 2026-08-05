@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
-  LayoutDashboard, Dumbbell, Trophy, TrendingUp, User, LogOut, Shield,
+  LayoutDashboard, Dumbbell, Trophy, TrendingUp, User, LogOut, Shield, Medal,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { getInitials } from '@/lib/utils';
@@ -14,7 +14,8 @@ const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/workout', label: 'Workout', icon: Dumbbell },
   { href: '/leaderboard', label: 'Leaderboard', icon: Trophy },
-  { href: '/achievements', label: 'Progress', icon: TrendingUp },
+  { href: '/progress', label: 'Progress', icon: TrendingUp },
+  { href: '/achievements', label: 'Achievements', icon: Medal },
   { href: '/profile', label: 'Profile', icon: User },
 ];
 

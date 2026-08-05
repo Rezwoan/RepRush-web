@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getToken } from './token';
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL + '/api',
@@ -6,10 +7,10 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Attach per-tab sessionStorage token as Authorization header
+// Attach the stored token as Authorization header
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
-    const token = sessionStorage.getItem('reprush_token');
+    const token = getToken();
     if (token) {
       config.headers = config.headers ?? {};
       (config.headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
@@ -56,6 +57,7 @@ export const workoutsApi = {
   startSession: (workoutType: string, workoutPlanId?: number) =>
     api.post('/workouts/sessions', { workoutType, workoutPlanId }),
   getSessions: () => api.get('/workouts/sessions'),
+  getSessionHistory: () => api.get('/workouts/sessions/history'),
   getSession: (id: number) => api.get(`/workouts/sessions/${id}`),
   getSessionSummary: (id: number) => api.get(`/workouts/sessions/${id}/summary`),
   getExercises: () => api.get('/workouts/exercises'),
@@ -71,8 +73,8 @@ export const workoutsApi = {
     api.get('/workouts/heatmap', { params: { year } }),
   getPRs: () => api.get('/workouts/prs'),
   createPR: (data: any) => api.post('/workouts/prs', data),
-  getSuggestion: (workoutType: string) =>
-    api.get(`/workouts/suggest/${encodeURIComponent(workoutType)}`),
+  getLastValues: (workoutType: string) =>
+    api.get(`/workouts/last-values/${encodeURIComponent(workoutType)}`),
 };
 
 // ─── Body Weight ──────────────────────────────────────────────────────────────
@@ -154,7 +156,6 @@ export const pushApi = {
 export const adminApi = {
   getStats: () => api.get('/admin/stats'),
   getActivity: () => api.get('/admin/activity'),
-  getEstimation: () => api.get('/admin/estimation'),
   getUsers: () => api.get('/admin/users'),
   getUserDetail: (id: number) => api.get(`/admin/users/${id}`),
   inviteUser: (email: string, name: string) =>

@@ -1,6 +1,28 @@
 'use client';
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { authApi } from './api';
+import { setToken, clearToken, getToken } from './token';
+
+const USER_CACHE_KEY = 'reprush_user_v1';
+
+/** Last known profile, so the app can boot offline instead of bouncing to /login. */
+function cacheUser(u: unknown | null) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (u) localStorage.setItem(USER_CACHE_KEY, JSON.stringify(u));
+    else localStorage.removeItem(USER_CACHE_KEY);
+  } catch { /* storage full or blocked — offline boot is best-effort */ }
+}
+
+function getCachedUser(): any | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(USER_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
 
 interface User {
   id: number;
@@ -31,8 +53,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const res = await authApi.me();
       setUser(res.data);
-    } catch {
-      setUser(null);
+      cacheUser(res.data);
+    } catch (err: any) {
+      // Distinguish "server says you're not authenticated" from "we couldn't
+      // reach the server". Only the former should sign the user out — otherwise
+      // opening the app offline would bounce them to /login and make the whole
+      // offline mode pointless.
+      const status = err?.response?.status;
+      if (status === 401 || status === 403) {
+        clearToken();
+        cacheUser(null);
+        setUser(null);
+        return;
+      }
+      const cached = getCachedUser();
+      setUser(cached && getToken() ? cached : null);
     }
   };
 
@@ -42,18 +77,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const res = await authApi.login(email, password);
-    if (typeof window !== 'undefined' && res.data.token) {
-      sessionStorage.setItem('reprush_token', res.data.token);
-    }
+    if (res.data.token) setToken(res.data.token);
+    cacheUser(res.data.user);
     setUser(res.data.user);
     return res.data.user as User;
   };
 
   const logout = async () => {
-    await authApi.logout();
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem('reprush_token');
+    try {
+      await authApi.logout();
+    } catch {
+      // Offline logout still clears local credentials.
     }
+    clearToken();
+    cacheUser(null);
     setUser(null);
   };
 

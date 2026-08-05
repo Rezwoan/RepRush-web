@@ -4,20 +4,25 @@ import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, CheckCircle2, Check, RotateCcw, Timer, Trash2, Dumbbell,
-  ArrowLeft, Pencil, ChevronDown, CheckSquare, ListChecks, Flame,
+  ArrowLeft, Pencil, ChevronDown, CheckSquare, ListChecks, Flame, CloudOff,
 } from 'lucide-react';
-import { workoutsApi, exercisesApi, usersApi } from '@/lib/api';
+import { workoutsApi, exercisesApi } from '@/lib/api';
+import {
+  cacheSession, getCachedSession, materializeSets, queueLogSet, queueDeleteSet,
+  queueCompleteSession, flushOutbox, subscribe, resolveSessionId, type CachedSet,
+} from '@/lib/offline';
 import { epley1RM } from '@/lib/utils';
 import { PageTransition } from '@/components/ui/motion-primitives';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { spring } from '@/lib/motion';
 
-interface SetLog { id?: number; exerciseName: string; setNumber: number; actualReps: number; weightKg: number; targetReps?: number; isWarmup?: boolean; }
-interface PlanExercise { name: string; sets: number; reps: string; bwMultiplier: number; rest: number; notes?: string; warmUpSets?: string[]; estimatedLoad?: string; baselineWeight?: number; }
+type SetLog = CachedSet;
+interface PlanExercise { name: string; sets: number; reps: string; rest: number; notes?: string; warmUpSets?: string[]; baselineWeight?: number; }
+/** Last session's actual working sets for one exercise, in set order. */
+interface LastSet { setNumber: number; weightKg: number; reps: number; }
 
 const firstNum = (s: string) => { const m = String(s || '').match(/\d+/); return m ? m[0] : ''; };
-const round25 = (n: number) => Math.round(n / 2.5) * 2.5;
 
 // Parse a warm-up string ("40kg x 8", "Machine empty x 10", "+40kg x 6") → { weight, reps }.
 // Returns null for guidance-only entries like "Muscle already warm".
@@ -33,12 +38,13 @@ const parseWarm = (str: string): { weight: number; reps: number } | null => {
 export default function SessionPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const sessionId = parseInt(id);
+  // A session started offline carries a temporary negative id until it syncs;
+  // resolve it so this page follows the session to its real id afterwards.
+  const sessionId = resolveSessionId(parseInt(id));
 
   const [session, setSession] = useState<any>(null);
   const [planExercises, setPlanExercises] = useState<PlanExercise[]>([]);
-  const [suggestion, setSuggestion] = useState<any>(null);
-  const [userWeight, setUserWeight] = useState(75);
+  const [lastValues, setLastValues] = useState<Record<string, { sets: LastSet[] }>>({});
   const [sets, setSets] = useState<SetLog[]>([]);
   const [inputs, setInputs] = useState<Record<string, { weight: string; reps: string }>>({});
   const [addedSlots, setAddedSlots] = useState<Record<string, number>>({});
@@ -56,29 +62,62 @@ export default function SessionPage() {
   const [showExtra, setShowExtra] = useState(false);
   const [extra, setExtra] = useState({ name: '', weight: '', reps: '' });
 
+  // Always render the cached snapshot + queued writes, so the list looks the
+  // same whether the last set reached the server or is still in the outbox.
+  const rerender = useCallback(() => setSets(materializeSets(sessionId)), [sessionId]);
+
   const loadSets = useCallback((data: any) => {
-    setSets((data?.sets || []).map((s: any) => ({
-      id: s.id, exerciseName: s.exerciseName, setNumber: s.setNumber,
-      actualReps: s.actualReps, weightKg: s.weightKg, targetReps: s.targetReps, isWarmup: !!s.isWarmup,
-    })));
-  }, []);
+    cacheSession(sessionId, data);
+    rerender();
+  }, [sessionId, rerender]);
 
   useEffect(() => {
-    workoutsApi.getSession(sessionId).then((r) => {
-      setSession(r.data);
-      if (r.data?.completedAt) { router.replace('/workout'); return; }
-      loadSets(r.data);
-      if (r.data?.workoutPlanId) {
-        exercisesApi.getPlan(r.data.workoutPlanId)
-          .then((p) => setPlanExercises(p.data?.exercises?.exercises || []))
-          .catch(() => {});
+    // Re-render whenever the outbox drains in the background.
+    const unsub = subscribe(() => rerender());
+    return unsub;
+  }, [rerender]);
+
+  useEffect(() => {
+    const hydrate = (data: any) => {
+      setSession(data);
+      if (data?.workoutPlanId) {
+        exercisesApi.getPlan(data.workoutPlanId)
+          .then((p) => {
+            const list = p.data?.exercises?.exercises || [];
+            setPlanExercises(list);
+            localStorage.setItem(`reprush_plan_${data.workoutPlanId}`, JSON.stringify(list));
+          })
+          .catch(() => {
+            // Offline: reuse the plan we cached the last time it loaded.
+            const raw = localStorage.getItem(`reprush_plan_${data.workoutPlanId}`);
+            if (raw) { try { setPlanExercises(JSON.parse(raw)); } catch { /* ignore */ } }
+          });
       }
-      if (r.data?.workoutType) {
-        workoutsApi.getSuggestion(r.data.workoutType).then((sr) => setSuggestion(sr.data)).catch(() => {});
+      if (data?.workoutType) {
+        workoutsApi.getLastValues(data.workoutType)
+          .then((sr) => {
+            setLastValues(sr.data?.exercises || {});
+            localStorage.setItem(`reprush_last_${data.workoutType}`, JSON.stringify(sr.data?.exercises || {}));
+          })
+          .catch(() => {
+            const raw = localStorage.getItem(`reprush_last_${data.workoutType}`);
+            if (raw) { try { setLastValues(JSON.parse(raw)); } catch { /* ignore */ } }
+          });
       }
-    });
-    usersApi.getProfile().then((r) => { if (r.data.weightKg) setUserWeight(r.data.weightKg); }).catch(() => {});
-  }, [sessionId, router, loadSets]);
+    };
+
+    workoutsApi.getSession(sessionId)
+      .then((r) => {
+        if (r.data?.completedAt) { router.replace('/workout'); return; }
+        loadSets(r.data);
+        hydrate(r.data);
+      })
+      .catch(() => {
+        // No connection — run the session entirely from the local cache.
+        const cached = getCachedSession(sessionId);
+        if (cached) { rerender(); hydrate(cached); }
+      });
+  }, [sessionId, router, loadSets, rerender]);
 
   useEffect(() => {
     let t: ReturnType<typeof setInterval>;
@@ -100,19 +139,18 @@ export default function SessionPage() {
   const byExercise = group(working);
   const warmByExercise = group(warm);
 
-  // First session of an exercise → baseline; 2nd+ → progression suggestion. Always a hint.
-  const hintWeight = (ex: PlanExercise): number => {
-    const sug = suggestion?.suggestions?.[ex.name];
-    if (sug?.weightKg) return sug.weightKg;
-    if (ex.baselineWeight) return ex.baselineWeight;
-    if (ex.bwMultiplier) return round25(userWeight * ex.bwMultiplier);
-    return 0;
+  // Ghost values are last session's actual numbers for this exact set — nothing
+  // is predicted, incremented, or scaled by body weight. Set N ghosts set N; if
+  // last session had fewer sets, fall back to its final set.
+  const lastSetFor = (ex: PlanExercise, setNumber: number): LastSet | undefined => {
+    const prev = lastValues[ex.name]?.sets;
+    if (!prev?.length) return undefined;
+    return prev.find((s) => s.setNumber === setNumber) || prev[prev.length - 1];
   };
-  const hintReps = (ex: PlanExercise): number => {
-    const sug = suggestion?.suggestions?.[ex.name];
-    if (sug?.reps) return sug.reps;
-    return parseInt(firstNum(ex.reps)) || 0;
-  };
+  const ghostWeight = (ex: PlanExercise, setNumber: number): number =>
+    lastSetFor(ex, setNumber)?.weightKg ?? ex.baselineWeight ?? 0;
+  const ghostReps = (ex: PlanExercise, setNumber: number): number =>
+    lastSetFor(ex, setNumber)?.reps ?? parseInt(firstNum(ex.reps)) ?? 0;
 
   const getInp = (key: string, field: 'weight' | 'reps', fallback: string) => inputs[key]?.[field] ?? fallback;
   const setInp = (key: string, field: 'weight' | 'reps', value: string) =>
@@ -131,18 +169,18 @@ export default function SessionPage() {
   const exSlots = (ex: PlanExercise): WSlot[] => {
     const logged = byExercise[ex.name] || [];
     const total = exTotal(ex);
-    const hw = hintWeight(ex), hr = hintReps(ex);
     const out: WSlot[] = [];
     for (let i = 0; i < total; i++) {
       const setNumber = i + 1;
-      if (i < logged.length) out.push({ type: 'logged', set: logged[i], setNumber });
-      else out.push({
+      if (i < logged.length) { out.push({ type: 'logged', set: logged[i], setNumber }); continue; }
+      const gw = ghostWeight(ex, setNumber), gr = ghostReps(ex, setNumber);
+      out.push({
         type: 'pending', setNumber,
         weight: getInp(`W:${ex.name}:${setNumber}`, 'weight', ''),
         reps: getInp(`W:${ex.name}:${setNumber}`, 'reps', ''),
         target: parseInt(firstNum(ex.reps)) || undefined,
-        phW: hw ? String(hw) : 'kg',
-        phR: hr ? String(hr) : 'reps',
+        phW: gw ? String(gw) : 'kg',
+        phR: gr ? String(gr) : 'reps',
       });
     }
     return out;
@@ -180,7 +218,17 @@ export default function SessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [planExercises, sets]);
 
-  const refresh = async () => { const fresh = await workoutsApi.getSession(sessionId); loadSets(fresh.data); return fresh.data; };
+  /** Pull the server's view when we can; otherwise keep rendering locally. */
+  const refresh = async () => {
+    try {
+      const fresh = await workoutsApi.getSession(sessionId);
+      loadSets(fresh.data);
+      return fresh.data;
+    } catch {
+      rerender();
+      return { sets: materializeSets(sessionId) };
+    }
+  };
   const advanceFrom = (data: any) => {
     const next = planExercises.find((e) => ((data.sets || []).filter((s: any) => s.exerciseName === e.name && !s.isWarmup).length) < e.sets);
     if (next) setExpanded(next.name);
@@ -189,14 +237,15 @@ export default function SessionPage() {
   const logWorking = async (ex: PlanExercise, slot: Extract<WSlot, { type: 'pending' }>) => {
     const w = parseFloat(slot.weight || slot.phW), r = parseInt(slot.reps || slot.phR);
     if (!w || !r) return;
-    const sug = parseFloat(slot.phW); // the hint we showed — recorded for accuracy analysis
-    try {
-      await workoutsApi.logSet(sessionId, { exerciseName: ex.name, setNumber: slot.setNumber, actualReps: r, weightKg: w, targetReps: slot.target, isWarmup: false, suggestedWeight: isNaN(sug) ? undefined : sug });
-      const data = await refresh();
-      setTimer(0); setTimerActive(true);
-      const done = (data.sets || []).filter((s: any) => s.exerciseName === ex.name && !s.isWarmup).length;
-      if (done >= exTotal(ex)) advanceFrom(data);
-    } catch (e) { console.error(e); }
+    // Queue first so the set is never lost, then sync opportunistically.
+    queueLogSet(sessionId, { exerciseName: ex.name, setNumber: slot.setNumber, actualReps: r, weightKg: w, targetReps: slot.target, isWarmup: false });
+    rerender();
+    setTimer(0); setTimerActive(true);
+    const local = materializeSets(sessionId);
+    const done = local.filter((s) => s.exerciseName === ex.name && !s.isWarmup).length;
+    if (done >= exTotal(ex)) advanceFrom({ sets: local });
+    await flushOutbox();
+    await refresh();
   };
 
   const logWarmup = async (ex: PlanExercise, slot: Extract<USlot, { type: 'pending' }>) => {
@@ -204,10 +253,10 @@ export default function SessionPage() {
     if (!r) return;
     const wRaw = slot.weight !== '' ? parseFloat(slot.weight) : parseFloat(slot.phW);
     const w = isNaN(wRaw) ? 0 : wRaw; // warm-ups may be bodyweight / empty machine
-    try {
-      await workoutsApi.logSet(sessionId, { exerciseName: ex.name, setNumber: slot.setNumber, actualReps: r, weightKg: w, isWarmup: true });
-      await refresh();
-    } catch (e) { console.error(e); }
+    queueLogSet(sessionId, { exerciseName: ex.name, setNumber: slot.setNumber, actualReps: r, weightKg: w, isWarmup: true });
+    rerender();
+    await flushOutbox();
+    await refresh();
   };
 
   const logNext = async () => {
@@ -221,22 +270,23 @@ export default function SessionPage() {
     const ex = planExercises.find((e) => e.name === expanded);
     if (!ex) return;
     const pend = exSlots(ex).filter((s) => s.type === 'pending') as Extract<WSlot, { type: 'pending' }>[];
-    try {
-      for (const s of pend) {
-        const w = parseFloat(s.weight || s.phW), r = parseInt(s.reps || s.phR);
-        if (!w || !r) continue;
-        const sug = parseFloat(s.phW);
-        await workoutsApi.logSet(sessionId, { exerciseName: ex.name, setNumber: s.setNumber, actualReps: r, weightKg: w, targetReps: s.target, isWarmup: false, suggestedWeight: isNaN(sug) ? undefined : sug });
-      }
-      const data = await refresh();
-      setTimer(0); setTimerActive(true);
-      advanceFrom(data);
-    } catch (e) { console.error(e); }
+    for (const s of pend) {
+      const w = parseFloat(s.weight || s.phW), r = parseInt(s.reps || s.phR);
+      if (!w || !r) continue;
+      queueLogSet(sessionId, { exerciseName: ex.name, setNumber: s.setNumber, actualReps: r, weightKg: w, targetReps: s.target, isWarmup: false });
+    }
+    rerender();
+    setTimer(0); setTimerActive(true);
+    advanceFrom({ sets: materializeSets(sessionId) });
+    await flushOutbox();
+    await refresh();
   };
 
-  const deleteSet = async (setId?: number) => {
-    if (!setId) return;
-    try { await workoutsApi.deleteSet(setId); await refresh(); } catch (e) { console.error(e); }
+  const deleteSet = async (set: SetLog) => {
+    queueDeleteSet(sessionId, set);
+    rerender();
+    await flushOutbox();
+    await refresh();
   };
 
   const addSetSlot = (name: string) => setAddedSlots((p) => ({ ...p, [name]: (p[name] || 0) + 1 }));
@@ -245,18 +295,20 @@ export default function SessionPage() {
     const w = parseFloat(extra.weight), r = parseInt(extra.reps);
     if (!extra.name || !w || !r) return;
     const setNum = (byExercise[extra.name.trim()]?.length || 0) + 1;
-    try {
-      await workoutsApi.logSet(sessionId, { exerciseName: extra.name.trim(), setNumber: setNum, actualReps: r, weightKg: w, isWarmup: false });
-      await refresh();
-      setExtra({ name: '', weight: '', reps: '' });
-    } catch (e) { console.error(e); }
+    queueLogSet(sessionId, { exerciseName: extra.name.trim(), setNumber: setNum, actualReps: r, weightKg: w, isWarmup: false });
+    rerender();
+    setExtra({ name: '', weight: '', reps: '' });
+    await flushOutbox();
+    await refresh();
   };
 
   const completeSession = async () => {
     if (!working.length) return;
     setCompleting(true);
-    try { await workoutsApi.completeSession(sessionId, notes); router.replace(`/workout/summary/${sessionId}`); }
-    catch (e) { console.error(e); } finally { setCompleting(false); }
+    queueCompleteSession(sessionId, notes);
+    await flushOutbox();
+    setCompleting(false);
+    router.replace(`/workout/summary/${sessionId}`);
   };
   const abandonSession = async () => {
     if (!confirmAbandon) { setConfirmAbandon(true); return; }
@@ -332,7 +384,7 @@ export default function SessionPage() {
                 </span>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-sm truncate">{ex.name}</p>
-                  {!open && <p className="text-[11px] text-muted-foreground nums">Target {ex.sets} × {ex.reps}{ex.estimatedLoad ? ` · ${ex.estimatedLoad}` : ''}</p>}
+                  {!open && <p className="text-[11px] text-muted-foreground nums">Target {ex.sets} × {ex.reps}</p>}
                 </div>
                 <span className={`text-xs font-medium nums flex-shrink-0 ${complete ? 'text-success' : 'text-muted-foreground'}`}>{done}/{total} Done</span>
               </button>
@@ -363,8 +415,8 @@ export default function SessionPage() {
                           ) : (
                             <div className="space-y-1">
                               {wslots.map((slot) => slot.type === 'logged' ? (
-                                <div key={`wl-${slot.set.id ?? slot.setNumber}`} className="flex items-center gap-2.5 py-1">
-                                  <button onClick={() => deleteSet(slot.set.id)} title="Remove warm-up"
+                                <div key={`wl-${slot.set.localId}`} className="flex items-center gap-2.5 py-1">
+                                  <button onClick={() => deleteSet(slot.set)} title="Remove warm-up"
                                     className="w-5 h-5 rounded-full bg-volt-400/25 text-volt-500 flex items-center justify-center flex-shrink-0 hover:bg-destructive/20 hover:text-destructive transition-colors">
                                     <Check size={12} />
                                   </button>
@@ -402,7 +454,7 @@ export default function SessionPage() {
                       {/* Working sets */}
                       <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-2 nums">
                         <span>Working · {ex.sets} × {ex.reps} reps</span>
-                        {ex.estimatedLoad ? <span className="text-volt-400/80">est. {ex.estimatedLoad}</span> : ex.rest ? <span>{ex.rest}s rest</span> : null}
+                        {ex.rest ? <span>{ex.rest}s rest</span> : null}
                       </div>
 
                       <div className="space-y-1">
@@ -410,10 +462,10 @@ export default function SessionPage() {
                           if (slot.type === 'logged') {
                             const s = slot.set;
                             return (
-                              <motion.div key={`l-${s.id ?? s.setNumber}`} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }}
+                              <motion.div key={`l-${s.localId}`} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }}
                                 className="flex items-center gap-2.5 py-1.5">
-                                <button onClick={() => deleteSet(s.id)} title="Remove set"
-                                  className="w-6 h-6 rounded-full bg-success/20 text-success flex items-center justify-center flex-shrink-0 hover:bg-destructive/20 hover:text-destructive transition-colors">
+                                <button onClick={() => deleteSet(s)} title={s.pending ? 'Saved on this device — remove' : 'Remove set'}
+                                  className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 transition-colors hover:bg-destructive/20 hover:text-destructive ${s.pending ? 'bg-volt-400/20 text-volt-400' : 'bg-success/20 text-success'}`}>
                                   <Check size={14} />
                                 </button>
                                 <span className="w-4 text-center text-xs text-muted-foreground nums">{s.setNumber}</span>
@@ -421,7 +473,9 @@ export default function SessionPage() {
                                   <div className="rounded-lg bg-secondary/50 py-1.5 text-center text-sm font-semibold nums">{s.weightKg}<span className="text-[10px] text-muted-foreground ml-1">KG</span></div>
                                   <div className="rounded-lg bg-secondary/50 py-1.5 text-center text-sm font-semibold nums">{s.actualReps}<span className="text-[10px] text-muted-foreground ml-1">Reps</span></div>
                                 </div>
-                                <span className="text-[10px] text-muted-foreground w-12 text-right nums">~{epley1RM(s.weightKg, s.actualReps)}</span>
+                                <span className="text-[10px] text-muted-foreground w-12 text-right nums">
+                                  {s.pending ? <CloudOff size={11} className="inline text-volt-400/70" /> : `~${epley1RM(s.weightKg, s.actualReps)}`}
+                                </span>
                               </motion.div>
                             );
                           }
@@ -477,10 +531,10 @@ export default function SessionPage() {
             </div>
             <div className="space-y-1">
               {byExercise[name].map((s) => (
-                <div key={s.id ?? s.setNumber} className="flex items-center gap-2.5 py-1 nums text-sm">
+                <div key={s.localId} className="flex items-center gap-2.5 py-1 nums text-sm">
                   <span className="w-4 text-center text-xs text-muted-foreground">{s.setNumber}</span>
                   <span className="flex-1 font-semibold">{s.weightKg} kg × {s.actualReps}</span>
-                  <button onClick={() => deleteSet(s.id)} className="text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={13} /></button>
+                  <button onClick={() => deleteSet(s)} className="text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={13} /></button>
                 </div>
               ))}
             </div>

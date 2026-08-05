@@ -2,8 +2,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Trophy, Dumbbell, Clock, Layers, TrendingUp, TrendingDown, Home, Flame } from 'lucide-react';
+import { Trophy, Dumbbell, Clock, Layers, TrendingUp, TrendingDown, Home, Flame, CloudOff } from 'lucide-react';
 import { workoutsApi } from '@/lib/api';
+import { pendingCount, resolveSessionId, flushOutbox } from '@/lib/offline';
 import { PageTransition, Stagger, Item } from '@/components/ui/motion-primitives';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,12 +22,42 @@ export default function SessionSummaryPage() {
   const router = useRouter();
   const [d, setD] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [unsynced, setUnsynced] = useState(false);
 
   useEffect(() => {
-    workoutsApi.getSessionSummary(parseInt(id)).then((r) => setD(r.data)).catch(() => {}).finally(() => setLoading(false));
+    const load = () =>
+      workoutsApi.getSessionSummary(resolveSessionId(parseInt(id)))
+        .then((r) => { setD(r.data); setUnsynced(false); })
+        .catch(() => setUnsynced(pendingCount() > 0 || !navigator.onLine))
+        .finally(() => setLoading(false));
+
+    // A session finished offline has nothing to summarise server-side yet, so
+    // try to drain the outbox first and then read the real summary.
+    void flushOutbox().then(load);
   }, [id]);
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="loader-ring" /></div>;
+
+  // Completed with no connection: reassure rather than dead-end on "not found".
+  if (!d && unsynced) {
+    return (
+      <PageTransition className="max-w-lg mx-auto pb-8">
+        <div className="text-center pt-10">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-volt-400/15 text-volt-400 flex items-center justify-center mb-3">
+            <CloudOff size={28} />
+          </div>
+          <h1 className="text-xl font-display font-bold">Session saved on this device</h1>
+          <p className="text-sm text-muted-foreground mt-2 max-w-xs mx-auto">
+            You finished this workout offline. Nothing is lost — it uploads automatically
+            the moment you&apos;re back online, and the full summary appears then.
+          </p>
+          <Button className="mt-6" onClick={() => router.push('/workout')}>
+            <Home size={16} /> Back to workouts
+          </Button>
+        </div>
+      </PageTransition>
+    );
+  }
   if (!d) return <div className="text-center py-20 text-muted-foreground">Summary not found.</div>;
 
   return (

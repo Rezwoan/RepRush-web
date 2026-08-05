@@ -14,6 +14,9 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 import { Public, CurrentUser } from './decorators';
 import { User } from '../users/user.entity';
 
+/** Keep in step with JWT_EXPIRY (30d) so the cookie doesn't expire before the token. */
+const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
 @Controller('auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
@@ -31,7 +34,7 @@ export class AuthController {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxAge: SESSION_MAX_AGE_MS,
     });
     return result;
   }
@@ -48,7 +51,7 @@ export class AuthController {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: SESSION_MAX_AGE_MS,
     });
     return result;
   }

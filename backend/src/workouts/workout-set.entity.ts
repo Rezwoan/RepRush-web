@@ -38,8 +38,9 @@ export class WorkoutSet {
   @Column({ default: false })
   isWarmup: boolean;
 
-  // The weight the estimator suggested when this set was logged (hint shown to
-  // the user). Captured for accuracy analysis; null for warm-ups / off-plan.
+  // DEPRECATED — the weight estimator was removed; nothing reads or writes this.
+  // Kept only so `synchronize: true` doesn't rebuild the workout_set table (and
+  // risk live training history) just to drop an unused nullable column.
   @Column({ type: 'real', nullable: true })
   suggestedWeight: number;
 

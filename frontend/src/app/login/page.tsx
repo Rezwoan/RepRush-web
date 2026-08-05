@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AlertCircle, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { authApi } from '@/lib/api';
+import { setToken } from '@/lib/token';
 import { Logo } from '@/components/ui/logo';
 import { Button } from '@/components/ui/button';
 import { spring } from '@/lib/motion';
@@ -52,9 +53,7 @@ function LoginContent() {
     setSubmitting(true);
     try {
       const res = await authApi.activate(inviteToken!, newPassword);
-      if (typeof window !== 'undefined' && res.data.token) {
-        sessionStorage.setItem('reprush_token', res.data.token);
-      }
+      if (res.data.token) setToken(res.data.token);
       router.replace('/dashboard');
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Activation failed. Link may have expired.');

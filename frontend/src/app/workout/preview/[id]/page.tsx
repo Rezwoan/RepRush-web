@@ -3,22 +3,25 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Dumbbell, ChevronLeft, Play, Clock, Target, RotateCcw, Flame } from 'lucide-react';
-import { exercisesApi, workoutsApi, usersApi } from '@/lib/api';
+import { exercisesApi, workoutsApi } from '@/lib/api';
 import { PageTransition, Stagger, Item } from '@/components/ui/motion-primitives';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { spring } from '@/lib/motion';
+import { formatDate } from '@/lib/utils';
+import { queueStartSession } from '@/lib/offline';
 
 interface Exercise {
   name: string;
   sets: number;
   reps: string;
-  bwMultiplier: number;
   rest: number;
   notes?: string;
   warmUpSets?: string[];
-  estimatedLoad?: string;
 }
+
+/** Last session's working sets for one exercise, in set order. */
+interface LastSet { setNumber: number; weightKg: number; reps: number; }
 
 export default function WorkoutPreviewPage() {
   const { id } = useParams<{ id: string }>();
@@ -26,15 +29,22 @@ export default function WorkoutPreviewPage() {
   const planId = parseInt(id);
 
   const [plan, setPlan] = useState<any>(null);
-  const [userWeight, setUserWeight] = useState<number>(75);
+  const [lastValues, setLastValues] = useState<Record<string, { sets: LastSet[] }>>({});
+  const [lastDate, setLastDate] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([
-      exercisesApi.getPlan(planId).then((r) => setPlan(r.data)),
-      usersApi.getProfile().then((r) => { if (r.data.weightKg) setUserWeight(r.data.weightKg); }),
-    ]).finally(() => setLoading(false));
+    exercisesApi.getPlan(planId)
+      .then((r) => {
+        setPlan(r.data);
+        if (r.data?.name) {
+          return workoutsApi.getLastValues(r.data.name)
+            .then((lv) => { setLastValues(lv.data?.exercises || {}); setLastDate(lv.data?.basedOn || null); })
+            .catch(() => {});
+        }
+      })
+      .finally(() => setLoading(false));
   }, [planId]);
 
   const startSession = async () => {
@@ -42,14 +52,20 @@ export default function WorkoutPreviewPage() {
     try {
       const res = await workoutsApi.startSession(plan.name, planId);
       router.push(`/workout/session/${res.data.id}`);
-    } catch (e) { console.error(e); setStarting(false); }
+    } catch {
+      // No connection — start locally under a temporary id. The outbox creates
+      // the real session on the server as soon as we're back online.
+      const tempId = queueStartSession(plan.name, planId);
+      router.push(`/workout/session/${tempId}`);
+    }
   };
 
-  const getStartWeight = (ex: Exercise): string => {
-    if (ex.estimatedLoad) return ex.estimatedLoad;
-    if (!ex.bwMultiplier || ex.bwMultiplier === 0) return 'Bodyweight';
-    const rounded = Math.round((userWeight * ex.bwMultiplier) / 2.5) * 2.5;
-    return `${rounded} kg`;
+  // What you actually lifted last time — a lookup, not an estimate.
+  const getLastWeight = (ex: Exercise): string | null => {
+    const prev = lastValues[ex.name]?.sets;
+    if (!prev?.length) return null;
+    const top = Math.max(...prev.map((s) => s.weightKg));
+    return top > 0 ? `${top} kg last time` : 'Bodyweight last time';
   };
   const warmCount = (ex: Exercise) =>
     (ex.warmUpSets || []).filter((w) => /x/i.test(w)).length;
@@ -73,17 +89,19 @@ export default function WorkoutPreviewPage() {
         </div>
       </div>
 
-      <Item standalone className="mb-5">
-        <div className="flex items-start gap-3 rounded-2xl border border-brand-500/20 bg-brand-500/[0.07] p-3.5">
-          <span className="w-9 h-9 bg-brand-500/15 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5">
-            <Target size={15} className="text-brand-400" />
-          </span>
-          <div>
-            <p className="text-sm text-brand-200 font-medium">Weights scaled to your bodyweight</p>
-            <p className="text-xs text-brand-400/70">Based on {userWeight} kg — update it in your profile for sharper targets</p>
+      {lastDate && (
+        <Item standalone className="mb-5">
+          <div className="flex items-start gap-3 rounded-2xl border border-brand-500/20 bg-brand-500/[0.07] p-3.5">
+            <span className="w-9 h-9 bg-brand-500/15 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Target size={15} className="text-brand-400" />
+            </span>
+            <div>
+              <p className="text-sm text-brand-200 font-medium">Showing what you lifted last time</p>
+              <p className="text-xs text-brand-400/70">From your session on {formatDate(lastDate)} — the numbers carry over as you log.</p>
+            </div>
           </div>
-        </div>
-      </Item>
+        </Item>
+      )}
 
       <Stagger className="space-y-3 mb-6">
         {exercises.map((ex, i) => (
@@ -95,7 +113,7 @@ export default function WorkoutPreviewPage() {
               </div>
               <div className="flex flex-wrap gap-2 ml-9">
                 <span className="text-xs bg-secondary text-foreground px-2.5 py-1 rounded-lg font-medium nums">{ex.sets} sets × {ex.reps} reps</span>
-                <span className="text-xs bg-volt-400/15 text-volt-400 px-2.5 py-1 rounded-lg font-medium nums">{getStartWeight(ex)}</span>
+                {getLastWeight(ex) && <span className="text-xs bg-volt-400/15 text-volt-400 px-2.5 py-1 rounded-lg font-medium nums">{getLastWeight(ex)}</span>}
                 {warmCount(ex) > 0 && <span className="text-xs bg-brand-500/10 text-brand-300 px-2.5 py-1 rounded-lg font-medium nums flex items-center gap-1"><Flame size={10} />{warmCount(ex)} warm-up{warmCount(ex) > 1 ? 's' : ''}</span>}
                 {ex.rest && <span className="text-xs text-muted-foreground flex items-center gap-1 nums"><Clock size={10} />{ex.rest}s rest</span>}
               </div>

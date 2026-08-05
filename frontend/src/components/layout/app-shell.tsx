@@ -4,6 +4,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import Sidebar from './sidebar';
 import MobileNav from './mobile-nav';
+import OfflineBanner from './offline-banner';
 import { BrandLoader } from '@/components/ui/motion-primitives';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -33,6 +34,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <main className="flex-1 overflow-y-auto px-4 py-5 lg:px-8 lg:py-7 pb-24 lg:pb-8">
+          <OfflineBanner />
           {children}
         </main>
 

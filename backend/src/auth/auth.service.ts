@@ -33,7 +33,7 @@ export class AuthService {
 
     const payload = { sub: user.id, email: user.email, role: user.role };
     const token = this.jwtService.sign(payload, {
-      expiresIn: this.config.get('JWT_EXPIRY') || '7d',
+      expiresIn: this.config.get('JWT_EXPIRY') || '30d',
     });
 
     return { token, user: this.sanitize(user) };
@@ -48,7 +48,7 @@ export class AuthService {
 
     const payload = { sub: user.id, email: user.email, role: user.role };
     const jwtToken = this.jwtService.sign(payload, {
-      expiresIn: this.config.get('JWT_EXPIRY') || '7d',
+      expiresIn: this.config.get('JWT_EXPIRY') || '30d',
     });
 
     return { token: jwtToken, user: this.sanitize(user) };

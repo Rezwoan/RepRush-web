@@ -31,6 +31,11 @@ export class WorkoutsController {
     return this.workoutsService.getUserSessions(user.id);
   }
 
+  @Get('sessions/history')
+  getSessionHistory(@CurrentUser() user: User) {
+    return this.workoutsService.getSessionHistory(user.id);
+  }
+
   @Get('sessions/:id')
   getSession(@CurrentUser() user: User, @Param('id', ParseIntPipe) id: number) {
     return this.workoutsService.getSession(id, user.id);
@@ -75,10 +80,10 @@ export class WorkoutsController {
   logSet(
     @CurrentUser() user: User,
     @Param('id', ParseIntPipe) sessionId: number,
-    @Body() body: { exerciseName: string; setNumber: number; actualReps: number; weightKg: number; targetReps?: number; isWarmup?: boolean; suggestedWeight?: number },
+    @Body() body: { exerciseName: string; setNumber: number; actualReps: number; weightKg: number; targetReps?: number; isWarmup?: boolean },
   ) {
     return this.workoutsService.logSet(
-      sessionId, user.id, body.exerciseName, body.setNumber, body.actualReps, body.weightKg, body.targetReps, body.isWarmup, body.suggestedWeight,
+      sessionId, user.id, body.exerciseName, body.setNumber, body.actualReps, body.weightKg, body.targetReps, body.isWarmup,
     );
   }
 
@@ -101,9 +106,9 @@ export class WorkoutsController {
     return this.workoutsService.createPR(user.id, body.exerciseType, body.weightKg, body.reps, body.date, body.season);
   }
 
-  // Progressive overload suggestion
-  @Get('suggest/:workoutType')
-  getSuggestion(@CurrentUser() user: User, @Param('workoutType') workoutType: string) {
-    return this.workoutsService.suggestNextSession(user.id, workoutType);
+  // Last session's actual numbers, shown as ghost values in the logging fields.
+  @Get('last-values/:workoutType')
+  getLastValues(@CurrentUser() user: User, @Param('workoutType') workoutType: string) {
+    return this.workoutsService.getLastSessionValues(user.id, workoutType);
   }
 }

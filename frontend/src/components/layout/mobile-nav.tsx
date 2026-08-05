@@ -10,7 +10,7 @@ const navItems = [
   { href: '/dashboard', label: 'Home', icon: LayoutDashboard },
   { href: '/workout', label: 'Workout', icon: Dumbbell },
   { href: '/leaderboard', label: 'Board', icon: Trophy },
-  { href: '/achievements', label: 'Progress', icon: TrendingUp },
+  { href: '/progress', label: 'Progress', icon: TrendingUp },
   { href: '/profile', label: 'Profile', icon: User },
 ];
 

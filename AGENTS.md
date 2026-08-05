@@ -54,7 +54,27 @@ The frontend calls `process.env.NEXT_PUBLIC_API_URL + '/api'`. In production thi
 so requests go to `https://reprush.rezwoan.codes/api/...` which nginx proxies to `:3101`.
 Do not hardcode `localhost` in frontend code or change `frontend/src/lib/api.ts` baseURL logic.
 
-### 5. Never commit `.env` files
+### 5. Workout writes go through the offline outbox, not straight to the API
+`frontend/src/lib/offline.ts` is the write path for a workout session. Logging a set,
+deleting one, starting a session and completing one all **enqueue** to a localStorage
+outbox first, then flush opportunistically; the UI renders a cached server snapshot with
+queued writes applied on top (`materializeSets`). This is what lets someone finish a
+workout with no signal in the gym. When touching the session page:
+- Never call `workoutsApi.logSet` / `deleteSet` / `completeSession` directly from a
+  component — queue it, or an offline user silently loses the set.
+- Sessions started offline get a **negative temporary id** that is remapped to the real
+  server id on sync (`resolveSessionId`). Anything keying off a session id must resolve it.
+- `auth-context` falls back to the cached profile when `/auth/me` fails for network
+  reasons (only 401/403 signs the user out) — otherwise opening the app offline would
+  bounce to `/login` and defeat the whole thing.
+
+### 6. Ghost values are a lookup, never a prediction
+The old progressive-overload estimator (and its body-weight scaling) was removed. The
+placeholder weights/reps in the logging fields come from `GET /workouts/last-values/:type`,
+which returns exactly what the user lifted for that set last session. Do not reintroduce
+increments, completion-rate scaling, or body-weight multiples.
+
+### 7. Never commit `.env` files
 `.env` / `.env.local` are gitignored (JWT secret, Resend key, admin password). The Pi keeps
 its own copies at `/var/www/reprush/backend/.env` and `/var/www/reprush/frontend/.env.local`;
 they survive `git reset --hard` because they are untracked. If you add a new env var:
@@ -62,19 +82,19 @@ they survive `git reset --hard` because they are untracked. If you add a new env
 2. Document it in `DEPLOYMENT.md`
 3. Add the real value on the Pi manually, then restart the service.
 
-### 6. Database schema changes — be careful
+### 8. Database schema changes — be careful
 TypeORM `synchronize: true` auto-migrates on startup. Adding columns/tables/entities is safe.
 **Removing or renaming columns loses data.** If a change is destructive, back up first:
 ```bash
 ssh reezz@blackbox.local 'cp /var/www/reprush/backend/database/reprush.db ~/reprush-backup-$(date +%Y%m%d).db'
 ```
 
-### 7. Do not break CI/CD
+### 9. Do not break CI/CD
 `.github/workflows/deploy.yml` runs on the Pi runner (`runs-on: [self-hosted, reprush]`) and
 calls `/var/www/reprush/scripts/deploy.sh`. Don't change the runner label, and don't rewrite
 `scripts/deploy.sh` to use pm2/docker or `--omit=dev` (the backend build needs devDependencies).
 
-### 8. UI / functionality freeze unless asked
+### 10. UI / functionality freeze unless asked
 Treat the current UI and features as the contract. Make the smallest change that satisfies the
 request; don't refactor working components, rename props, or restyle pages as a side effect.
 
