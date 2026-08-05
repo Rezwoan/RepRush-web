@@ -14,15 +14,17 @@
 #
 # Usage (on the Pi):
 #   bash /var/www/reprush/scripts/pi-setup.sh
-# Bootstrap (first time, before the repo is cloned):
-#   curl -fsSL https://raw.githubusercontent.com/Rezwoan/RepRush-web/main/scripts/pi-setup.sh | bash
+# Bootstrap (first time, before the repo is cloned) — secrets come from the
+# environment on the first run only, never from this file:
+#   curl -fsSL https://raw.githubusercontent.com/Rezwoan/RepRush-web/main/scripts/pi-setup.sh \
+#     | RESEND_API_KEY=re_xxx ADMIN_PASSWORD=xxx bash
 # ============================================================
 set -euo pipefail
 
 REPO_URL="https://github.com/Rezwoan/RepRush-web.git"
 APP_DIR="/var/www/reprush"
 LOG_DIR="/var/log/reprush"
-DOMAIN="reprush.rezwoan.me"
+DOMAIN="reprush.rezwoan.codes"
 BACKEND_PORT=3101
 FRONTEND_PORT=3100
 USER_NAME="$(whoami)"
@@ -51,7 +53,12 @@ sudo chown -R "$USER_NAME:$USER_NAME" "$LOG_DIR"
 
 # ── 3. Env files (only created if missing — never overwrite secrets) ──
 echo "[3/8] Environment files"
+# Secrets are never hardcoded here (this repo is public). Supply them on the
+# first run only; afterwards backend/.env exists and is left untouched:
+#   RESEND_API_KEY=re_xxx ADMIN_PASSWORD=xxx bash scripts/pi-setup.sh
 if [ ! -f "$APP_DIR/backend/.env" ]; then
+  : "${RESEND_API_KEY:?required on first run — pass it in the environment, do not commit it}"
+  : "${ADMIN_PASSWORD:?required on first run — pass it in the environment, do not commit it}"
   JWT_SECRET="$(node -e "console.log(require('crypto').randomBytes(48).toString('hex'))")"
   cat > "$APP_DIR/backend/.env" <<EOF
 NODE_ENV=production
@@ -59,12 +66,13 @@ PORT=$BACKEND_PORT
 FRONTEND_URL=https://$DOMAIN
 JWT_SECRET=$JWT_SECRET
 JWT_EXPIRY=7d
-RESEND_API_KEY=re_KTufxzGR_4xAfbUCKJf7mwwE5M1zZudZu
-RESEND_FROM_EMAIL=RepRush <noreply@rezwoan.me>
+RESEND_API_KEY=$RESEND_API_KEY
+RESEND_FROM_EMAIL=RepRush <noreply@rezwoan.codes>
 ADMIN_EMAIL=frezwoan+reprush@gmail.com
-ADMIN_PASSWORD=RepRush@Admin2025
+ADMIN_PASSWORD=$ADMIN_PASSWORD
 EOF
-  echo "  created backend/.env (fresh JWT secret)"
+  chmod 600 "$APP_DIR/backend/.env"
+  echo "  created backend/.env (fresh JWT secret, mode 600)"
 else
   echo "  backend/.env exists — left untouched"
 fi

@@ -12,7 +12,7 @@ type MailPayload = {
   html: string;
 };
 
-const emailBase = (content: string, preheader = '', logoUrl = 'https://reprush.rezwoan.me/icon.png') => `
+const emailBase = (content: string, preheader = '', logoUrl = 'https://reprush.rezwoan.codes/icon.png') => `
 <!DOCTYPE html>
 <html>
 <head>
@@ -91,7 +91,7 @@ export class MailService {
   private readonly logoUrl: string;
 
   constructor(private config: ConfigService) {
-    this.logoUrl = (config.get<string>('FRONTEND_URL') || 'https://reprush.rezwoan.me') + '/icon.png';
+    this.logoUrl = (config.get<string>('FRONTEND_URL') || 'https://reprush.rezwoan.codes') + '/icon.png';
     const apiKey = config.get<string>('RESEND_API_KEY');
     if (apiKey && apiKey !== 're_xxxxxxxxxxxx') {
       this.resend = new Resend(apiKey);

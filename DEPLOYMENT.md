@@ -1,6 +1,6 @@
 # RepRush — Deployment Guide
 
-> **Live URL:** https://reprush.rezwoan.me
+> **Live URL:** https://reprush.rezwoan.codes
 > **Server:** Raspberry Pi 5 — `blackbox.local` (user `reezz`), app at `/var/www/reprush`
 > **CI/CD:** GitHub Actions → dedicated self-hosted runner on the Pi (label `reprush`)
 > **Repo:** https://github.com/Rezwoan/RepRush-web
@@ -16,8 +16,8 @@ Everything below is scoped to RepRush and is designed not to disturb them.
 Internet
   └── Cloudflare (DNS + TLS)
         └── Cloudflare Tunnel  (cloudflared, systemd — no port forwarding)
-              └── reprush.rezwoan.me → http://localhost:80
-                    └── nginx vhost (server_name reprush.rezwoan.me)
+              └── reprush.rezwoan.codes → http://localhost:80
+                    └── nginx vhost (server_name reprush.rezwoan.codes)
                           ├── /api/  → NestJS backend  (127.0.0.1:3101)
                           └── /      → Next.js frontend (127.0.0.1:3100)
 ```
@@ -56,10 +56,10 @@ Routing is via the existing Cloudflare Tunnel (`cloudflared`), not port forwardi
 
 ```bash
 # 1. Create the DNS record pointing the hostname at the tunnel
-cloudflared tunnel route dns 27a45beb-cb35-4793-ae4c-3ec398928907 reprush.rezwoan.me
+cloudflared tunnel route dns 27a45beb-cb35-4793-ae4c-3ec398928907 reprush.rezwoan.codes
 
 # 2. Add an ingress rule in /etc/cloudflared/config.yml, BEFORE the `- service: http_status:404` line:
-#      - hostname: reprush.rezwoan.me
+#      - hostname: reprush.rezwoan.codes
 #        service: http://localhost:80
 sudo nano /etc/cloudflared/config.yml
 
@@ -102,17 +102,17 @@ After this, every push to `main` runs `.github/workflows/deploy.yml` →
 |---|---|
 | `NODE_ENV` | `production` |
 | `PORT` | `3101` |
-| `FRONTEND_URL` | `https://reprush.rezwoan.me` |
+| `FRONTEND_URL` | `https://reprush.rezwoan.codes` |
 | `JWT_SECRET` | auto-generated 96-char hex (Pi only) |
 | `JWT_EXPIRY` | `7d` |
 | `RESEND_API_KEY` | Resend key for invite emails |
-| `RESEND_FROM_EMAIL` | `RepRush <noreply@rezwoan.me>` |
+| `RESEND_FROM_EMAIL` | `RepRush <noreply@rezwoan.codes>` |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | seeded admin account |
 
 ### Frontend — `/var/www/reprush/frontend/.env.local`
 | Variable | Value |
 |---|---|
-| `NEXT_PUBLIC_API_URL` | `https://reprush.rezwoan.me` (baked into the build) |
+| `NEXT_PUBLIC_API_URL` | `https://reprush.rezwoan.codes` (baked into the build) |
 
 > These live **only on the Pi**, are gitignored, and survive `git reset --hard`. Never commit them.
 > `PORT`/`NODE_ENV` are also set by systemd; dotenv won't override them, which is intended.

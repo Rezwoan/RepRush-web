@@ -67,7 +67,7 @@ Backend (NestJS + SQLite3):
 - Achievements: BW-based strength goals
 - Creatine tracker (multiple doses per day)
 - Admin panel: invite users, manage plans, compare charts
-- Email invitations via Resend (rezwon.me domain)
+- Email invitations via Resend (rezwoan.codes domain)
 
 Frontend (Next.js 14 PWA):
 - Dark theme, Tailwind CSS, mobile-first

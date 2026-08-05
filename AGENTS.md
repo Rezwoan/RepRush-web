@@ -7,7 +7,7 @@
 
 ## What This Project Is
 
-RepRush is a **live PWA** at https://reprush.rezwoan.me, deployed on a Raspberry Pi
+RepRush is a **live PWA** at https://reprush.rezwoan.codes, deployed on a Raspberry Pi
 (`blackbox.local`) that **also hosts other projects**. The CI/CD pipeline deploys
 automatically on every push to `main`. A broken build or a port/proxy mistake can take
 down RepRush **and** affect the other apps on that Pi.
@@ -50,8 +50,8 @@ everything else → frontend. Removing/altering the prefix breaks all API calls.
 
 ### 4. Keep the frontend↔backend URL contract
 The frontend calls `process.env.NEXT_PUBLIC_API_URL + '/api'`. In production this is
-`https://reprush.rezwoan.me` (set in `frontend/.env.local` on the Pi, baked in at build time),
-so requests go to `https://reprush.rezwoan.me/api/...` which nginx proxies to `:3101`.
+`https://reprush.rezwoan.codes` (set in `frontend/.env.local` on the Pi, baked in at build time),
+so requests go to `https://reprush.rezwoan.codes/api/...` which nginx proxies to `:3101`.
 Do not hardcode `localhost` in frontend code or change `frontend/src/lib/api.ts` baseURL logic.
 
 ### 5. Never commit `.env` files
