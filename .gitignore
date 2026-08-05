@@ -16,6 +16,15 @@ out/
 .env.test.local
 .env.production.local
 
+# Backups/copies of env files — these hold real secrets, never commit them.
+# (Deliberately not `.env.*`, which would swallow the tracked .env.example.)
+.env.bak*
+.env.*.bak*
+.env.local.bak*
+*.env.bak*
+.env.save
+.env.orig
+
 # Database
 *.db
 *.db-shm
