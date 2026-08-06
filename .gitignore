@@ -30,6 +30,15 @@ out/
 *.db-shm
 *.db-wal
 backend/database/*.db
+*.db.bak-*
+
+# Design reference for the v2 rebuild — 25 MB of screenshots of a third-party app.
+# This repo is public, so they stay local. docs/v2/SPEC.md is the committed,
+# authoritative distillation of them; no session needs the images.
+inspiration/
+
+# Agent tooling
+.claude/
 
 # Logs
 npm-debug.log*

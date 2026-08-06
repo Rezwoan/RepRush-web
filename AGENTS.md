@@ -157,3 +157,30 @@ RepRush/  (→ /var/www/reprush on the Pi)
 ├── DEPLOYMENT.md                  ← full deployment guide
 └── AGENTS.md                      ← this file
 ```
+
+---
+
+## The v2 rebuild — read this before touching anything
+
+RepRush is being rebuilt (started 2026-08-06) into a gamified, rank-driven, social training app.
+That work happens on branch **`v2`**, deployed to a **completely separate stack** on the same Pi.
+Production is unaffected until the final cutover.
+
+| | Production | Dev (v2 rebuild) |
+|---|---|---|
+| Branch | `main` | `v2` |
+| URL | reprush.rezwoan.codes | dev-reprush.rezwoan.codes |
+| Dir | `/var/www/reprush` | `/var/www/reprush-dev` |
+| Ports | 3100 / 3101 | **3120 / 3121** |
+| Services | `reprush-backend`, `reprush-frontend` | `reprush-dev-backend`, `reprush-dev-frontend` |
+| nginx vhost | `reprush` | `reprush-dev` |
+| Deploy | `deploy.yml` → `scripts/deploy.sh` | `deploy-dev.yml` → `scripts/deploy-dev.sh` |
+
+Rules:
+- **Never commit v2 work to `main`.** Rule 10 (UI/functionality freeze) still governs `main`.
+- Never point a dev script at `/var/www/reprush` or restart a `reprush-*` (non-`dev`) service.
+- 3110/3111 belong to **ClassMate**, 3200/3201 to **hbd-samia**. Full port map: `MEMORY.md §2`.
+
+If you are working on v2, your entry point is **`SESSION_START.md`** at the repo root. It, plus
+`MEMORY.md`, `PROGRESS.md` and `docs/v2/SPEC.md`, is the complete handoff — you do not need to read
+the `inspiration/` screenshots.

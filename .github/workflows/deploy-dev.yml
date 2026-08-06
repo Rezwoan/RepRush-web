@@ -1,0 +1,20 @@
+name: Deploy DEV to Raspberry Pi
+
+on:
+  push:
+    branches: [v2]
+  workflow_dispatch:
+
+# Independent of the production deploy group, so a dev push never queues behind
+# or cancels a prod deploy (and vice versa).
+concurrency:
+  group: reprush-dev-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build & Deploy (dev)
+    runs-on: [self-hosted, reprush]
+    steps:
+      - name: Deploy
+        run: bash /var/www/reprush-dev/scripts/deploy-dev.sh
