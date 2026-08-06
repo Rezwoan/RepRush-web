@@ -20,7 +20,7 @@ import { GLYPHS, GLYPH_BOX, type GlyphId } from './game-icons';
 export const MEDAL_EMBLEMS = {
   bolt: 'bolt',
   flame: 'flame',
-  dumbbell: 'dumbbell',
+  dumbbell: 'weight',
   star: 'star',
   crown: 'crown',
   globe: 'globe',

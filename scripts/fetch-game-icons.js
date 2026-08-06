@@ -25,10 +25,19 @@ const ICONS = {
   wingedEmblem: 'lorc/winged-emblem',
   // ornament behind the top-tier crests
   angelWings: 'lorc/angel-wings',
+  // equipment glyphs — the exercise-row thumbnail and the picker's filter chips
+  // Chosen for silhouette at 17px, which is what these render at inside a boxed
+  // list row — `lorc/lever` and `delapouite/spring` both looked right at 64px
+  // and dissolved into hairlines at list size.
+  pulley: 'delapouite/pulley-hook',
+  gears: 'lorc/gears',
+  strongArms: 'lorc/strong',
+  coilSpring: 'delapouite/bouncing-spring',
+  metalDisc: 'lorc/metal-disc',
   // medal emblems
   bolt: 'lorc/power-lightning',
   flame: 'lorc/fluffy-flame',
-  dumbbell: 'delapouite/weight',
+  weight: 'delapouite/weight',
   star: 'lorc/beveled-star',
   crown: 'lorc/crown',
   globe: 'delapouite/wireframe-globe',

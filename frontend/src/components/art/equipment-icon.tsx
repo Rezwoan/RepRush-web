@@ -1,12 +1,20 @@
 'use client';
 /**
  * Equipment glyphs — one per equipment type, tinted by the exercise's primary
- * muscle group. This is the exercise-list thumbnail.
+ * muscle group. This is the exercise-row thumbnail and the picker's filter chip.
  *
- * Deliberately a glyph, not an illustrated figure: per-exercise artwork can't be
- * produced or licensed without the owner sourcing it, and 200 mismatched
- * clip-art figures would look worse than one consistent icon set.
+ * These are **filled** artwork from game-icons.net (CC BY 3.0), not stroked
+ * outlines. The first version was hand-drawn at 2px stroke in a 32×32 box and
+ * went spindly and characterless at the 17px these actually render at — solid
+ * shapes hold their silhouette all the way down, which is the whole job of an
+ * icon this small. See `MEMORY.md §9`: look for the asset before drawing one.
+ *
+ * The dumbbell is the single exception. game-icons has no dumbbell (checked the
+ * whole 4,239-icon index), so it is authored here in the same 512-unit filled
+ * idiom rather than dropping in a stroked icon from a second set and breaking
+ * the family.
  */
+import { GLYPHS, GLYPH_BOX, type GlyphId } from './game-icons';
 import { cn } from '@/lib/utils';
 import type { MuscleGroup } from '@/lib/muscles';
 
@@ -23,74 +31,31 @@ export const EQUIPMENT = [
 
 export type Equipment = (typeof EQUIPMENT)[number];
 
-/** Paths are authored in a 32×32 box, stroke-based so they stay crisp when small. */
-const GLYPH: Record<Equipment, React.ReactNode> = {
-  barbell: (
-    <>
-      <path d="M3 16h2M27 16h2" />
-      <rect x="5" y="11" width="3.5" height="10" rx="1.2" />
-      <rect x="23.5" y="11" width="3.5" height="10" rx="1.2" />
-      <rect x="9" y="13" width="2.5" height="6" rx="1" />
-      <rect x="20.5" y="13" width="2.5" height="6" rx="1" />
-      <path d="M11.5 16h9" />
-    </>
-  ),
-  dumbbell: (
-    <>
-      <rect x="4" y="10" width="4" height="12" rx="1.4" />
-      <rect x="24" y="10" width="4" height="12" rx="1.4" />
-      <rect x="8.5" y="12.5" width="3" height="7" rx="1" />
-      <rect x="20.5" y="12.5" width="3" height="7" rx="1" />
-      <path d="M11.5 16h9" />
-    </>
-  ),
-  cable: (
-    <>
-      <path d="M6 4h20" />
-      <path d="M16 4v9" />
-      <path d="M11 13h10l-1.5 5h-7z" />
-      <path d="M16 18v4" />
-      <rect x="10" y="22" width="12" height="4" rx="2" />
-    </>
-  ),
-  machine: (
-    <>
-      <path d="M6 27V7a3 3 0 0 1 3-3h6" />
-      <rect x="15" y="8" width="11" height="7" rx="2" />
-      <rect x="15" y="18" width="11" height="7" rx="2" />
-      <path d="M6 16h9" />
-    </>
-  ),
-  bodyweight: (
-    <>
-      <circle cx="16" cy="7" r="3.2" />
-      <path d="M16 11v8" />
-      <path d="M9 14h14" />
-      <path d="M16 19l-4 8M16 19l4 8" />
-    </>
-  ),
-  kettlebell: (
-    <>
-      <path d="M12 12a4 4 0 0 1 8 0" />
-      <path d="M11.5 12c-3 2-4.5 5.5-4.5 9a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3c0-3.5-1.5-7-4.5-9z" />
-    </>
-  ),
-  band: (
-    <>
-      <path d="M5 6c8 4 14 12 22 20" />
-      <path d="M5 6c-1 3 0 5 2 6" />
-      <path d="M27 26c1-3 0-5-2-6" />
-      <circle cx="16" cy="16" r="2.2" />
-    </>
-  ),
-  plate: (
-    <>
-      <circle cx="16" cy="16" r="11" />
-      <circle cx="16" cy="16" r="3.5" />
-      <path d="M16 5v3M16 24v3M5 16h3M24 16h3" />
-    </>
-  ),
+/**
+ * Everything but the dumbbell is a vendored glyph. `barbell` reuses the emblem
+ * the Unranked badge already carries — it is a barbell being pressed, which is
+ * exactly the picture, and a second copy of the same path data buys nothing.
+ */
+const VENDORED: Partial<Record<Equipment, GlyphId>> = {
+  barbell: 'lifting',
+  cable: 'pulley',
+  machine: 'gears',
+  bodyweight: 'strongArms',
+  kettlebell: 'weight',
+  band: 'coilSpring',
+  plate: 'metalDisc',
 };
+
+/** Hand-authored, in the vendored glyphs' 512-unit box so the weights match. */
+const DUMBBELL = (
+  <>
+    <rect x="34" y="138" width="62" height="236" rx="22" />
+    <rect x="416" y="138" width="62" height="236" rx="22" />
+    <rect x="106" y="178" width="40" height="156" rx="14" />
+    <rect x="366" y="178" width="40" height="156" rx="14" />
+    <rect x="146" y="226" width="220" height="60" rx="12" />
+  </>
+);
 
 /** Group tints, close enough to the Bodygraph's vocabulary to feel like one system. */
 const GROUP_TINT: Record<MuscleGroup, string> = {
@@ -119,21 +84,19 @@ export function EquipmentIcon({
   boxed = false,
 }: EquipmentIconProps) {
   const tint = group ? GROUP_TINT[group] : 'currentColor';
+  const vendored = VENDORED[equipment];
+
   const glyph = (
     <svg
-      width={boxed ? size * 0.62 : size}
-      height={boxed ? size * 0.62 : size}
-      viewBox="0 0 32 32"
-      fill="none"
-      stroke={tint}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
+      width={boxed ? size * 0.6 : size}
+      height={boxed ? size * 0.6 : size}
+      viewBox={`0 0 ${GLYPH_BOX} ${GLYPH_BOX}`}
+      fill={tint}
       className={cn('shrink-0', !boxed && className)}
       role="img"
       aria-label={equipment}
     >
-      {GLYPH[equipment]}
+      {vendored ? <path d={GLYPHS[vendored].d} /> : DUMBBELL}
     </svg>
   );
 
@@ -147,3 +110,16 @@ export function EquipmentIcon({
     </span>
   );
 }
+
+// ── self-check ────────────────────────────────────────────────────
+// A missing glyph renders as an empty box, which looks like a loading state
+// rather than a bug — so assert it instead of hoping someone notices.
+export const __selfcheck = () => {
+  for (const e of EQUIPMENT) {
+    if (e === 'dumbbell') continue; // authored above, not vendored
+    const id = VENDORED[e];
+    if (!id) throw new Error(`${e} has no equipment glyph`);
+    if (!GLYPHS[id]?.d) throw new Error(`${e} → missing vendored glyph ${id}`);
+  }
+  return `${EQUIPMENT.length} equipment glyphs ok`;
+};
