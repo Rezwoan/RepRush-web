@@ -14,7 +14,7 @@ https://dev-reprush.rezwoan.codes, and its exit check below is verified in the b
 | P2 | Data model & exercise catalog | **DONE** |
 | P3 | Rank engine | **DONE** |
 | P4 | Onboarding funnel | **DONE** |
-| P5 | Home tab | TODO |
+| P5 | Home tab | **DONE** |
 | P6 | Workout tab | TODO |
 | P7 | Ranks tab | TODO |
 | P9 | Friends & social | TODO |
@@ -226,17 +226,44 @@ Caught and fixed along the way (each has a note in `MEMORY.md §8`):
 
 ---
 
-## P5 — Home tab · `TODO`
+## P5 — Home tab · `DONE` (2026-08-07)
 
-- [ ] For You / Friends / Discovery sub-tabs
-- [ ] Today's Workout card (+ resume-session variant)
-- [ ] Recovery Zone card (Bodygraph + battery + status copy) — needs P3's fatigue model
-- [ ] Your Goal card + add-goal sheet (reuse v1 `goals/`)
-- [ ] Last 14 Workouts stat block (volume + sparkline + trend, duration/records/calories, bodyweight)
-- [ ] Discover 2×2 tile grid → Leaderboards, Social Feeds, Streak Calendar, Rank Calculator
-- [ ] Friends feed + Discovery feed shells (posts land in P9; render empty states now)
-- [ ] `GET /home/summary` — one endpoint, everything the tab needs, cached client-side
-- [ ] **Exit check:** Home renders fully for both a new account and an account with v1 history
+- [x] **The recovery model** (`backend/src/ranks/recovery.ts`) — the one piece of real new logic.
+      Fatigue is counted in *hard sets*, not kilograms, decaying exponentially with a size-scaled
+      48h–72h half-life. Boot self-check runs beside e1rm and standards.
+- [x] For You / Friends / Discovery sub-tabs
+- [x] Today's Workout card + resume-session variant. Until P6's generator exists the card names the
+      muscles that generator *would* pick — recovered and lowest-ranked — so it is honest rather
+      than a placeholder, and P6 inherits the shape.
+- [x] Recovery Zone card — Bodygraph tinted warm by fatigue, vertical battery, status pill, and a
+      sentence naming the fresh muscles
+- [x] Your Goal card + add-goal sheet (reuses v1 `goals/`) + log-bodyweight sheet
+- [x] Last 14 Workouts: volume + sparkline + trend label, duration / records / calories, bodyweight
+- [x] Discover 2×2 tile grid
+- [x] Friends + Discovery feed shells (posts land in P9)
+- [x] `GET /home/summary` — one call, cached in localStorage so the tab paints instantly and offline
+- [x] The v2 tab shell as a route group, so it does not collide with v1's `/workout` and `/profile`;
+      `/ranks` and `/friends` get honest placeholders so no tab 404s. `/` and the funnel land on
+      `/home`.
+- [x] **Exit check — verified on dev, in the browser and against the API:**
+      - A fresh account: readiness 100%, everything fresh, "Legs, Chest & Back" suggested, no goal.
+      - The same account after 6 squat sets: quads **0.69** fatigued, the secondaries (glutes,
+        hamstrings, lower back, calves) at **0.34**, readiness 86% / `ready`, quads correctly
+        excluded from the suggestion, streak **1**, records **1**, volume **6,460 kg**.
+      - Goal card, resume-session variant and the bodyweight sheet all render and round-trip.
+      - Home rendered in a browser: Bodygraph warm on the trained legs, battery at 86%, five tabs.
+
+Three real bugs, all caught before they shipped:
+- The boot self-check **refused to start the backend** — correctly. Chasing it down showed the
+  constant was wrong, not the assertion: six sets of squats read as 31% fatigued, so the app would
+  have offered you legs an hour after leg day. Capacity is no longer scaled by muscle size (the
+  half-life already models that) and is now *derived* from the two promises the model makes, so they
+  hold by construction.
+- `logSet` never wrote `exerciseId`, so **every newly logged set was invisible to ranks and
+  recovery**. P2 backfilled the history and then new rows went in the same broken way. Fixed once in
+  `logSet`, where every caller routes through.
+- The volume sparkline drew backwards — sessions finishing in the same second come back unordered,
+  so reversing the query's order was not the same as oldest-first.
 
 ---
 
@@ -578,3 +605,50 @@ apps installed on the repo and are not ours.
 
 The manual deploy script stays the fast path; it is not a fallback for a broken CI so much as the
 way to not wait half an hour.
+
+### 2026-08-07 — P5 complete, nutrition cut, second screenshot pass
+Home is live at `/home` behind the v2 tab shell, driven by one `GET /home/summary`.
+
+The real work was the **recovery model**. Fatigue is counted in hard sets rather than kilograms —
+100 kg × 5 on a squat and 20 kg × 10 on a lateral raise are similar work for the muscle and wildly
+different numbers, so a volume model needs a per-exercise normaliser, which is exactly the thing
+that would have to be tuned across 873 exercises. A set needs no normalising. It decays
+exponentially with a size-scaled 48–72h half-life.
+
+**Its boot self-check refused to start the service, and was right to.** The first constants had six
+sets of squats reading 31% fatigued — the app would have offered you legs an hour after leg day.
+The fix was not to relax the assertion: capacity stopped being scaled by muscle size (the half-life
+already models the size difference, and scaling both put the two calibration targets on a knife
+edge — six sets of curls landed *exactly* on the fresh threshold and the check failed on the
+boundary twice), and is now derived from the two promises the model makes so they hold by
+construction. The self-check asserts those promises for every muscle size instead of one magic
+number.
+
+Two more real bugs: `logSet` never wrote `exerciseId`, so every newly logged set was invisible to
+both ranks and recovery — P2 backfilled the history and then new rows went in the same broken way.
+And a deploy reported **`✓ success` while the backend crash-looped**: `curl -w %{http_code}` already
+prints `000` on a connection failure, so the old `|| echo 000` appended a second one and `000000`
+sailed past the `== "000"` guard. Both deploy scripts now require a real 401 from `/auth/me` and
+retry while the service binds; the new check caught a half-finished `npm ci` on the very next run.
+
+**Nutrition is out of the product**, owner's call — no food database, calories, macros or tab. The
+bar is five tabs. Supplement and creatine logging are *not* nutrition and stay, under Profile →
+Health. `SPEC §7` and `P8` are tombstones rather than renumbered, because `SPEC §9` and `P10` are
+cited throughout the code.
+
+**50 more screenshots** arrived mid-session and are folded into `SPEC.md` — the active session down
+to its custom keypad, the exact six-step celebration chain, Ranks' Calculator and Analysis sub-tabs,
+the itemised XP model (`Workout 200 / Time 1 / PR 10 / Streak 4`), the medal and quest shapes, and a
+new §12 for three subsystems the first pass missed: typed goals with target dates and e1RM targets,
+the Health Log, and routine folders.
+
+**⚠️ Two ladder differences from the owner's reference are recorded as open decisions for P7**, not
+changed here: it has eight tiers (Champion between Diamond and Titan, Olympian as a division-less
+apex) where we have seven, and it numbers divisions `I→II→III` ascending where `lib/ranks.ts` uses
+`III→II→I`. Nothing is broken — the engine is self-consistent — but the app disagrees with the
+vision on both, and P7 builds the screen that shows it.
+
+CI was also diagnosed properly this session and is healthy again; see the entry above.
+
+**Next:** P6 — the Workout tab. SPEC §5 is now specific enough to build from directly.
+**Blockers:** none.
