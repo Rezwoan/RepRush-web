@@ -68,26 +68,34 @@ const screenAnim = {
   exit: { opacity: 0, x: -28, transition: { duration: 0.18 } },
 };
 
-/** How long the step entrance spring needs before a rect is worth trusting. */
-const SETTLE_MS = 450;
-
 /**
- * A screen's rect, measured only once its entrance animation has settled.
+ * Steps whose entrance must not translate.
  *
- * Each step renders inside a `motion.div` that translates on entry, and a
- * transformed ancestor becomes the containing block for `position: fixed`
- * descendants — which is what CoachMark's spotlight is. Measure during the
- * animation and the hole lands wherever the wrapper happened to be.
+ * A transformed ancestor becomes the containing block for its `position: fixed`
+ * descendants, and both of these screens rely on `fixed` resolving against the
+ * viewport — CoachMark's spotlight, and the tour's real bottom tab bar. With the
+ * slide-in they render inside the funnel's own 512px column and the spotlight
+ * lands a couple of hundred pixels from the thing it is pointing at. Fading in
+ * writes no transform at all, so there is nothing to wait for or race.
  */
-function useSettledRect(find: () => Element | null | undefined, key: unknown) {
+const COACH_STEPS = new Set(['bodyrank', 'tour']);
+
+const fadeAnim = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1, transition: { duration: 0.22 } },
+  exit: { opacity: 0, transition: { duration: 0.15 } },
+};
+
+/** A live rect for a coach-mark target; re-measured on resize. */
+function useTargetRect(find: () => Element | null | undefined, key: unknown) {
   const [rect, setRect] = useState<DOMRect | null>(null);
   useEffect(() => {
-    setRect(null);
     const measure = () => setRect(find()?.getBoundingClientRect() ?? null);
-    const t = window.setTimeout(measure, SETTLE_MS);
+    measure();
+    const raf = requestAnimationFrame(measure);
     window.addEventListener('resize', measure);
     return () => {
-      window.clearTimeout(t);
+      cancelAnimationFrame(raf);
       window.removeEventListener('resize', measure);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -779,7 +787,7 @@ const BODYRANK_MARKS = [
 function BodyrankStep({ onDone }: { onDone: () => void }) {
   const [i, setI] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
-  const rect = useSettledRect(() => ref.current, i);
+  const rect = useTargetRect(() => ref.current, i);
 
   return (
     <div className="flex flex-col items-center gap-6 py-4 text-center">
@@ -976,7 +984,7 @@ const TOUR_COPY: Record<string, string> = {
  */
 function TourStep({ onDone }: { onDone: () => void }) {
   const [i, setI] = useState(0);
-  const rect = useSettledRect(
+  const rect = useTargetRect(
     () => document.querySelectorAll('nav[aria-label="Primary"] a')[i],
     i,
   );
@@ -1291,7 +1299,7 @@ export default function WelcomePage() {
 
       <div className="flex flex-1 flex-col justify-center">
         <AnimatePresence mode="wait">
-          <motion.div key={step.id} {...screenAnim}>
+          <motion.div key={step.id} {...(COACH_STEPS.has(step.id) ? fadeAnim : screenAnim)}>
             {body}
           </motion.div>
         </AnimatePresence>
