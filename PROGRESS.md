@@ -11,7 +11,7 @@ https://dev-reprush.rezwoan.codes, and its exit check below is verified in the b
 |---|---|---|
 | P0 | Dev environment & isolation | **DONE** |
 | P1 | Design system, art, app shell | **DONE** |
-| P2 | Data model & exercise catalog | TODO |
+| P2 | Data model & exercise catalog | **DONE** |
 | P3 | Rank engine | TODO |
 | P4 | Onboarding funnel | TODO |
 | P5 | Home tab | TODO |
@@ -93,26 +93,33 @@ Caught and fixed along the way (each has a note in `MEMORY.md §8`):
 
 ---
 
-## P2 — Data model & exercise catalog · `TODO`
+## P2 — Data model & exercise catalog · `DONE` (2026-08-07)
 
-- [ ] Back up dev DB before any schema change (`cp reprush.db reprush.db.bak-YYYYMMDD`)
-- [ ] Exercise catalog: vendor [`yuhonas/free-exercise-db`](https://github.com/yuhonas/free-exercise-db)
-      (Unlicense / public domain) — 800+ exercises with name, force, level, mechanic, equipment,
-      primary/secondary muscles, instructions **and images**. Write an import script that maps its
-      muscle vocabulary onto `lib/muscles.ts` and its equipment onto ours; add per-exercise
-      defaults (rep range, rest) we need and it doesn't carry. **Do not hand-author exercises.**
-- [ ] Muscle taxonomy matching the Bodygraph's 22 regions, with size weights for Bodyrank
-- [ ] New entities: `Exercise`, `Muscle`, `Routine`, `RoutineExercise`, `ExerciseRank`, `MuscleRank`,
-      `LpEvent`, `UserStats` (xp/level/currency/streak/freezes), `Medal`, `UserMedal`, `Quest`,
-      `UserQuest`, `Friendship`, `Referral`, `Post`, `Reaction`, `Comment`, `FoodItem`, `MealEntry`,
-      `MuscleFatigue`, `Cosmetic`, `UserCosmetic`, `UserPreferences`
-- [ ] Extend `User` (username, displayName, bio, sex, birthDate, avatarId, borderId, bannerId,
-      titleId, equipment[], limitations[], goal, experience, trainingLocation)
-- [ ] Extend `WorkoutSet` (exerciseId FK, rpe, isWarmup already exists, lpAwarded)
-- [ ] Backfill: map existing `workout_sets.exerciseName` strings onto catalog ids; log unmatched
-- [ ] Seed script for catalog + medals + quests + cosmetics, idempotent, runs on boot like v1's seed
-- [ ] **Exit check:** dev app boots, existing v1 history still renders, catalog queryable via
-      `GET /api/exercises/catalog`
+- [x] Back up dev DB before the schema change — `reprush.db.bak-p2-20260807` on the Pi
+- [x] Exercise catalog: `scripts/build-exercise-catalog.js` pulls
+      [`yuhonas/free-exercise-db`](https://github.com/yuhonas/free-exercise-db) (Unlicense) at a
+      pinned commit, maps its 17 muscles onto our 21 and its 12 equipment types onto our 8, adds
+      rep-range/rest defaults, and writes `backend/data/exercises.json` — **873 exercises**.
+      Images stay on jsDelivr (1,746 JPEGs ≈ 90 MB is not going in this repo).
+- [x] Muscle taxonomy — already shipped in P1 (`frontend/src/lib/muscles.ts`, 21 muscles with `size`
+      weights and recovery half-lives). The build script parses that file and asserts every muscle
+      the catalog emits exists in it, so the two can't drift.
+- [x] ~~New entities: `Exercise`, `Muscle`, …~~ **Reduced deliberately** — see `MEMORY.md` Decisions
+      2026-08-07. The catalog is a JSON file loaded into memory, not a table; the rest of that list
+      is built by the phase that first needs it, when its fields are actually known. Additive
+      columns are safe under `synchronize: true`, so there is nothing to gain by guessing now.
+- [x] Extend `User`: `username` (unique **index**, not a unique column — see the comment in the
+      entity), `bio`, `sex`, `birthDate`, `avatarId`, `experience`, `goal`, `trainingLocation`,
+      `equipment`, `limitations`. Cosmetic ids (border/banner/title) wait for P10.
+      `displayName` skipped — `name` already exists.
+- [x] Extend `WorkoutSet`: `exerciseId`, `rpe`, `lpAwarded`
+- [x] Backfill in `SeedService.backfillExerciseIds()` — idempotent, only touches null `exerciseId`,
+      logs every unmatched name with its set count
+- [x] ~~Seed script for catalog + medals + quests + cosmetics~~ — the catalog needs no seeding;
+      medals/quests/cosmetics belong to P10/P11
+- [x] **Exit check:** dev boots, v1 history renders, `GET /api/exercises/catalog` returns 873
+      exercises unauthenticated (public — P4's pre-signup rank flow needs it), filters by
+      `q`/`muscle`/`equipment`, and `GET /api/exercises/catalog/:id` returns instructions + images
 
 ---
 
@@ -380,4 +387,32 @@ Attribution obligation met: `ATTRIBUTIONS.md` plus `components/art/attribution.t
 the bottom of Profile. Move it to Profile → About when P11 rebuilds that screen.
 
 **Next:** P2 — import the exercise catalog, extend the schema, backfill v1 history onto catalog ids.
+**Blockers:** none.
+
+### 2026-08-07 — P2 complete
+873 public-domain exercises are in, served from `GET /api/exercises/catalog`, and every v1 set now
+carries a catalog id.
+
+`scripts/build-exercise-catalog.js` fetches `yuhonas/free-exercise-db` at a pinned commit and does
+all the vocabulary mapping ahead of time, so the running backend translates nothing. The one piece
+of judgement in it — upstream has one `chest`, one `shoulders`, one `abdominals` where we have six
+regions, so the split is inferred from the exercise name — is pinned down by eight anchor asserts
+that block the write if the heuristic drifts. It also parses `frontend/src/lib/muscles.ts` and
+refuses to emit a muscle id that file doesn't declare, so the taxonomy can't fork.
+
+**Three things were deliberately made smaller than the plan said**, each recorded in
+`MEMORY.md` → Decisions:
+- The catalog is a **file in memory, not a table**. sql.js holds the whole DB in RAM and rewrites it
+  on flush; 873 static rows would tax every unrelated write forever and buy nothing.
+- **Images stay on jsDelivr.** 1,746 JPEGs ≈ 90 MB would dwarf the app and every Pi deploy.
+- The **25-entity list shrank to what P2 and P3 use**. Entities designed for phases that don't exist
+  yet get their fields guessed and then rewritten; adding columns later is the safe direction under
+  `synchronize: true`, removing them is the one that loses data.
+
+One real hazard caught before it shipped: `username` as a `unique: true` *column* would have made
+SQLite rebuild the entire `users` table on the next `synchronize`. It's a separate unique index now,
+which is a plain `CREATE UNIQUE INDEX` and touches no rows.
+
+**Next:** P3 — the rank engine: e1RM, the standards table, LP/tier/division maths, muscle ranks and
+Bodyrank, decay, and recomputing history from the v1 sets that P2 just mapped.
 **Blockers:** none.

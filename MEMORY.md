@@ -151,6 +151,22 @@ Notable v1 rules that must survive into v2:
   See §9 for the asset sourcing policy that replaces it.
 - **2026-08-06** Cutover to the live domain is the final phase (P14), gated on every earlier phase
   being green, preceded by a full prod DB backup, with a documented one-command rollback.
+- **2026-08-07** The exercise catalog is a **JSON file loaded into memory**, not a database table.
+  Why: it is static, identical for every user, and sql.js keeps the entire database in memory and
+  rewrites the file on flush — 873 catalog rows would make every unrelated write slower forever, in
+  exchange for nothing. User-authored exercises get their own small table when P6 needs them.
+- **2026-08-07** Exercise photos are served from jsDelivr at a pinned upstream commit, not vendored.
+  Why: 1,746 JPEGs ≈ 90 MB would dwarf the app and slow every Pi deploy. Swap `IMAGE_BASE` in
+  `scripts/build-exercise-catalog.js` and mirror into `frontend/public/` if offline photos ever
+  matter; nothing else knows the difference.
+- **2026-08-07** P2's 25-entity list was **cut down to what P2 and P3 actually use**. Why: entities
+  written for a phase that hasn't been designed get their fields guessed and then rewritten. Adding
+  columns is safe under `synchronize: true`; *removing* them is the data-loss operation. Building
+  each entity in the phase that first needs it is strictly cheaper and strictly safer.
+- **2026-08-07** `User.username` is unique via `@Index({ unique: true })`, not `@Column({ unique: true })`.
+  Why: a unique *column* makes SQLite rebuild the whole `users` table (create/copy/drop/rename) on
+  the next `synchronize`, which is exactly the operation that can lose live accounts. A separate
+  unique index is a plain `CREATE UNIQUE INDEX`.
 
 ---
 
@@ -297,3 +313,28 @@ Two rules that fall out of it:
   those units, so a normal-looking `1.5` is ~4% of the body's width — use ~0.12.
 - The tsconfig target here predates `downlevelIteration`, so spreading a `Map`'s entries
   (`[...map.entries()]`) does not compile. Use `Array.from(map.entries())`.
+
+**P2 · 2026-08-07**
+
+- **Non-`.ts` backend assets go in `backend/data/`, not `src/`.** `nest build` is plain `tsc`: it
+  does not copy `.json` into `dist/`, so an imported catalog file would vanish at runtime. The repo
+  already had the pattern — the database lives at `join(__dirname, '..', 'database', …)` — so the
+  catalog is read from `join(__dirname, '..', '..', 'data', 'exercises.json')`. No `nest-cli.json`
+  asset config needed.
+- **free-exercise-db's vocabulary is coarser than ours in exactly three places:** it has one `chest`,
+  one `shoulders` and one `abdominals` where we have upper/mid/lower chest, front/side/rear delt and
+  abs/obliques. The split therefore comes from the *exercise name* (`incline` → upper chest,
+  `lateral|upright row` → side delt, `oblique|twist|wood chop` → obliques, …). That heuristic is the
+  only judgement in the import, so the build script asserts eight named anchor exercises land on the
+  right muscle and refuses to write the file otherwise.
+- Upstream also has `abductors`, which the Bodygraph has no region for — mapped to `glutes`.
+  `other` (sleds, tyres) → `machine` and `foam roll` → `bodyweight`, because two more equipment
+  glyphs for ~20 exercises isn't worth drawing.
+- The v1 database has exactly **31 distinct `exerciseName` values across 785 sets**, so the legacy →
+  catalog mapping is a hand-checked table in the build script, not a fuzzy matcher. All 31 map to
+  something sensible except `Core Exercise (User Choice)`, which has no catalog equivalent by design.
+  Check current names with:
+  `ssh reezz@blackbox.local "cd /var/www/reprush-dev/backend && node -e \"...select exerciseName, count(*) from workout_sets group by 1\""`
+- Cloudflare gzips JSON at the edge, so the 350 KB `/api/exercises/catalog` response goes over the
+  wire at ~45 KB. nginx's own `gzip_types` is still commented out on the Pi — if a response ever
+  needs compressing *before* Cloudflare, that's the file to edit.

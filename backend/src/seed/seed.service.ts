@@ -1,7 +1,11 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { UsersService } from '../users/users.service';
 import { ExercisesService } from '../exercises/exercises.service';
+import { CatalogService } from '../exercises/catalog.service';
+import { WorkoutSet } from '../workouts/workout-set.entity';
 import { UserRole } from '../users/user.entity';
 
 // Lower-bound numeric of an estimated-load string ("60kg - 65kg" → 60, "Bodyweight" → 0).
@@ -107,13 +111,51 @@ export class SeedService implements OnModuleInit {
   constructor(
     private usersService: UsersService,
     private exercisesService: ExercisesService,
+    private catalog: CatalogService,
     private config: ConfigService,
+    @InjectRepository(WorkoutSet) private sets: Repository<WorkoutSet>,
   ) {}
 
   async onModuleInit() {
     const adminId = await this.seedAdmin();
     const userId = await this.seedUser();
     await this.seedWorkoutPlans(adminId, userId);
+    await this.backfillExerciseIds();
+  }
+
+  /**
+   * Point v1 history at the v2 exercise catalog. Idempotent: only touches sets
+   * whose `exerciseId` is still null, so it costs one indexless scan on boot
+   * and does nothing once every set is mapped.
+   */
+  private async backfillExerciseIds() {
+    const pending = await this.sets.find({ where: { exerciseId: IsNull() } });
+    if (!pending.length) return;
+
+    const resolved = new Map<string, string | null>();
+    const unmatched = new Map<string, number>();
+    let mapped = 0;
+
+    for (const set of pending) {
+      if (!resolved.has(set.exerciseName)) {
+        resolved.set(set.exerciseName, this.catalog.resolveLegacyName(set.exerciseName));
+      }
+      const id = resolved.get(set.exerciseName);
+      if (id) {
+        set.exerciseId = id;
+        mapped++;
+      } else {
+        unmatched.set(set.exerciseName, (unmatched.get(set.exerciseName) || 0) + 1);
+      }
+    }
+
+    if (mapped) await this.sets.save(pending.filter((s) => s.exerciseId));
+    this.logger.log(`Exercise backfill: ${mapped}/${pending.length} sets mapped to catalog ids`);
+    for (const [name, count] of Array.from(unmatched.entries())) {
+      // Not an error — some v1 names ("Core Exercise (User Choice)") have no
+      // catalog equivalent. Logged so an alias can be added if one shows up.
+      this.logger.warn(`Exercise backfill: no catalog match for "${name}" (${count} sets)`);
+    }
   }
 
   private async seedAdmin(): Promise<number> {

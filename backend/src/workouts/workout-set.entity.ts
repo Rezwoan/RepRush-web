@@ -23,6 +23,22 @@ export class WorkoutSet {
   @Column()
   exerciseName: string;
 
+  /**
+   * Catalog id (`backend/data/exercises.json`). Nullable because v1 history only
+   * ever had the free-text name; the backfill in `SeedService` fills it in where
+   * a match exists. `exerciseName` stays as the display/fallback label.
+   */
+  @Column({ nullable: true })
+  exerciseId: string;
+
+  /** Rate of perceived exertion, 1–10. Feeds the recovery model (SPEC §10). */
+  @Column({ type: 'real', nullable: true })
+  rpe: number;
+
+  /** LP this set awarded, written by the rank engine so awards stay idempotent. */
+  @Column({ type: 'real', nullable: true })
+  lpAwarded: number;
+
   @Column()
   setNumber: number;
 
