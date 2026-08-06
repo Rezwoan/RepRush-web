@@ -189,9 +189,15 @@ export class HomeService {
     const readiness = readinessOf(byMuscle, sizes);
     const status = statusOf(readiness);
 
+    // Least-worked first, then biggest. Sorting by size alone let the copy call
+    // a muscle "fresh" that had taken secondary work an hour earlier — true by
+    // the threshold, but not what someone with sore glutes wants to read.
     const fresh = this.catalog.muscles
       .filter((m) => (byMuscle[m.id]?.fatigue ?? 0) < FRESH_BELOW)
-      .sort((a, b) => b.size - a.size)
+      .sort(
+        (a, b) =>
+          (byMuscle[a.id]?.fatigue ?? 0) - (byMuscle[b.id]?.fatigue ?? 0) || b.size - a.size,
+      )
       .slice(0, 3)
       .map((m) => m.label);
 
