@@ -97,14 +97,14 @@ function BodygraphSection() {
           value={view}
           onChange={setView}
         />
-        <div className="h-80">
+        <div className="flex h-80 justify-center">
           <Bodygraph view={view} colors={DEMO_COLORS} onMuscleClick={setTapped} />
         </div>
         <p className="text-center text-sm text-muted-foreground">
           {tapped ? `Tapped: ${tapped}` : 'Tap a muscle'}
         </p>
       </div>
-      <div className="surface h-64 p-4">
+      <div className="surface h-72 p-4">
         <BodygraphPair colors={DEMO_COLORS} interactive={false} />
       </div>
     </Section>

@@ -13,7 +13,9 @@ export const MEDAL_EMBLEMS = {
   dumbbell:
     'M14 24 h4 v12 h-4 z M20 22 h5 v16 h-5 z M27 27 h16 v6 h-16 z M45 22 h5 v16 h-5 z M52 24 h4 v12 h-4 z',
   star: 'M30 10 l6 13 14 2 -10 10 3 14 -13 -7 -13 7 3 -14 -10 -10 14 -2 z',
-  crown: 'M14 38 L11 16 l11 8 8 -14 8 14 11 -8 -3 22 z',
+  // Valleys need real depth: at the medal's rendered size a shallow zigzag
+  // blurs into a flat-topped blob and stops reading as a crown at all.
+  crown: 'M12 40 L9 14 l13 12 9 -18 9 18 13 -12 -3 26 z',
   globe:
     'M30 10 a20 20 0 1 0 0.1 0 z M10 30 h40 M30 10 c-8 8 -8 32 0 40 M30 10 c8 8 8 32 0 40',
 } as const;

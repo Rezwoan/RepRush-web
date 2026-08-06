@@ -134,16 +134,24 @@ export function Bodygraph({
   return (
     <svg
       viewBox="0 0 200 460"
-      className={cn('h-full w-full select-none overflow-visible', className)}
+      // Height-driven, not width-driven. `w-full` on a 200x460 viewBox inside a
+      // wide container scales to the width and the figure grows to ~2.3x that
+      // in height, spilling out of every card it is placed in.
+      className={cn('h-full w-auto max-w-full select-none', className)}
+      preserveAspectRatio="xMidYMid meet"
       role={title ? 'img' : 'presentation'}
       aria-label={title}
     >
       {/* Silhouette: every shape, fat neutral stroke + fill, unioned by overlap. */}
+      {/* The stroke is what fuses the separate shapes into one body outline, so
+          it has to be wide enough to close the gaps and no wider — at 11 in a
+          200-wide viewBox each shape gained 5.5px a side and the figure read as
+          a pile of blobs rather than a person. */}
       <g
-        className="text-muted-foreground/25"
+        className="text-muted-foreground/20"
         fill="currentColor"
         stroke="currentColor"
-        strokeWidth={11}
+        strokeWidth={6}
         strokeLinejoin="round"
       >
         {FILLER.map((s, i) => (
@@ -196,9 +204,9 @@ export function Bodygraph({
 }
 
 /** Front and back side by side — the shape used on Recovery Zone and profile. */
-export function BodygraphPair(props: Omit<BodygraphProps, 'view'>) {
+export function BodygraphPair({ className, ...props }: Omit<BodygraphProps, 'view'>) {
   return (
-    <div className="flex items-stretch justify-center gap-2">
+    <div className={cn('flex h-full items-stretch justify-center gap-4', className)}>
       <Bodygraph {...props} view="front" title="Front view" />
       <Bodygraph {...props} view="back" title="Back view" />
     </div>
