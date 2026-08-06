@@ -32,6 +32,15 @@ interface CatalogFile {
 /** What the list endpoint returns — everything but the instructions, which are 80% of the bytes. */
 export type SlimExercise = Omit<CatalogExercise, 'instructions' | 'images'> & { image: string | null };
 
+export interface Muscle {
+  id: string;
+  label: string;
+  group: string;
+  view: 'front' | 'back' | 'both';
+  /** Relative contribution to Bodyrank, and to the recovery half-life. */
+  size: number;
+}
+
 /**
  * The exercise catalog — 873 public-domain exercises, read from
  * `backend/data/exercises.json` (built by `scripts/build-exercise-catalog.js`).
@@ -48,16 +57,26 @@ export class CatalogService implements OnModuleInit {
   private file: CatalogFile;
   private byId = new Map<string, CatalogExercise>();
   private slim: SlimExercise[] = [];
+  /** Generated from frontend/src/lib/muscles.ts by scripts/build-exercise-catalog.js. */
+  muscles: Muscle[] = [];
+  private muscleById = new Map<string, Muscle>();
 
   onModuleInit() {
-    const path = join(__dirname, '..', '..', 'data', 'exercises.json');
-    this.file = JSON.parse(readFileSync(path, 'utf8'));
+    const dir = join(__dirname, '..', '..', 'data');
+    this.file = JSON.parse(readFileSync(join(dir, 'exercises.json'), 'utf8'));
     for (const e of this.file.exercises) this.byId.set(e.id, e);
     this.slim = this.file.exercises.map(({ instructions, images, ...rest }) => ({
       ...rest,
       image: images[0] ? this.file.imageBase + images[0] : null,
     }));
-    this.logger.log(`Exercise catalog loaded: ${this.slim.length} exercises`);
+
+    this.muscles = JSON.parse(readFileSync(join(dir, 'muscles.json'), 'utf8'));
+    for (const m of this.muscles) this.muscleById.set(m.id, m);
+    this.logger.log(`Exercise catalog loaded: ${this.slim.length} exercises, ${this.muscles.length} muscles`);
+  }
+
+  muscle(id: string): Muscle | undefined {
+    return this.muscleById.get(id);
   }
 
   get imageBase() {

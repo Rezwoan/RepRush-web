@@ -17,6 +17,7 @@ import { MailModule } from './mail/mail.module';
 import { BodyWeightModule } from './body-weight/body-weight.module';
 import { PushModule } from './push/push.module';
 import { SeedModule } from './seed/seed.module';
+import { RanksModule } from './ranks/ranks.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { SeedModule } from './seed/seed.module';
     MailModule,
     BodyWeightModule,
     PushModule,
+    RanksModule,
     SeedModule,
   ],
 })

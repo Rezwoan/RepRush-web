@@ -12,7 +12,7 @@ https://dev-reprush.rezwoan.codes, and its exit check below is verified in the b
 | P0 | Dev environment & isolation | **DONE** |
 | P1 | Design system, art, app shell | **DONE** |
 | P2 | Data model & exercise catalog | **DONE** |
-| P3 | Rank engine | TODO |
+| P3 | Rank engine | **DONE** |
 | P4 | Onboarding funnel | TODO |
 | P5 | Home tab | TODO |
 | P6 | Workout tab | TODO |
@@ -133,21 +133,42 @@ Caught and fixed along the way (each has a note in `MEMORY.md §8`):
 
 ---
 
-## P3 — Rank engine · `TODO`
+## P3 — Rank engine · `DONE` (2026-08-07)
 
-- [ ] `backend/src/ranks/e1rm.ts` — Epley with rep cap + self-check
-- [ ] `backend/src/ranks/standards.ts` — per-exercise coefficient table (sex-split), ratio →
-      percentile, percentile → tier/division/LP + self-check on known anchor points
-- [ ] Age coefficient curve
-- [ ] `RanksService`: score a set, award LP, recompute exercise rank, muscle ranks, Bodyrank
-- [ ] Placements: first 10 ranked exercises gate the real Bodyrank; predicted rank before that
-- [ ] Decay job (`@nestjs/schedule`, nightly): LP bleed after 30 days of inactivity per muscle
-- [ ] Endpoints: `GET /ranks/me`, `GET /ranks/exercises`, `GET /ranks/bodygraph`,
-      `GET /ranks/exercise/:id`, `POST /ranks/calculate` (the standalone rank calculator),
-      `GET /ranks/leagues`
-- [ ] Recompute historical ranks from existing v1 sets on first run
-- [ ] **Exit check:** a known lift (e.g. 100 kg × 5 bench at 82 kg bodyweight, male, 25) produces a
-      sane, documented tier; the assert self-checks pass
+- [x] `backend/src/ranks/e1rm.ts` — Epley, reps capped at 12, plus `effectiveLoad` so bodyweight
+      movements carry the athlete instead of scoring zero. Self-check included.
+- [x] `backend/src/ranks/standards.ts` — `BASE[muscle] × mechanic × equipment`, a ~28-line override
+      list for the lifts people actually rank on, sex split, and a log-normal population curve
+      (σ = 0.32) turning a bodyweight multiple into a percentile. Self-check with named anchors.
+- [x] Age coefficient curve — flat 23–33, credit either side, capped
+- [x] `RanksService`: score a lift, exercise ranks, muscle ranks, Bodyrank, weekly LP
+- [x] Placements: 10 ranked exercises gate the real Bodyrank; before that it is flagged `predicted`
+      and averages only what has been trained
+- [x] ~~Decay job (nightly)~~ — **decay is computed at read time instead.** A stored rank plus a
+      cron is a thing that can disagree with the sets; a derived one can't. Training a muscle
+      restores it instantly because nothing was written down. See `MEMORY.md` Decisions.
+- [x] Endpoints: `GET /ranks/me` (bodyrank + bodygraph + exercise list in one call),
+      `GET /ranks/exercises`, `GET /ranks/bodygraph`, `GET /ranks/exercise/:id`,
+      `POST /ranks/calculate` (public — onboarding ranks a lift before the account exists)
+- [x] ~~`GET /ranks/leagues`~~ — deferred to **P7**, which builds the screen. A league needs seasons,
+      divisions and ~30 rivals; there are 4 accounts on dev. Nothing else depends on it.
+- [x] Recompute historical ranks from v1 sets — automatic. Ranks *are* a function of the sets, so
+      there is no "recompute": the first request already reflects all 772 backfilled sets.
+- [x] **Exit check — the documented ladder** (all via `POST /api/ranks/calculate`, male 25 @ 82 kg
+      unless noted; self-checks green at boot: `RanksService: e1rm ok, standards ok`):
+
+      | Lift | Rank | Percentile |
+      |---|---|---|
+      | Bench 60 × 5 | Silver III | 31 |
+      | **Bench 100 × 5** (SPEC's worked example) | **Diamond II** | **86.5** |
+      | Bench 140 × 1 | Titan I | 96.2 |
+      | Squat 100 × 5 | Gold II | 56.5 |
+      | Deadlift 180 × 3 | Diamond I | 90.1 |
+      | Barbell curl 35 × 8 | Gold II | 54.8 |
+      | Leg extension 50 × 10 | Gold I | 62.9 |
+      | Pull-up × 8 bodyweight | Gold I | 63.6 |
+      | Pull-up × 1, female @ 65 kg | Diamond II | 85.5 |
+      | Crunches × 40 | Gold III | 50.0 |
 
 ---
 

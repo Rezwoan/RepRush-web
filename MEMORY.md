@@ -163,6 +163,14 @@ Notable v1 rules that must survive into v2:
   written for a phase that hasn't been designed get their fields guessed and then rewritten. Adding
   columns is safe under `synchronize: true`; *removing* them is the data-loss operation. Building
   each entity in the phase that first needs it is strictly cheaper and strictly safer.
+- **2026-08-07** **Ranks are derived, never stored.** No `ExerciseRank` / `MuscleRank` / `LpEvent`
+  table and no nightly decay job: a rank is a pure function of `workout_sets` + the profile, so
+  storing it only creates something that can disagree with the sets, and keeping it honest would
+  need both a backfill and a cron. Decay falls out of "days since last qualifying set" at read time,
+  which also means training a muscle restores it instantly. Ceiling in `ranks.service.ts`: cache
+  per-exercise bests in a table if any single user passes ~50k sets. The maths doesn't change.
+- **2026-08-07** Leagues (`GET /ranks/leagues`) deferred from P3 to P7. Why: a league needs seasons,
+  divisions and ~30 rivals per division; dev has 4 accounts and no screen to show it on yet.
 - **2026-08-07** `User.username` is unique via `@Index({ unique: true })`, not `@Column({ unique: true })`.
   Why: a unique *column* makes SQLite rebuild the whole `users` table (create/copy/drop/rename) on
   the next `synchronize`, which is exactly the operation that can lose live accounts. A separate
@@ -338,3 +346,27 @@ Two rules that fall out of it:
 - Cloudflare gzips JSON at the edge, so the 350 KB `/api/exercises/catalog` response goes over the
   wire at ~45 KB. nginx's own `gzip_types` is still commented out on the Pi — if a response ever
   needs compressing *before* Cloudflare, that's the file to edit.
+
+**P3 · 2026-08-07**
+
+- **Percentile is the engine's only currency.** Everything — exercise rank, the weighted muscle
+  average, decay, Bodyrank — stays a 0–100 percentile until one final `rankFromPercentile()`.
+  Averaging tier labels or LP would be meaningless, and decay needs something continuous to scale.
+- **`OVERRIDES` in `standards.ts` are median *e1RM* multiples, not median working weights.** Someone
+  curling 35 kg for 8 has an e1RM of 44, so the coefficient is 0.52 at 80 kg bodyweight, not 0.44.
+  The first draft mixed the two and lateral raises paid out Titan for a completely ordinary set.
+- **Bodyweight exercises cannot go through the `BASE × mechanic × equipment` model.** The load is
+  fixed — you can't add 5 kg to a push-up — so the whole population spread lives in the rep count,
+  and an `isolation` discount on top of the bodyweight fraction discounts it twice. The boot
+  self-check caught this as *"bodyweight crunches scored the 100th percentile"*. There is a separate
+  branch: `median = fraction × (1 + medianReps/30)` where `medianReps = min(12, 4 + 30(1 − fraction))`.
+  The 12-rep cap then does something genuinely right — every crunch performance past 12 scores the
+  same, because unlimited crunches say nothing about strength.
+- Boot self-checks are the test suite here: `RanksService.onModuleInit` runs both `__selfcheck`s and
+  additionally asserts every `OVERRIDES` key names a real catalog exercise and every muscle in the
+  taxonomy has a `BASE` entry. A failure takes the service down on purpose — a silently mis-ranking
+  app is worse than one that won't start.
+- Calibration knobs, in the order worth reaching for: an `OVERRIDES` line for one wrong lift, then
+  `LOG_SIGMA` (0.32) for the whole ladder feeling too compressed or too spread, then `TIER_FLOOR`
+  for the tier distribution. Do not bend `BASE`/`EQUIPMENT` to fix a single exercise — twenty others
+  move with it.

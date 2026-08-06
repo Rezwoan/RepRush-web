@@ -26,6 +26,7 @@ const IMAGE_BASE = `https://cdn.jsdelivr.net/gh/yuhonas/free-exercise-db@${UPSTR
 
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'backend', 'data', 'exercises.json');
+const MUSCLES_OUT = path.join(ROOT, 'backend', 'data', 'muscles.json');
 const MUSCLES_TS = path.join(ROOT, 'frontend', 'src', 'lib', 'muscles.ts');
 
 // ── muscle mapping ────────────────────────────────────────────────
@@ -184,14 +185,28 @@ function transform(raw) {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** Muscle ids declared by the frontend taxonomy — the single source of truth. */
-function frontendMuscleIds() {
+/**
+ * The muscle taxonomy, parsed out of the frontend's `muscles.ts`. That file is
+ * the single source of truth (the Bodygraph art is drawn against it); the
+ * backend gets a generated copy so the rank engine's size weights can never
+ * drift from the picture the user is looking at.
+ */
+function frontendMuscles() {
   const src = fs.readFileSync(MUSCLES_TS, 'utf8');
   const body = src.slice(src.indexOf('export const MUSCLES'), src.indexOf('] as const'));
-  const ids = Array.from(body.matchAll(/id: '([a-z_]+)'/g)).map((m) => m[1]);
-  if (ids.length < 15) throw new Error(`could not parse muscle ids from ${MUSCLES_TS}`);
-  return new Set(ids);
+  const re = /id: '([a-z_]+)',\s*label: '([^']+)',\s*group: '([a-z]+)',\s*view: '([a-z]+)',\s*size: (\d+)/g;
+  const muscles = Array.from(body.matchAll(re)).map((m) => ({
+    id: m[1],
+    label: m[2],
+    group: m[3],
+    view: m[4],
+    size: Number(m[5]),
+  }));
+  if (muscles.length < 15) throw new Error(`could not parse muscles from ${MUSCLES_TS}`);
+  return muscles;
 }
+
+const frontendMuscleIds = () => new Set(frontendMuscles().map((m) => m.id));
 
 function check(exercises) {
   const ids = frontendMuscleIds();
@@ -264,6 +279,10 @@ async function main() {
   fs.writeFileSync(OUT, JSON.stringify(out));
   const kb = (fs.statSync(OUT).size / 1024).toFixed(0);
   console.log(`wrote ${OUT} — ${exercises.length} exercises, ${kb} KB`);
+
+  const muscles = frontendMuscles();
+  fs.writeFileSync(MUSCLES_OUT, JSON.stringify(muscles, null, 1));
+  console.log(`wrote ${MUSCLES_OUT} — ${muscles.length} muscles`);
 }
 
 main().catch((err) => {
