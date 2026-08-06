@@ -256,8 +256,13 @@ export class HomeService {
       share: weight ? round(m.size / weight, 2) : 0,
     }));
 
-    const groups = Array.from(new Set(candidates.map((m) => m.group)));
-    const title = groups.length ? this.titleCase(groups.join(' & ')) : "Today's Workout";
+    // "Legs, Chest & Back" — an ampersand between every pair reads like a bug.
+    const groups = Array.from(new Set(candidates.map((m) => m.group))).map(this.titleCase);
+    const title = groups.length
+      ? groups.length > 1
+        ? `${groups.slice(0, -1).join(', ')} & ${groups[groups.length - 1]}`
+        : groups[0]
+      : "Today's Workout";
 
     return {
       state: 'start',

@@ -5,6 +5,7 @@ import { GymSession } from './gym-session.entity';
 import { WorkoutSet } from './workout-set.entity';
 import { PersonalRecord } from './personal-record.entity';
 import { UsersService } from '../users/users.service';
+import { CatalogService } from '../exercises/catalog.service';
 import { ymd } from '../common/date.util';
 
 @Injectable()
@@ -14,6 +15,7 @@ export class WorkoutsService {
     @InjectRepository(WorkoutSet) private setRepo: Repository<WorkoutSet>,
     @InjectRepository(PersonalRecord) private prRepo: Repository<PersonalRecord>,
     private usersService: UsersService,
+    private catalog: CatalogService,
   ) {}
 
   // ─── Sessions ───────────────────────────────────────────────────────────────
@@ -243,8 +245,20 @@ export class WorkoutsService {
     const session = await this.sessionRepo.findOne({ where: { id: sessionId, userId } });
     if (!session) throw new NotFoundException('Session not found');
 
+    // Resolve the catalog id here, not in the callers. Ranks and the recovery
+    // model key off `exerciseId` and ignore rows without one, so a set logged
+    // without it is invisible to both — it would silently not count. P2's
+    // backfill fixed the historical rows; this stops new ones being written the
+    // same way. Null stays legitimate for names with no catalog equivalent.
     const set = this.setRepo.create({
-      sessionId, exerciseName, setNumber, actualReps, weightKg, targetReps, isWarmup,
+      sessionId,
+      exerciseName,
+      exerciseId: this.catalog.resolveLegacyName(exerciseName),
+      setNumber,
+      actualReps,
+      weightKg,
+      targetReps,
+      isWarmup,
     });
     const saved = await this.setRepo.save(set);
 
