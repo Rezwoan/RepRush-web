@@ -84,9 +84,11 @@ dev-reprush.rezwoan.codes, with prod provably untouched.
 ## P2 — Data model & exercise catalog · `TODO`
 
 - [ ] Back up dev DB before any schema change (`cp reprush.db reprush.db.bak-YYYYMMDD`)
-- [ ] Exercise catalog: ~200 exercises as a seedable dataset — name, aliases, equipment, primary
-      muscles, secondary muscles (weighted), unilateral flag, default rep range, difficulty,
-      form cues. Author it as `backend/src/exercises/catalog.ts`
+- [ ] Exercise catalog: vendor [`yuhonas/free-exercise-db`](https://github.com/yuhonas/free-exercise-db)
+      (Unlicense / public domain) — 800+ exercises with name, force, level, mechanic, equipment,
+      primary/secondary muscles, instructions **and images**. Write an import script that maps its
+      muscle vocabulary onto `lib/muscles.ts` and its equipment onto ours; add per-exercise
+      defaults (rep range, rest) we need and it doesn't carry. **Do not hand-author exercises.**
 - [ ] Muscle taxonomy matching the Bodygraph's 22 regions, with size weights for Bodyrank
 - [ ] New entities: `Exercise`, `Muscle`, `Routine`, `RoutineExercise`, `ExerciseRank`, `MuscleRank`,
       `LpEvent`, `UserStats` (xp/level/currency/streak/freezes), `Medal`, `UserMedal`, `Quest`,

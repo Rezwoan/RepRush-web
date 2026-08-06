@@ -1,108 +1,96 @@
 'use client';
 /**
  * Bodygraph — the anatomical figure that every rank, fatigue and volume view
- * paints onto. Hand-authored SVG; nothing here is traced or imported.
+ * paints onto.
  *
- * Construction:
- *  - Muscles are soft primitives (ellipses, rounded rects, a couple of paths)
- *    positioned in a 200×460 viewBox with the midline at x = 100.
- *  - Shapes are authored once for the viewer's left half and mirrored, so the
- *    figure is symmetrical by construction and there is half as much to get
- *    wrong. Midline shapes (abs, lower back, neck) opt out via `center`.
- *  - The silhouette is the same shape set drawn underneath with a fat neutral
- *    stroke, which unions them into one body outline. That is why the figure
- *    reads as a body without a single giant outline path to maintain.
+ * The anatomy comes from `body-muscles` (Apache-2.0): 89 SVG regions across
+ * front and back, left/right split, far better than anything worth hand-drawing.
+ * We use its raw path data rather than its DOM renderer, so this stays a normal
+ * React SVG we control — our tier colours, our click handling, our theming.
  *
- * ponytail: stylised anatomy, not medical accuracy — the job is "which muscle
- * is that, at a glance, at 120 px wide". Nudge the numbers, don't add a rig.
+ * The one thing we add is the mapping below: their 89 anatomical regions
+ * collapse onto the 21 trainable muscles in `lib/muscles.ts`, which is the
+ * vocabulary the exercise catalog and the rank engine speak. Tapping "quads"
+ * lights both legs; ranking "quads" colours all four regions.
  */
-import { Fragment, useId } from 'react';
+import { useMemo } from 'react';
+import { FRONT_MUSCLES, BACK_MUSCLES, type MuscleDef } from 'body-muscles';
 import { cn } from '@/lib/utils';
-import { MUSCLES, type MuscleId } from '@/lib/muscles';
+import { MUSCLE_BY_ID, type MuscleId } from '@/lib/muscles';
 
-type Shape =
-  | { k: 'e'; cx: number; cy: number; rx: number; ry: number; rot?: number; center?: boolean }
-  | { k: 'r'; x: number; y: number; w: number; h: number; r: number; center?: boolean }
-  | { k: 'p'; d: string; center?: boolean };
-
-const e = (cx: number, cy: number, rx: number, ry: number, rot = 0): Shape => ({ k: 'e', cx, cy, rx, ry, rot });
-const ec = (cx: number, cy: number, rx: number, ry: number, rot = 0): Shape => ({ k: 'e', cx, cy, rx, ry, rot, center: true });
-const rc = (x: number, y: number, w: number, h: number, r: number): Shape => ({ k: 'r', x, y, w, h, r, center: true });
-
-/** Non-muscle mass (head, hands, feet, joints) that only the silhouette needs. */
-const FILLER: Shape[] = [
-  ec(100, 34, 19, 22),        // head
-  ec(100, 58, 12, 12),        // neck column
-  ec(100, 96, 34, 30),        // upper torso fill
-  ec(100, 150, 28, 34),       // mid torso fill
-  ec(100, 214, 30, 26),       // hips
-  e(83, 240, 20, 20),         // upper thigh joint
-  e(84, 336, 13, 14),         // knee
-  e(38, 208, 9, 11),          // hand
-  e(85, 424, 12, 10),         // foot
-];
-
-const FRONT: Partial<Record<MuscleId, Shape[]>> = {
-  neck: [e(92, 56, 5.5, 10, -6)],
-  traps: [e(82, 68, 16, 8, -20)],
-  front_delt: [e(64, 84, 13.5, 14)],
-  side_delt: [e(54, 98, 11, 15, 10)],
-  upper_chest: [e(84, 90, 17, 9, -8)],
-  mid_chest: [e(82, 107, 19, 11, -3)],
-  lower_chest: [e(83, 123, 16.5, 8, 3)],
-  biceps: [e(51, 128, 10, 21, 5)],
-  forearms: [e(43, 176, 9, 27, 6)],
-  abs: [rc(85, 130, 30, 72, 13)],
-  obliques: [e(76, 162, 8, 29, 3)],
-  quads: [e(82, 285, 17.5, 48, 2)],
-  adductors: [e(96, 272, 8, 36, -3)],
-  calves: [e(84, 375, 11, 33, 1)],
+/**
+ * Our trainable muscle → the vendor's anatomical regions.
+ * `_` prefixed entries are structure (head, hands, joints): drawn as body, never
+ * tinted, never clickable.
+ */
+const REGION_MAP: Record<MuscleId | '_structure', string[]> = {
+  neck: ['neck-left', 'neck-right', 'nape'],
+  traps: [
+    'traps-upper-left', 'traps-mid-left', 'traps-lower-left',
+    'traps-upper-right', 'traps-mid-right', 'traps-lower-right',
+  ],
+  front_delt: ['shoulder-front-left', 'shoulder-front-right'],
+  side_delt: ['shoulder-side-left', 'shoulder-side-right'],
+  rear_delt: ['deltoid-rear-left', 'deltoid-rear-right'],
+  upper_chest: ['chest-upper-left', 'chest-upper-right'],
+  mid_chest: ['chest-lower-left', 'chest-lower-right'],
+  // The vendor splits the chest in two, not three. Serratus is the closest
+  // honest home for "lower chest" volume rather than inventing a region.
+  lower_chest: ['serratus-anterior-left', 'serratus-anterior-right'],
+  biceps: ['biceps-left', 'biceps-right'],
+  triceps: [
+    'triceps-long-left', 'triceps-lateral-left',
+    'triceps-long-right', 'triceps-lateral-right',
+  ],
+  forearms: [
+    'forearm-left', 'forearm-right',
+    'forearm-flexors-left', 'forearm-extensors-left',
+    'forearm-flexors-right', 'forearm-extensors-right',
+  ],
+  lats: [
+    'lats-upper-left', 'lats-mid-left', 'lats-lower-left',
+    'lats-upper-right', 'lats-mid-right', 'lats-lower-right',
+  ],
+  upper_back: ['spine'],
+  lower_back: [
+    'lower-back-erectors-left', 'lower-back-ql-left',
+    'lower-back-erectors-right', 'lower-back-ql-right',
+  ],
+  abs: ['abs-upper-left', 'abs-upper-right', 'abs-lower-left', 'abs-lower-right'],
+  obliques: ['obliques-left', 'obliques-right'],
+  glutes: [
+    'gluteus-maximus-left', 'gluteus-medius-left',
+    'gluteus-maximus-right', 'gluteus-medius-right',
+  ],
+  quads: ['quads-left', 'quads-right'],
+  hamstrings: [
+    'hamstrings-medial-left', 'hamstrings-lateral-left',
+    'hamstrings-medial-right', 'hamstrings-lateral-right',
+  ],
+  adductors: ['adductors-left', 'adductors-right', 'hip-flexor-left', 'hip-flexor-right'],
+  calves: [
+    'calves-gastroc-medial-left', 'calves-gastroc-lateral-left', 'calves-soleus-left',
+    'calves-gastroc-medial-right', 'calves-gastroc-lateral-right', 'calves-soleus-right',
+    'tibialis-anterior-left', 'tibialis-anterior-right',
+  ],
+  _structure: [
+    'head', 'face', 'head-back',
+    'hand-left', 'hand-right', 'hand-back-left', 'hand-back-right',
+    'elbow-left', 'elbow-right',
+    'knee-left', 'knee-right', 'knee-back-left', 'knee-back-right',
+    'foot-left', 'foot-right', 'foot-back-left', 'foot-back-right',
+  ],
 };
 
-const BACK: Partial<Record<MuscleId, Shape[]>> = {
-  neck: [e(92, 56, 5.5, 10, -6)],
-  traps: [{ k: 'p', d: 'M99,50 C88,54 74,66 66,80 C74,92 86,104 99,110 Z' }],
-  rear_delt: [e(63, 88, 13.5, 13)],
-  side_delt: [e(54, 98, 11, 15, 10)],
-  upper_back: [e(85, 118, 15, 14, -6)],
-  lats: [{ k: 'p', d: 'M99,112 C86,116 74,126 70,142 C68,158 76,174 99,182 Z' }],
-  lower_back: [rc(86, 170, 28, 44, 12)],
-  triceps: [e(51, 128, 10, 21, 5)],
-  forearms: [e(43, 176, 9, 27, 6)],
-  glutes: [e(82, 228, 20, 22)],
-  hamstrings: [e(82, 292, 17, 43, 1)],
-  calves: [e(84, 372, 12, 34, 1)],
-};
+/** region id → our muscle id. Built once; the reverse map is what rendering needs. */
+const REGION_TO_MUSCLE: Record<string, MuscleId | '_structure'> = Object.fromEntries(
+  Object.entries(REGION_MAP).flatMap(([muscle, regions]) =>
+    regions.map((r) => [r, muscle as MuscleId | '_structure']),
+  ),
+);
 
-function renderShape(s: Shape, key: string, extra: Record<string, unknown> = {}) {
-  if (s.k === 'e')
-    return (
-      <ellipse
-        key={key}
-        cx={s.cx}
-        cy={s.cy}
-        rx={s.rx}
-        ry={s.ry}
-        transform={s.rot ? `rotate(${s.rot} ${s.cx} ${s.cy})` : undefined}
-        {...extra}
-      />
-    );
-  if (s.k === 'r')
-    return <rect key={key} x={s.x} y={s.y} width={s.w} height={s.h} rx={s.r} {...extra} />;
-  return <path key={key} d={s.d} {...extra} />;
-}
-
-/** Draw a shape, mirrored across the midline unless it is a centre shape. */
-function Mirrored({ shape, id, extra }: { shape: Shape; id: string; extra?: Record<string, unknown> }) {
-  const left = renderShape(shape, `${id}-l`, extra);
-  if (shape.center) return left;
-  return (
-    <Fragment>
-      {left}
-      <g transform="translate(200,0) scale(-1,1)">{renderShape(shape, `${id}-r`, extra)}</g>
-    </Fragment>
-  );
-}
+/** The vendor's viewBox. Both views share it, so front and back line up. */
+const VIEW_BOX = '0 0 640 1200';
 
 export interface BodygraphProps {
   view?: 'front' | 'back';
@@ -126,75 +114,73 @@ export function Bodygraph({
   interactive = true,
   title,
 }: BodygraphProps) {
-  const uid = useId();
-  const set = view === 'front' ? FRONT : BACK;
   const clickable = interactive && !!onMuscleClick;
-  const hi = new Set(highlight ?? []);
+  const hi = useMemo(() => new Set(highlight ?? []), [highlight]);
+
+  // Group the vendor's regions under our muscle ids so each muscle is one <g>:
+  // one fill, one click target, one hover state, regardless of how many
+  // anatomical slices it is drawn from.
+  const groups = useMemo(() => {
+    const defs: MuscleDef[] = view === 'front' ? FRONT_MUSCLES : BACK_MUSCLES;
+    const byMuscle = new Map<MuscleId | '_structure' | '_unmapped', MuscleDef[]>();
+    for (const d of defs) {
+      const key = REGION_TO_MUSCLE[d.id] ?? '_unmapped';
+      const list = byMuscle.get(key);
+      if (list) list.push(d);
+      else byMuscle.set(key, [d]);
+    }
+    // Array, not the Map itself: the tsconfig target here predates
+    // downlevelIteration, so spreading a Map's entries doesn't compile.
+    return Array.from(byMuscle.entries());
+  }, [view]);
 
   return (
     <svg
-      viewBox="0 0 200 460"
-      // Height-driven, not width-driven. `w-full` on a 200x460 viewBox inside a
-      // wide container scales to the width and the figure grows to ~2.3x that
-      // in height, spilling out of every card it is placed in.
+      viewBox={VIEW_BOX}
+      // Height-driven: a tall viewBox scaled to a wide container's width grows
+      // to several times that height and paints over the page.
       className={cn('h-full w-auto max-w-full select-none', className)}
       preserveAspectRatio="xMidYMid meet"
       role={title ? 'img' : 'presentation'}
       aria-label={title}
     >
-      {/* Silhouette: every shape, fat neutral stroke + fill, unioned by overlap. */}
-      {/* The stroke is what fuses the separate shapes into one body outline, so
-          it has to be wide enough to close the gaps and no wider — at 11 in a
-          200-wide viewBox each shape gained 5.5px a side and the figure read as
-          a pile of blobs rather than a person. */}
-      <g
-        className="text-muted-foreground/20"
-        fill="currentColor"
-        stroke="currentColor"
-        strokeWidth={6}
-        strokeLinejoin="round"
-      >
-        {FILLER.map((s, i) => (
-          <Mirrored key={`f${i}`} shape={s} id={`${uid}-f${i}`} />
-        ))}
-        {Object.entries(set).flatMap(([m, shapes]) =>
-          (shapes as Shape[]).map((s, i) => <Mirrored key={`${m}${i}`} shape={s} id={`${uid}-s-${m}${i}`} />),
-        )}
-      </g>
+      {groups.map(([key, defs]) => {
+        const structural = key === '_structure' || key === '_unmapped';
+        const muscle = structural ? null : (key as MuscleId);
+        const fill = structural
+          ? 'hsl(var(--muted-foreground) / 0.18)'
+          : (muscle && colors?.[muscle]) || 'hsl(var(--muted-foreground) / 0.32)';
+        const isHi = !!muscle && hi.has(muscle);
+        const canClick = clickable && !!muscle;
 
-      {/* Muscles */}
-      {MUSCLES.map((m) => {
-        const shapes = set[m.id];
-        if (!shapes) return null;
-        const fill = colors?.[m.id] ?? 'hsl(var(--muted-foreground) / 0.32)';
         return (
           <g
-            key={m.id}
-            data-muscle={m.id}
+            key={String(key)}
+            data-muscle={muscle ?? undefined}
             fill={fill}
-            stroke={hi.has(m.id) ? 'hsl(var(--primary))' : 'hsl(var(--background) / 0.55)'}
-            strokeWidth={hi.has(m.id) ? 3 : 1.2}
+            stroke={isHi ? 'hsl(var(--primary))' : 'hsl(var(--background) / 0.5)'}
+            strokeWidth={isHi ? 6 : 1.5}
             className={cn(
               'transition-[fill,stroke] duration-300',
-              clickable && 'cursor-pointer hover:brightness-125',
+              canClick && 'cursor-pointer hover:brightness-125',
             )}
-            onClick={clickable ? () => onMuscleClick!(m.id) : undefined}
-            role={clickable ? 'button' : undefined}
-            tabIndex={clickable ? 0 : undefined}
-            aria-label={clickable ? m.label : undefined}
+            onClick={canClick ? () => onMuscleClick!(muscle!) : undefined}
+            role={canClick ? 'button' : undefined}
+            tabIndex={canClick ? 0 : undefined}
+            aria-label={canClick ? MUSCLE_BY_ID[muscle!]?.label : undefined}
             onKeyDown={
-              clickable
+              canClick
                 ? (ev) => {
                     if (ev.key === 'Enter' || ev.key === ' ') {
                       ev.preventDefault();
-                      onMuscleClick!(m.id);
+                      onMuscleClick!(muscle!);
                     }
                   }
                 : undefined
             }
           >
-            {shapes.map((s, i) => (
-              <Mirrored key={i} shape={s} id={`${uid}-${m.id}${i}`} />
+            {defs.map((d) => (
+              <path key={d.id} d={d.path} />
             ))}
           </g>
         );
@@ -212,3 +198,25 @@ export function BodygraphPair({ className, ...props }: Omit<BodygraphProps, 'vie
     </div>
   );
 }
+
+// ── self-check ────────────────────────────────────────────────────
+// Every vendor region must be accounted for, or muscles silently vanish from
+// the figure when the package updates its anatomy.
+export const __selfcheck = () => {
+  const all = [...FRONT_MUSCLES, ...BACK_MUSCLES].map((d) => d.id);
+  const unmapped = all.filter((id) => !REGION_TO_MUSCLE[id]);
+  if (unmapped.length) throw new Error(`unmapped regions: ${unmapped.join(', ')}`);
+
+  const known = new Set(all);
+  const dangling = Object.values(REGION_MAP)
+    .flat()
+    .filter((r) => !known.has(r));
+  if (dangling.length) throw new Error(`mapped regions that no longer exist: ${dangling.join(', ')}`);
+
+  // Each of our trainable muscles must be drawable somewhere.
+  for (const m of Object.keys(REGION_MAP)) {
+    if (m === '_structure') continue;
+    if (!REGION_MAP[m as MuscleId].length) throw new Error(`${m} maps to no region`);
+  }
+  return `${all.length} regions → ${Object.keys(REGION_MAP).length - 1} muscles ok`;
+};

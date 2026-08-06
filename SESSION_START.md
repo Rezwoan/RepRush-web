@@ -76,8 +76,10 @@ note.
 - Non-trivial logic (rank math, recovery decay, streak rules, e1RM) gets one runnable assert-based
   self-check next to it. No test frameworks.
 - Every deliberate shortcut gets a `ponytail:` comment naming the ceiling and the upgrade path.
-- Do not copy any asset from `inspiration/` — those are another company's. All art (mascot, rank
-  badges, muscle map, icons) is hand-authored SVG in RepRush's palette.
+- **Search for a free, openly-licensed asset before authoring one.** This was got wrong once
+  already — see `MEMORY.md §9` for the sourcing policy and what is already adopted. Hand-authoring
+  is the fallback, not the default.
+- Do not copy any asset from `inspiration/` — those are another company's.
 
 ---
 

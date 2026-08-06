@@ -144,8 +144,11 @@ Notable v1 rules that must survive into v2:
   manual/custom entry. Why: no API keys can be provisioned without owner intervention.
 - **2026-08-06** No Strava integration, no Google sign-in, no Discord link. Why: all three need OAuth
   apps and credentials the owner would have to create. Email+password (existing) stays.
-- **2026-08-06** Exercise thumbnails are equipment/muscle-derived SVG icons, not illustrated figures.
-  Why: illustrated per-exercise art cannot be produced or licensed autonomously.
+- **2026-08-06** ~~Exercise thumbnails are equipment/muscle-derived SVG icons, not illustrated
+  figures. Why: illustrated per-exercise art cannot be produced or licensed autonomously.~~
+  **Reversed 2026-08-06** — this was wrong, and so was the reflex behind it. Free, openly-licensed
+  assets exist for almost everything here and were not looked for before hand-authoring started.
+  See §9 for the asset sourcing policy that replaces it.
 - **2026-08-06** Cutover to the live domain is the final phase (P14), gated on every earlier phase
   being green, preceded by a full prod DB backup, with a documented one-command rollback.
 
@@ -163,6 +166,48 @@ Notable v1 rules that must survive into v2:
   Every schema change on dev happens **after** `cp reprush.db reprush.db.bak-<date>`.
 
 ---
+
+## 9. Asset sourcing policy
+
+**Look for a free, openly-licensed asset before authoring one. Every time.**
+
+P1 started by hand-drawing the muscle map, badges, medals and equipment icons without searching
+first. That was the wrong instinct: a public-domain exercise database with 800+ exercises *and*
+images exists, and so does a 89-region anatomical SVG library. Hand-authoring is the fallback, not
+the default — reserve it for things that must be original to the brand or must be tinted/composed
+programmatically in ways a fixed asset can't be.
+
+### Adopted
+
+| Need | Source | Licence | Notes |
+|---|---|---|---|
+| Exercise catalog | [`yuhonas/free-exercise-db`](https://github.com/yuhonas/free-exercise-db) | **Unlicense** (public domain) | 800+ exercises: name, force, level, mechanic, equipment, primary/secondary muscles, instructions, **and images**. Replaces the whole "hand-author 200 exercises" task in P2. |
+| Muscle map | [`body-muscles`](https://www.npmjs.com/package/body-muscles) v1.0.0 | **Apache-2.0** | 89 SVG regions (40 front / 49 back), left/right split, zero deps, ~29 KB min. We use its raw `FRONT_MUSCLES`/`BACK_MUSCLES` path data, **not** its DOM renderer, so `Bodygraph` stays our own React component with our tier colours and click handling. |
+| UI icons | `lucide-react` | ISC | Already installed. |
+
+### Evaluated, not adopted (and why)
+
+- [`react-body-highlighter`](https://github.com/giavinh79/react-body-highlighter) (MIT) — good, but
+  20 muscle groups with no upper/mid/lower chest split, and the spec wants sub-muscle ranks.
+  Keep as the fallback if `body-muscles` goes stale.
+- [Kenney](https://kenney.nl) UI Pack / Medals (CC0) — raster PNG at fixed colours. Rank badges need
+  8 tiers × 3 divisions × a locked state, i.e. programmatic tinting, which is the one case where a
+  fixed asset loses. Still the right source if a static badge set is ever wanted.
+- [game-icons.net](https://game-icons.net) (CC BY 3.0) — 4,100+ SVGs, but per-icon attribution is a
+  standing maintenance cost. Use only if the icon set genuinely can't be covered by lucide.
+
+### Still hand-authored, deliberately
+
+- **Volt, the mascot** — a mascot has to be original to the brand; a stock character is the worst
+  possible thing to borrow. Stays ours.
+- **Rank badges** — needs programmatic tier tinting (see Kenney above).
+- **Medals, equipment glyphs** — small, composable, already done, and consistent with the badges.
+
+### Not yet needed but pre-vetted
+
+- [unDraw](https://undraw.co) — open licence, no attribution, recolourable to the brand hue. The
+  onboarding narrative interstitials (SPEC §3.3 steps 16–17) should use these rather than anything
+  drawn by hand.
 
 ## 8. Facts learned (append as you go)
 

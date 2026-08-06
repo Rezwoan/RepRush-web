@@ -26,6 +26,7 @@ import { MUSCLES, type MuscleId } from '@/lib/muscles';
 import { __selfcheck as ranksCheck } from '@/lib/ranks';
 import { __selfcheck as musclesCheck } from '@/lib/muscles';
 import { __selfcheck as themesCheck } from '@/lib/themes';
+import { __selfcheck as bodygraphCheck } from '@/components/art/bodygraph';
 
 const POSES: MascotPose[] = ['idle', 'cheer', 'flex', 'fire', 'sleep', 'sad'];
 
@@ -44,6 +45,7 @@ function SelfChecks() {
     ['themes', themesCheck],
     ['muscles', musclesCheck],
     ['ranks', ranksCheck],
+    ['bodygraph', bodygraphCheck],
   ] as const;
   return (
     <ul className="space-y-1 text-sm">
