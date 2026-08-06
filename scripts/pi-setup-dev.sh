@@ -241,13 +241,25 @@ else
   sudo cloudflared tunnel ingress validate && sudo systemctl restart cloudflared
   echo "  ingress rule added and cloudflared restarted"
 fi
-if cloudflared tunnel route dns "$TUNNEL_ID" "$DOMAIN" 2>&1 | tee /tmp/cfroute.log | grep -qi "error"; then
-  grep -qi "already exists\|record with that host" /tmp/cfroute.log \
-    && echo "  DNS record already exists" \
-    || { echo "  ✗ DNS route failed:"; cat /tmp/cfroute.log; }
+# MUST run as root. `reezz`'s ~/.cloudflared/cert.pem is scoped to the rezwoan.me
+# zone, so as the user this silently creates `$DOMAIN.rezwoan.me` instead of a
+# record in rezwoan.codes. /etc/cloudflared/cert.pem is the rezwoan.codes cert.
+sudo cloudflared tunnel route dns "$TUNNEL_ID" "$DOMAIN" 2>&1 | tee /tmp/cfroute.log | tail -2
+if grep -qiE "Added CNAME|already configured to route" /tmp/cfroute.log; then
+  echo "  DNS OK"
 else
-  echo "  DNS record created"
+  echo "  ✗ DNS route may have failed — check the output above"
 fi
+
+# Verify end to end rather than trusting the exit codes above.
+echo "  resolving $DOMAIN ..."
+for i in 1 2 3 4 5 6; do
+  if getent hosts "$DOMAIN" >/dev/null 2>&1 || dig +short "$DOMAIN" @1.1.1.1 | grep -q .; then
+    echo "  ✓ $DOMAIN resolves"; break
+  fi
+  [ "$i" = 6 ] && echo "  … not resolving yet; Cloudflare DNS usually catches up within a minute"
+  sleep 10
+done
 
 # ── Status ────────────────────────────────────────────────
 echo
