@@ -89,8 +89,23 @@ const REGION_TO_MUSCLE: Record<string, MuscleId | '_structure'> = Object.fromEnt
   ),
 );
 
-/** The vendor's viewBox. Both views share it, so front and back line up. */
-const VIEW_BOX = '0 0 640 1200';
+/**
+ * The vendor ships both figures in one small coordinate space, side by side —
+ * front at x 0–32, back at x 36–69, both y 0–93 — and documents no viewBox.
+ * Measured with `getBBox()` over every rendered path; re-measure the same way
+ * if the package ever changes its anatomy (the self-check below will not catch
+ * a silent re-layout, only added or renamed regions).
+ */
+const VIEW_BOX: Record<'front' | 'back', string> = {
+  front: '-1 -1 34 95',
+  back: '35 -1 35 95',
+};
+
+/**
+ * Strokes are in those same units, so a "1px-looking" value here is ~3% of the
+ * figure's width. These are tuned against the measured box above.
+ */
+const STROKE = { normal: 0.12, highlight: 0.5 };
 
 export interface BodygraphProps {
   view?: 'front' | 'back';
@@ -136,7 +151,7 @@ export function Bodygraph({
 
   return (
     <svg
-      viewBox={VIEW_BOX}
+      viewBox={VIEW_BOX[view]}
       // Height-driven: a tall viewBox scaled to a wide container's width grows
       // to several times that height and paints over the page.
       className={cn('h-full w-auto max-w-full select-none', className)}
@@ -159,7 +174,7 @@ export function Bodygraph({
             data-muscle={muscle ?? undefined}
             fill={fill}
             stroke={isHi ? 'hsl(var(--primary))' : 'hsl(var(--background) / 0.5)'}
-            strokeWidth={isHi ? 6 : 1.5}
+            strokeWidth={isHi ? STROKE.highlight : STROKE.normal}
             className={cn(
               'transition-[fill,stroke] duration-300',
               canClick && 'cursor-pointer hover:brightness-125',

@@ -223,6 +223,17 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
         proxy_cache_bypass \$http_upgrade;
+
+        # Next.js sends "s-maxage=31536000, stale-while-revalidate" on
+        # prerendered documents, which assumes a CDN that gets purged on every
+        # deploy. Nothing purges here, so a returning browser happily serves a
+        # year-old HTML shell that references /_next chunks the deploy already
+        # deleted — a white screen until the user hard-refreshes.
+        # Documents revalidate; the content-hashed assets under /_next/static/
+        # keep their immutable caching (see the block above).
+        proxy_hide_header Cache-Control;
+        add_header Cache-Control "no-cache" always;
+        add_header X-Robots-Tag "noindex, nofollow" always;
     }
 }
 EOF
