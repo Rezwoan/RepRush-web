@@ -14,8 +14,8 @@ Strength is scored like a competitive ladder. Every set you log is measured agai
 standards for your bodyweight, sex and age, and converted into a **rank** and **LP** (ladder points)
 for that exercise. Exercise ranks roll up into **muscle ranks**, muscle ranks paint an anatomical
 **Bodygraph**, and the whole thing rolls up into one **Bodyrank**. Weak muscles are visibly weak, so
-the app can point you at them. Streaks, XP levels, medals, quests, friends and leaderboards wrap the
-loop.
+the app can point you at them. Streaks, XP levels, medals, quests, friends and leaderboards wrap the loop.
+**Food, calories and macros are out of scope** — see §11.
 
 Three motivational systems run in parallel and must not be confused:
 - **Rank / LP** — *how strong you are*. Derived from lifted weight vs standards. Can go down.
@@ -70,10 +70,10 @@ Art to hand-author as SVG in `frontend/src/components/art/`:
 
 ## 2. Navigation
 
-Bottom tab bar, 6 tabs, always visible except during onboarding, an active session's fullscreen
+Bottom tab bar, 5 tabs, always visible except during onboarding, an active session's fullscreen
 moments, and celebration screens:
 
-`Workout` · `Home` · `Ranks` · `Nutrition` · `Friends` · `Profile`
+`Workout` · `Home` · `Ranks` · `Friends` · `Profile`
 
 Active tab gets a tinted panel behind it plus a 2px top rule in the primary colour.
 
@@ -96,7 +96,7 @@ Splash with wordmark, tagline, an illustrated row of lifters, `GET STARTED` (pri
 1. "Climb the ranks" — the seven rank badges laid out ascending.
 2. "See your whole body" — Bodygraph with per-muscle rank labels.
 3. "A plan built for you" — a sample generated plan card with target-muscle percentages.
-4. "Everything in one place" — split screen: nutrition rings + an active session logger.
+4. "Everything in one place" — split screen: an active session logger + the streak counter.
 
 ### 3.3 Question funnel
 Mascot in the corner with a speech bubble; a thin progress bar at the top; back arrow. One question
@@ -269,16 +269,12 @@ condition.
 
 ---
 
-## 7. Nutrition tab
 
-- Header ring: calories remaining vs target, with three sub-rings for protein / carbs / fat.
-- `ADD MEAL` primary. Meal search over a bundled open food dataset + "custom entry" + "recent" +
-  "my foods".
-- `Recently Logged` list with thumbnails, per-item macros, swipe to delete.
-- Targets are computed from profile (Mifflin-St Jeor BMR × activity × goal) and are editable.
-- Calories burned from workouts optionally feed back into the daily target (a settings toggle).
-- Water and supplement tracking fold in here — v1 already has `supplements/` and `creatine/` modules;
-  reuse them rather than writing new ones.
+## 7. ~~Nutrition tab~~ — removed
+
+Cut by the owner: RepRush does not do food, calories or macros. The section is left as a numbered
+tombstone rather than renumbered away, because comments across the codebase cite `SPEC §9` and
+`SPEC §10`. See §11.
 
 ---
 
@@ -338,8 +334,7 @@ Sub-screens worth calling out:
   (friends, reactions, comments), Announcements. v1's `push/` module and
   `components/profile/notification-settings.tsx` are the base.
 - **Other Preferences** — Routine Update Alert; App Layout (suggested workouts, bigger discovery
-  posts, rank card layout); Haptic Feedback; Audio & SFX (rest-timer alert, soundscape); Calories
-  (track calories burned).
+  posts, rank card layout); Haptic Feedback; Audio & SFX (rest-timer alert, soundscape).
 
 ---
 
@@ -351,8 +346,8 @@ scales with streak length; best-ever streak. One "freeze" earned per 7-day strea
 cover a single missed day (max 2 banked). Streak screens are full-screen celebrations.
 
 ### XP & Levels
-XP from: completing a workout (scaled by duration and volume), logging bodyweight, hitting macro
-targets, claiming quests, referrals, first-time exercises. Level curve is quadratic
+XP from: completing a workout (scaled by duration and volume), logging bodyweight, claiming quests,
+referrals, first-time exercises. Level curve is quadratic
 (`xpForLevel(n) = 250 + 256n^1.4` rounded — tune so level 2 lands near 506 XP). Level-ups award
 currency and cosmetics.
 
@@ -381,13 +376,18 @@ decay warning.
 
 ### Offline
 The existing outbox in `frontend/src/lib/offline.ts` is extended, not replaced, to cover the new
-write paths (nutrition entries, set logging with rank preview, reactions). Rank/LP is computed
+write paths (set logging with rank preview, reactions, quest claims). Rank/LP is computed
 server-side on sync; the client shows an optimistic estimate and reconciles.
 
 ---
 
 ## 11. Explicit non-goals
 
-Subscriptions, ads, trials, "Pro" tiers, Google/Apple sign-in, Strava, Discord, real-money purchases,
-illustrated per-exercise artwork, and multi-language content beyond an i18n scaffold with English
-filled in. All are in `MEMORY.md → Decisions` with reasons.
+**Nutrition in every form** — no food database, no calorie or macro tracking, no meal logging, no
+Nutrition tab. The owner cut it outright: RepRush is a training app. Supplement and creatine
+logging are *not* nutrition and stay — they are existing v1 features and live under
+Profile → Health.
+
+Also out: subscriptions, ads, trials, "Pro" tiers, Google/Apple sign-in, Strava, Discord,
+real-money purchases, illustrated per-exercise artwork, and multi-language content beyond an i18n
+scaffold with English filled in. All are in `MEMORY.md → Decisions` with reasons.

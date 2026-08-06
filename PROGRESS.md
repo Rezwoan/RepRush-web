@@ -17,13 +17,16 @@ https://dev-reprush.rezwoan.codes, and its exit check below is verified in the b
 | P5 | Home tab | TODO |
 | P6 | Workout tab | TODO |
 | P7 | Ranks tab | TODO |
-| P8 | Nutrition tab | TODO |
 | P9 | Friends & social | TODO |
 | P10 | Profile & settings | TODO |
 | P11 | Gamification glue | TODO |
 | P12 | Offline & PWA hardening | TODO |
 | P13 | Polish pass | TODO |
 | P14 | Cutover to production | TODO |
+
+**P8 was the Nutrition tab and has been removed** — the owner cut nutrition from the product
+entirely. The number is left unused rather than renumbering P9–P14, which are cited all over the
+codebase and the session log.
 
 ---
 
@@ -77,7 +80,7 @@ dev-reprush.rezwoan.codes, with prod provably untouched.
       version; see `MEMORY.md §9` for why and for the sourcing policy
 - [x] Art: rank badges (7 tiers × I/II/III + locked + sheen), medals (6 emblems × 4 materials),
       equipment glyphs
-- [x] App shell: 6-tab bottom nav, global top bar (avatar+level+XP, streak, currency, bell)
+- [x] App shell: bottom tab nav, global top bar (avatar+level+XP, streak, currency, bell)
 - [x] `prefers-reduced-motion` respected globally
 - [x] **Exit check:** `/kitchen-sink` renders every primitive in every theme and runs four assert
       self-checks in the browser — all green
@@ -249,7 +252,7 @@ Caught and fixed along the way (each has a note in `MEMORY.md §8`):
 - [ ] Rest timer: background-safe, audio + haptic on finish, skip, per-exercise override
 - [ ] All writes go through the extended offline outbox — never call the API directly from a component
 - [ ] Finish flow (media, caption, consumables, tag friends, bodyweight, tracker, privacy) → post
-- [ ] Post-session celebration chain: XP → rank-ups (+LP) → medals → streak → summary
+- [ ] Post-session celebration chain: summary → rank-ups (+LP) → streak → progression (XP/currency/level) → medals
 - [ ] **Exit check:** a full session can be logged start-to-finish with the network off, and syncs
       correctly on reconnect
 
@@ -268,18 +271,6 @@ Caught and fixed along the way (each has a note in `MEMORY.md §8`):
 
 ---
 
-## P8 — Nutrition tab · `TODO`
-
-- [ ] Bundle a trimmed open food dataset (name, brand, per-100g macros) as a seeded table
-- [ ] Calorie/macro targets from profile (Mifflin-St Jeor × activity × goal), editable
-- [ ] Rings header (calories remaining + P/C/F)
-- [ ] Add Meal: search, recent, my foods, custom entry, portion sizing
-- [ ] Recently Logged list, edit/delete
-- [ ] Fold in v1 `supplements/` + `creatine/` + water
-- [ ] Optional "calories burned adjusts target" toggle
-- [ ] **Exit check:** a day of meals can be logged and the rings + targets are correct
-
----
 
 ## P9 — Friends & social · `TODO`
 
@@ -333,7 +324,7 @@ Caught and fixed along the way (each has a note in `MEMORY.md §8`):
 
 ## P12 — Offline & PWA hardening · `TODO`
 
-- [ ] Extend `lib/offline.ts` to cover nutrition entries, reactions, quest claims, bodyweight
+- [ ] Extend `lib/offline.ts` to cover reactions, quest claims, bodyweight
 - [ ] Optimistic rank/XP preview client-side, reconciled with the server on sync
 - [ ] Idempotency keys on every queued write
 - [ ] Service worker: precache the shell, stale-while-revalidate for catalog/art, offline fallback page

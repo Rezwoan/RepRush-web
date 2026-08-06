@@ -140,8 +140,13 @@ Notable v1 rules that must survive into v2:
   RepRush is the owner's own app. Cosmetics (themes, borders, banners, titles) are unlocked with an
   in-app earned currency instead of money. Why: monetisation screens exist only because Liftoff is a
   commercial product; reproducing them would be pure cost.
-- **2026-08-06** No third-party food API for nutrition. Ship a bundled, trimmed open food dataset +
-  manual/custom entry. Why: no API keys can be provisioned without owner intervention.
+- **2026-08-06** ~~No third-party food API for nutrition; bundle an open food dataset instead.~~
+  **Superseded 2026-08-07 — nutrition is cut from the product entirely.** No food database, no
+  calories, no macros, no meal logging, no Nutrition tab. Owner's call: RepRush is a training app.
+  The bottom bar is **five** tabs. Supplement and creatine logging are *not* nutrition and stay —
+  they are working v1 features and live under Profile → Health. `SPEC.md §7` is left as a numbered
+  tombstone and PROGRESS's `P8` is retired unused, because renumbering would invalidate the `SPEC §9`
+  / `P10` citations scattered through the code and the session log.
 - **2026-08-06** No Strava integration, no Google sign-in, no Discord link. Why: all three need OAuth
   apps and credentials the owner would have to create. Email+password (existing) stays.
 - **2026-08-06** ~~Exercise thumbnails are equipment/muscle-derived SVG icons, not illustrated

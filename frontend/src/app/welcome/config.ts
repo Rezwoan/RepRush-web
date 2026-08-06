@@ -286,7 +286,7 @@ export const CAROUSEL = [
   { art: 'ladder', title: 'Climb the ranks', body: 'Every set you log is scored against real strength standards. Bronze to Legend — earn it.' },
   { art: 'body', title: 'See your whole body', body: 'Each muscle gets its own rank. The weak ones are impossible to ignore.' },
   { art: 'plan', title: 'A plan built for you', body: 'Sessions aimed at what is recovered and what is lagging. Not a generic template.' },
-  { art: 'all', title: 'Everything in one place', body: 'Workouts, nutrition, friends and progress — one app, no spreadsheets.' },
+  { art: 'all', title: 'Everything in one place', body: 'Workouts, friends, streaks and progress — one app, no spreadsheets.' },
 ] as const;
 
 // ── Avatars ─────────────────────────────────────────────────────────

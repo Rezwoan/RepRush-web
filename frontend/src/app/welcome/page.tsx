@@ -207,12 +207,12 @@ function CarouselArt({ art }: { art: (typeof CAROUSEL)[number]['art'] }) {
   return (
     <div className="mx-auto flex w-full max-w-xs items-center gap-3">
       <div className="flex-1 rounded-2xl border border-border bg-card p-4 text-center">
-        <p className="nums text-3xl font-extrabold">1,840</p>
-        <p className="text-xs text-muted-foreground">kcal left</p>
-      </div>
-      <div className="flex-1 rounded-2xl border border-border bg-card p-4 text-center">
         <p className="nums text-3xl font-extrabold">4 × 8</p>
         <p className="text-xs text-muted-foreground">Bench · 80 kg</p>
+      </div>
+      <div className="flex-1 rounded-2xl border border-border bg-card p-4 text-center">
+        <p className="nums text-3xl font-extrabold">12</p>
+        <p className="text-xs text-muted-foreground">day streak</p>
       </div>
     </div>
   );
@@ -975,7 +975,6 @@ const TOUR_COPY: Record<string, string> = {
   '/workout': 'Workout — build a session or resume one. Everything you log gets ranked.',
   '/home': 'Home — today’s session, what’s recovered, and your last 14 workouts.',
   '/ranks': 'Ranks — your Bodyrank, the Bodygraph, and every badge in the game.',
-  '/nutrition': 'Nutrition — calories and macros, with your workouts folded in.',
   '/friends': 'Friends — feeds, reactions and leaderboards.',
   '/profile': 'Profile — cosmetics, stats, medals and every setting.',
 };
@@ -996,7 +995,7 @@ function TourStep({ onDone }: { onDone: () => void }) {
   return (
     <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4 pb-24 text-center">
       <Mascot pose="idle" size={110} />
-      <h1 className="text-2xl font-extrabold">Six tabs, that&apos;s it.</h1>
+      <h1 className="text-2xl font-extrabold">Five tabs, that&apos;s it.</h1>
       <TabBar />
       <CoachMark
         open={!!rect}

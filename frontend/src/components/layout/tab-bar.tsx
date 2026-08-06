@@ -1,13 +1,16 @@
 'use client';
 /**
- * The six-tab bottom navigation. Order is deliberate: Workout sits first
+ * The five-tab bottom navigation. Order is deliberate: Workout sits first
  * (left thumb) and Home second, so the two things opened most often are the
  * easiest to reach, with Profile parked at the far edge.
+ *
+ * There is no Nutrition tab. RepRush does not do food, calories or macros —
+ * see MEMORY.md → Decisions. Do not add one back.
  */
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Apple, Dumbbell, Home, Hexagon, Users, User } from 'lucide-react';
+import { Dumbbell, Home, Hexagon, Users, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { spring } from '@/lib/motion';
 
@@ -15,7 +18,6 @@ export const TABS = [
   { href: '/workout', label: 'Workout', icon: Dumbbell, tint: 'text-primary' },
   { href: '/home', label: 'Home', icon: Home, tint: 'text-primary' },
   { href: '/ranks', label: 'Ranks', icon: Hexagon, tint: 'text-tier-gold' },
-  { href: '/nutrition', label: 'Nutrition', icon: Apple, tint: 'text-tier-titan' },
   { href: '/friends', label: 'Friends', icon: Users, tint: 'text-primary' },
   { href: '/profile', label: 'Profile', icon: User, tint: 'text-tier-diamond' },
 ] as const;
