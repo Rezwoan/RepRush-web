@@ -65,12 +65,24 @@ export function rankLabel(r: Rank | null | undefined): string {
   return `${TIER_LABEL[r.tier]} ${ROMAN[r.division]}`;
 }
 
-/** Monotonic score for sorting and for "is this a promotion?" comparisons. */
+/**
+ * Strictly monotonic score for sorting and "is this a promotion?" comparisons.
+ *
+ * The spans must be *wider* than the value they contain, or the top of one band
+ * collides with the bottom of the next: with a 100-wide division span, Gold I at
+ * 100 LP and Platinum III at 0 LP both score 1200, and a real promotion compares
+ * as "no change". Hence 101 per division and 303 per tier.
+ */
+const LP_MAX = 100;
+const DIVISION_SPAN = LP_MAX + 1;
+const TIER_SPAN = DIVISION_SPAN * 3;
+
 export function rankValue(r: Rank | null | undefined): number {
   if (!r) return 0;
   const t = TIERS.indexOf(r.tier);
+  if (t <= 0) return 0; // unranked (and anything unrecognised) is the floor
   // Division 3 is the entry point of a tier, division 1 the top of it.
-  return t * 300 + (3 - r.division) * 100 + Math.max(0, Math.min(100, r.lp));
+  return t * TIER_SPAN + (3 - r.division) * DIVISION_SPAN + Math.max(0, Math.min(LP_MAX, r.lp));
 }
 
 export const isPromotion = (from: Rank | null, to: Rank | null) => rankValue(to) > rankValue(from);
@@ -86,9 +98,15 @@ export const __selfcheck = () => {
   // Ordering within a tier: III < II < I
   if (!(rankValue(r('gold', 3)) < rankValue(r('gold', 2)))) throw new Error('III should rank below II');
   if (!(rankValue(r('gold', 2)) < rankValue(r('gold', 1)))) throw new Error('II should rank below I');
-  // Top of one tier is still below the bottom of the next.
+  // Top of one band must sit strictly below the bottom of the next — both at
+  // the division boundary and at the tier boundary. This is the case that was
+  // actually wrong: a full-LP promotion compared as "no change".
+  if (!(rankValue(r('gold', 2, 100)) < rankValue(r('gold', 1, 0))))
+    throw new Error('division boundary is not monotonic');
   if (!(rankValue(r('gold', 1, 100)) < rankValue(r('platinum', 3, 0))))
     throw new Error('tier boundary is not monotonic');
+  if (!isPromotion(r('gold', 1, 100), r('platinum', 3, 0)))
+    throw new Error('gold I full LP → platinum III must read as a promotion');
   // Unranked is the floor.
   if (rankValue(r('unranked', 3)) !== 0) throw new Error('unranked should score 0');
 
