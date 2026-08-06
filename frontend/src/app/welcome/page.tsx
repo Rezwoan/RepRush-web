@@ -68,6 +68,33 @@ const screenAnim = {
   exit: { opacity: 0, x: -28, transition: { duration: 0.18 } },
 };
 
+/** How long the step entrance spring needs before a rect is worth trusting. */
+const SETTLE_MS = 450;
+
+/**
+ * A screen's rect, measured only once its entrance animation has settled.
+ *
+ * Each step renders inside a `motion.div` that translates on entry, and a
+ * transformed ancestor becomes the containing block for `position: fixed`
+ * descendants — which is what CoachMark's spotlight is. Measure during the
+ * animation and the hole lands wherever the wrapper happened to be.
+ */
+function useSettledRect(find: () => Element | null | undefined, key: unknown) {
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  useEffect(() => {
+    setRect(null);
+    const measure = () => setRect(find()?.getBoundingClientRect() ?? null);
+    const t = window.setTimeout(measure, SETTLE_MS);
+    window.addEventListener('resize', measure);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener('resize', measure);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return rect;
+}
+
 /** Wraps a hand-written screen: title, optional mascot bubble, then content. */
 function Screen({
   title,
@@ -752,11 +779,7 @@ const BODYRANK_MARKS = [
 function BodyrankStep({ onDone }: { onDone: () => void }) {
   const [i, setI] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
-  const [rect, setRect] = useState<DOMRect | null>(null);
-
-  useEffect(() => {
-    setRect(ref.current?.getBoundingClientRect() ?? null);
-  }, [i]);
+  const rect = useSettledRect(() => ref.current, i);
 
   return (
     <div className="flex flex-col items-center gap-6 py-4 text-center">
@@ -765,7 +788,7 @@ function BodyrankStep({ onDone }: { onDone: () => void }) {
         <BodygraphPair className="h-64" />
       </div>
       <CoachMark
-        open
+        open={!!rect}
         step={i + 1}
         total={BODYRANK_MARKS.length}
         text={BODYRANK_MARKS[i]}
@@ -953,12 +976,10 @@ const TOUR_COPY: Record<string, string> = {
  */
 function TourStep({ onDone }: { onDone: () => void }) {
   const [i, setI] = useState(0);
-  const [rect, setRect] = useState<DOMRect | null>(null);
-
-  useEffect(() => {
-    const el = document.querySelectorAll<HTMLElement>('nav[aria-label="Primary"] a')[i];
-    setRect(el?.getBoundingClientRect() ?? null);
-  }, [i]);
+  const rect = useSettledRect(
+    () => document.querySelectorAll('nav[aria-label="Primary"] a')[i],
+    i,
+  );
 
   return (
     <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4 pb-24 text-center">
@@ -966,7 +987,7 @@ function TourStep({ onDone }: { onDone: () => void }) {
       <h1 className="text-2xl font-extrabold">Six tabs, that&apos;s it.</h1>
       <TabBar />
       <CoachMark
-        open
+        open={!!rect}
         step={i + 1}
         total={TABS.length}
         text={TOUR_COPY[TABS[i].href]}
