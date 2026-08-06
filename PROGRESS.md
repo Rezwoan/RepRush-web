@@ -51,7 +51,7 @@ dev-reprush.rezwoan.codes, with prod provably untouched.
 - [x] `.github/workflows/deploy-dev.yml` — push to `v2`, runner `reprush`, group `reprush-dev-deploy`
 - [x] Seed dev DB from a copy of prod's (942 KB, real history for testing the rank engine)
 - [x] Update `DEPLOYMENT.md` and `AGENTS.md` with the dev stack; add `.gitattributes` (LF for `*.sh`)
-      and gitignore `inspiration/` + `.claude/`
+      and gitignore `inspiration/` + `more_inspiration/` + `.claude/`
 - [x] **Exit check — all verified:**
       - dev `https://dev-reprush.rezwoan.codes` → **200**, `/api/auth/me` → **401**, title
         `RepRush — Train. Track. Rush.`

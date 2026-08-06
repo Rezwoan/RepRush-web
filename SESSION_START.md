@@ -3,7 +3,8 @@
 **Paste this file's path (or its contents) into a fresh session. Nothing else is required from the user.**
 
 You are continuing an autonomous, multi-session rebuild of RepRush into the product described in
-`inspiration/` (91 screenshots of the app *Liftoff*, which the owner has said is his actual vision).
+`inspiration/` (91 screenshots) and `more_inspiration/` (50 more, added 2026-08-07) — screenshots of
+the app *Liftoff*, which the owner has said is his actual vision.
 
 The owner has explicitly delegated **all** decisions. Do not ask questions, do not request
 permission, do not ask for resources, do not present options. Decide, act, verify, record, continue.
@@ -21,9 +22,10 @@ into `MEMORY.md` under *Decisions*, and move on.
 5. `git fetch --all && git checkout v2 && git pull` (create `v2` from `main` if it does not exist).
 6. Work. Then run the **Definition of Done** below before you stop.
 
-Do **not** re-read the `inspiration/` screenshots. `docs/v2/SPEC.md` is the distilled output of
-reading all 91 of them; re-reading costs ~150k tokens and adds nothing. Only open a specific
-screenshot if `SPEC.md` is genuinely silent on a detail you need, and then open only that one.
+Do **not** re-read the screenshot folders. `docs/v2/SPEC.md` is the distilled output of reading all
+141 of them (`inspiration/` + `more_inspiration/`); re-reading costs ~250k tokens and adds nothing.
+Only open a specific screenshot if `SPEC.md` is genuinely silent on a detail you need, and then open
+only that one.
 
 ---
 
@@ -79,7 +81,7 @@ note.
 - **Search for a free, openly-licensed asset before authoring one.** This was got wrong once
   already — see `MEMORY.md §9` for the sourcing policy and what is already adopted. Hand-authoring
   is the fallback, not the default.
-- Do not copy any asset from `inspiration/` — those are another company's.
+- Do not copy any asset from `inspiration/` or `more_inspiration/` — those are another company's.
 
 ---
 

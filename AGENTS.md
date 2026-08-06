@@ -183,4 +183,4 @@ Rules:
 
 If you are working on v2, your entry point is **`SESSION_START.md`** at the repo root. It, plus
 `MEMORY.md`, `PROGRESS.md` and `docs/v2/SPEC.md`, is the complete handoff — you do not need to read
-the `inspiration/` screenshots.
+the `inspiration/` or `more_inspiration/` screenshots.

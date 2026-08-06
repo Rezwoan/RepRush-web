@@ -11,4 +11,4 @@ Everything shipped in the app that we did not author, and what its licence asks 
 Regenerate the vendored glyphs with `scripts/fetch-game-icons.js`, and the exercise catalog with
 `scripts/build-exercise-catalog.js`, if either set ever changes.
 
-Nothing in `inspiration/` is licensed to us — it is reference only, never copied.
+Nothing in `inspiration/` and `more_inspiration/` are licensed to us — they are reference only, never copied.

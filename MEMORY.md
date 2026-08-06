@@ -12,10 +12,11 @@ rediscover. Keep it factual and terse — plans go in `PROGRESS.md`, product det
 
 ## 1. The mission
 
-Rebuild RepRush from a personal gym log into the app in `inspiration/` — a gamified, social,
-rank-driven training app. The owner supplied 91 screenshots of *Liftoff* and said "this is how I
-wanted my app to be." We rebuild that product **as RepRush**, with our own art, our own palette and
-our own backend. Nothing is copied from those screenshots except the product ideas.
+Rebuild RepRush from a personal gym log into the app in `inspiration/` + `more_inspiration/` — a
+gamified, social, rank-driven training app. The owner supplied 91 screenshots of *Liftoff* and said
+"this is how I wanted my app to be", then 50 more on 2026-08-07. We rebuild that product **as
+RepRush**, with our own art, our own palette and our own backend. Nothing is copied from those
+screenshots except the product ideas.
 
 The owner will not intervene at any point. No questions, no approvals, no resource requests. The
 deliverable is a finished, deployed product.
@@ -121,7 +122,8 @@ Notable v1 rules that must survive into v2:
 - Non-trivial logic ships with one assert-based self-check in the same file (`if (require.main === module)`
   for node scripts, a `__selfcheck` export otherwise). No test framework.
 - Deliberate shortcuts get a `ponytail:` comment naming the ceiling and upgrade path.
-- All art is hand-authored SVG under `frontend/src/components/art/`. Nothing from `inspiration/`.
+- All art is hand-authored SVG under `frontend/src/components/art/`. Nothing from `inspiration/`
+  or `more_inspiration/`.
 
 ---
 
@@ -191,6 +193,19 @@ Notable v1 rules that must survive into v2:
 - **2026-08-07** The equipment picker covers our **8 catalog equipment types**, not the source app's
   97-item hardware list. Why: eight is all the workout generator can filter on; a longer list
   collapses to the same filter and asks the user to do work that changes nothing.
+- **2026-08-07** 50 more screenshots (`more_inspiration/`) were read and folded into `SPEC.md` —
+  §5.2/5.3/5.3.1 (active session, finish flow, the exact post-session celebration order), §6 (Ranks
+  gets Calculator and Analysis sub-tabs), §9 (Profile cards), §10 (the itemised XP model, quest and
+  medal shapes) and a new §12 (typed goals with target dates and 1RM targets, the Health Log,
+  routine folders). Both folders are gitignored; SPEC remains the only committed record.
+- **2026-08-07 — OPEN, decide in P7.** The reference ladder has **eight** tiers, not seven: it
+  inserts **Champion** between Diamond and Titan and its apex is **Olympian** (no divisions), where
+  ours ends at Legend. It also numbers divisions the **other way** — `I → II → III` ascending, so
+  Titan III is the best Titan, while `lib/ranks.ts` uses `III → II → I` and self-checks that order.
+  Nothing is broken: the engine is internally consistent and P3's ladder was verified against it.
+  But the shipped app disagrees with the owner's reference on both points, and P7 builds the screen
+  that makes it visible. Changing division direction touches `rankValue()`, `rankFromPercentile()`
+  and P3's exit-check table; adding Champion additionally re-spaces every `TIER_FLOOR`.
 - **2026-08-07** `User.username` is unique via `@Index({ unique: true })`, not `@Column({ unique: true })`.
   Why: a unique *column* makes SQLite rebuild the whole `users` table (create/copy/drop/rename) on
   the next `synchronize`, which is exactly the operation that can lose live accounts. A separate
@@ -345,8 +360,9 @@ Two rules that fall out of it:
   which commit triggered it.
 - `.gitattributes` now pins `*.sh` to LF. This workstation has `core.autocrlf=true`, which would
   otherwise be one bad checkout away from `\r: command not found` on the Pi.
-- `inspiration/` and `.claude/` are gitignored — the repo is **public** and those are 25 MB of a
-  third-party app's screenshots. `docs/v2/SPEC.md` is the committed substitute.
+- `inspiration/`, `more_inspiration/` and `.claude/` are gitignored — the repo is **public** and the
+  first two are ~36 MB of a third-party app's screenshots. `docs/v2/SPEC.md` is the committed
+  substitute for both.
 
 **P1 · 2026-08-06**
 
