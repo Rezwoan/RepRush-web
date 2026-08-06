@@ -9,7 +9,7 @@ https://dev-reprush.rezwoan.codes, and its exit check below is verified in the b
 
 | Phase | Title | Status |
 |---|---|---|
-| P0 | Dev environment & isolation | TODO |
+| P0 | Dev environment & isolation | **DONE** |
 | P1 | Design system, art, app shell | TODO |
 | P2 | Data model & exercise catalog | TODO |
 | P3 | Rank engine | TODO |
@@ -27,28 +27,36 @@ https://dev-reprush.rezwoan.codes, and its exit check below is verified in the b
 
 ---
 
-## P0 — Dev environment & isolation · `TODO`
+## P0 — Dev environment & isolation · `DONE` (2026-08-06)
 
 Goal: `v2` branch auto-deploys the *current* app to a fully separate stack at
 dev-reprush.rezwoan.codes, with prod provably untouched.
 
 - [x] `ssh reezz@blackbox.local 'echo ok'` — **works**, and `sudo` is passwordless. Port map surveyed
       and written into `MEMORY.md §2` (3110/3111 turned out to be ClassMate; dev moved to 3120/3121).
-- [ ] Create branch `v2` from `main`, push it
-- [ ] `scripts/pi-setup-dev.sh` — clone to `/var/www/reprush-dev`, branch `v2`, ports 3120/3121,
+- [x] Create branch `v2` from `main`, push it
+- [x] `scripts/pi-setup-dev.sh` — clone to `/var/www/reprush-dev`, branch `v2`, ports 3120/3121,
       `/var/log/reprush-dev`, own `.env` with a fresh JWT secret and
-      `FRONTEND_URL=https://dev-reprush.rezwoan.codes`, own `frontend/.env.local`
-- [ ] systemd units `reprush-dev-backend.service`, `reprush-dev-frontend.service`
-- [ ] nginx vhost `reprush-dev` for `dev-reprush.rezwoan.codes` (copy of prod's, dev ports)
-- [ ] Cloudflare: `cloudflared tunnel route dns 27a45beb-… dev-reprush.rezwoan.codes` + ingress entry
-      in `/etc/cloudflared/config.yml` before the 404 line + `systemctl restart cloudflared`
-- [ ] `scripts/deploy-dev.sh` (dev dirs/ports/services, resets to `origin/v2`)
-- [ ] `.github/workflows/deploy-dev.yml` — on push to `v2`, runner label `reprush`, concurrency
-      group `reprush-dev-deploy`
-- [ ] Seed dev DB: `cp /var/www/reprush/backend/database/reprush.db /var/www/reprush-dev/backend/database/`
-- [ ] Update `DEPLOYMENT.md` and `AGENTS.md` with the dev stack
-- [ ] **Exit check:** dev URL loads the v1 app and works; prod URL still 200 and unaffected; a push
-      to `v2` deploys only dev; a push to `main` deploys only prod
+      `FRONTEND_URL=https://dev-reprush.rezwoan.codes`, own `frontend/.env.local`, own admin account.
+      Refuses to run if 3120/3121 are held by anything else.
+- [x] systemd units `reprush-dev-backend.service`, `reprush-dev-frontend.service` — both active
+- [x] nginx vhost `reprush-dev` (+ `X-Robots-Tag: noindex` so the rebuild stays out of search)
+- [x] Cloudflare: DNS CNAME + tunnel ingress rule added, `cloudflared` restarted.
+      **Must be run as root** — see `MEMORY.md §8`.
+- [x] `scripts/deploy-dev.sh` — dev dirs/ports/services only, resets to `origin/v2`, snapshots the
+      dev DB (keeps 5), and asserts prod is still up at the end
+- [x] `.github/workflows/deploy-dev.yml` — push to `v2`, runner `reprush`, group `reprush-dev-deploy`
+- [x] Seed dev DB from a copy of prod's (942 KB, real history for testing the rank engine)
+- [x] Update `DEPLOYMENT.md` and `AGENTS.md` with the dev stack; add `.gitattributes` (LF for `*.sh`)
+      and gitignore `inspiration/` + `.claude/`
+- [x] **Exit check — all verified:**
+      - dev `https://dev-reprush.rezwoan.codes` → **200**, `/api/auth/me` → **401**, title
+        `RepRush — Train. Track. Rush.`
+      - prod `https://reprush.rezwoan.codes` → **200**, `/api/auth/me` → **401**, services still
+        showing their pre-P0 uptime (never restarted)
+      - push to `v2` → run 31080617234 green in 1m27s, touched only the dev stack
+      - push to `v2` did **not** trigger the prod workflow (branch-filtered; `main`'s newest run is
+        still yesterday's)
 
 ---
 
@@ -295,3 +303,19 @@ Chose the isolation strategy: branch `v2` + a parallel Pi stack on ports 3110/31
 dev-reprush.rezwoan.codes, prod untouched on 3100/3101.
 **Next:** P0 — verify SSH to the Pi, create the `v2` branch, stand up the dev stack.
 **Blockers:** none known. SSH access to `blackbox.local` is assumed but unverified.
+
+### 2026-08-06 — P0 complete
+Dev stack live at https://dev-reprush.rezwoan.codes, fully isolated from production: own checkout,
+ports 3120/3121, systemd units, nginx vhost, JWT secret, admin account and database (seeded from a
+copy of prod's). `v2` → `deploy-dev.yml` → `scripts/deploy-dev.sh` deploys on push and passed green.
+Production verified untouched throughout — its services never restarted.
+
+Two things bit us and are now written into `MEMORY.md §8`: `cloudflared tunnel route dns` needs
+`sudo` (the user's cert is scoped to a different zone and fails *silently*), and a local resolver
+negative-cached the pre-creation NXDOMAIN for 30 minutes, so new hostnames must be verified via
+Cloudflare DoH + `curl --resolve`, not `dig`.
+
+**Next:** P1 — design tokens and theme engine, the component kit, the hand-authored SVG art
+(mascot, Bodygraph, rank badges), and the 6-tab app shell. Exit check is a `/kitchen-sink` route
+rendering everything in every theme.
+**Blockers:** none.
