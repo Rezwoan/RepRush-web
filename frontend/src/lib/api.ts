@@ -145,6 +145,12 @@ export const exercisesApi = {
     api.patch(`/exercises/my-plans/${planId}/weights`, { customWeights }),
 };
 
+// ─── Home ─────────────────────────────────────────────────────────────────────
+export const homeApi = {
+  /** Everything the Home tab renders, in one call. */
+  summary: () => api.get('/home/summary'),
+};
+
 // ─── Ranks ────────────────────────────────────────────────────────────────────
 export const ranksApi = {
   me: () => api.get('/ranks/me'),

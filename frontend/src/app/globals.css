@@ -38,6 +38,10 @@
     --warning: 38 94% 52%;
     --warning-foreground: 30 85% 9%;
 
+    /* Fatigue / recovery (SPEC §1 warm, #FF8A3D). Used at varying alpha to tint
+       the Recovery Zone Bodygraph: warm = worked, pale = fresh. */
+    --warm: 24 100% 62%;
+
     --destructive: 0 76% 60%;
     --destructive-foreground: 0 0% 100%;
 

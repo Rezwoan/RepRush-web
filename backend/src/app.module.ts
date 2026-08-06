@@ -18,6 +18,7 @@ import { BodyWeightModule } from './body-weight/body-weight.module';
 import { PushModule } from './push/push.module';
 import { SeedModule } from './seed/seed.module';
 import { RanksModule } from './ranks/ranks.module';
+import { HomeModule } from './home/home.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { RanksModule } from './ranks/ranks.module';
     BodyWeightModule,
     PushModule,
     RanksModule,
+    HomeModule,
     SeedModule,
   ],
 })

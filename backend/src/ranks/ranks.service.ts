@@ -5,6 +5,7 @@ import { CatalogService, CatalogExercise } from '../exercises/catalog.service';
 import { User } from '../users/user.entity';
 import { WorkoutSet } from '../workouts/workout-set.entity';
 import { e1rm, effectiveLoad, __selfcheck as e1rmSelfCheck } from './e1rm';
+import { __selfcheck as recoverySelfCheck } from './recovery';
 import {
   Rank,
   UNRANKED,
@@ -96,7 +97,7 @@ export class RanksService implements OnModuleInit {
    * is wrong and should say so loudly rather than quietly mis-rank everybody.
    */
   onModuleInit() {
-    this.logger.log(`${e1rmSelfCheck()}, ${standardsSelfCheck()}`);
+    this.logger.log(`${e1rmSelfCheck()}, ${standardsSelfCheck()}, ${recoverySelfCheck()}`);
 
     const missing = overrideIds().filter((id) => !this.catalog.find(id));
     if (missing.length) throw new Error(`standards.ts overrides name unknown exercises: ${missing.join(', ')}`);

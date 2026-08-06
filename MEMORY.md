@@ -310,18 +310,27 @@ Two rules that fall out of it:
   `ssh reezz@blackbox.local 'sudo grep ADMIN /var/www/reprush-dev/backend/.env'`. Never commit them.
 - `deploy-dev.sh` snapshots the dev DB before every deploy (keeps 5) because `synchronize: true`
   migrates on service start.
-- **CI runner dispatch: broke 2026-08-07, recovered on its own the same day.** For a few hours
-  GitHub reported the `reprush` runner **`offline`** while the Pi side was healthy throughout
-  (`systemctl is-active` green, journal showing `√ Connected to GitHub` / `Listening for Jobs`);
-  pushes to `v2` created no workflow run at all and `workflow_dispatch` runs sat unclaimed until
-  they were cancelled. Restarting
-  `actions.runner.Rezwoan-RepRush-web.blackbox-reprush.service` did not appear to help *at the
-  time* — but the registration did come good later, with no further action. Verified working again
-  at run 31129070516 (dispatch, green, 1m28s) and by push. **So: a stale registration here is a
-  GitHub-side condition that clears itself. Restart the service once, then stop waiting on it.**
-  Diagnose with `gh api repos/Rezwoan/RepRush-web/actions/runners` — `status: online` means
-  dispatch works; `offline` with a healthy journal means wait it out and deploy manually.
-  **The manual fallback (always safe, use it whenever CI is slow or suspect):**
+- **CI: nothing is broken, but a push run can take ~30 minutes to appear.** Diagnosed properly on
+  2026-08-07 after the P3 session recorded it as "GitHub stopped dispatching". What actually
+  happened: the runner registration *was* stale for a few hours (`gh api
+  repos/Rezwoan/RepRush-web/actions/runners` → `offline` while the Pi journal showed
+  `√ Connected to GitHub` / `Listening for Jobs`), and it cleared itself with no further action.
+  On top of that, **GitHub's push-event delivery for this repo runs badly behind** — a commit
+  pushed at 22:06 got its workflow run created at 22:36. Checking a minute after pushing and seeing
+  no run means nothing.
+  Both verified working: dispatch run 31129070516 green in 1m28s, push run 31129113963 green in
+  1m30s.
+  **How to tell them apart, in order:**
+  1. `gh api repos/Rezwoan/RepRush-web/actions/runners --jq '.runners[].status'` — `online` means
+     the Pi will pick work up. `offline` with a healthy journal is the stale registration: restart
+     the service once, then stop waiting on it.
+  2. `gh api repos/Rezwoan/RepRush-web/commits/<sha>/check-suites` — a `github-actions` suite for
+     your commit means the run exists (or is coming) even if `gh run list` hasn't caught up. Only
+     `vercel` and `cursor` suites and no `github-actions` one means the event genuinely didn't
+     produce a run. (`vercel` and `cursor` are apps installed on the repo; their suites sit
+     `queued` forever and are not ours.)
+  3. Never diagnose from `gh run list` alone in the first few minutes after a push.
+  **The manual fallback (always safe, and the fast path — use it rather than waiting on CI):**
   ```bash
   ssh reezz@blackbox.local 'bash /var/www/reprush-dev/scripts/deploy-dev.sh'
   ```

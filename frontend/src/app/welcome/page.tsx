@@ -1044,7 +1044,7 @@ export default function WelcomePage() {
     if (user) {
       clearProgress();
       setGate('redirect');
-      router.replace('/dashboard');
+      router.replace('/home');
     } else {
       setGate('funnel');
     }
@@ -1070,7 +1070,7 @@ export default function WelcomePage() {
 
   const finish = useCallback(() => {
     clearProgress();
-    router.replace('/dashboard');
+    router.replace('/home');
   }, [router]);
 
   const qIndex = QUESTION_STEPS.indexOf(step.id);

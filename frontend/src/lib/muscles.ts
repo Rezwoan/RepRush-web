@@ -73,13 +73,11 @@ export const musclesInView = (v: 'front' | 'back') =>
 /** Total `size` across all muscles — the denominator for Bodyrank weighting. */
 export const TOTAL_MUSCLE_SIZE = MUSCLES.reduce((n, m) => n + m.size, 0);
 
-/**
- * Recovery half-life in hours. Big muscles take longer to come back, so a leg
- * day blocks legs for longer than a curl blocks biceps.
- * ponytail: linear in `size`, not a per-muscle table. Tune the constants here
- * if the Recovery Zone ever reads wrong; a full table is unjustified until then.
- */
-export const recoveryHalfLifeHours = (id: MuscleId) => 30 + (MUSCLE_BY_ID[id]?.size ?? 2) * 9;
+// `recoveryHalfLifeHours` used to live here, unused, with a different curve to
+// the one the engine actually runs. Recovery is computed server-side in
+// `backend/src/ranks/recovery.ts` from the same `size` values below; the client
+// only renders the fatigue numbers it is handed. Two formulas for one model is
+// a drift bug waiting for someone to trust the wrong one.
 
 // ── self-check ────────────────────────────────────────────────────
 export const __selfcheck = () => {

@@ -566,5 +566,24 @@ nothing in the spec reads them, and columns for phases that don't exist get gues
 
 **Next:** P5 — the Home tab. `/home` does not exist yet; the tab bar already points at it and the
 tour already describes it.
-**Blockers:** none. **CI is still not dispatching** — every deploy this session went out via
-`ssh reezz@blackbox.local 'bash /var/www/reprush-dev/scripts/deploy-dev.sh'`. See `MEMORY.md §8`.
+**Blockers:** none. Every deploy this session went out via
+`ssh reezz@blackbox.local 'bash /var/www/reprush-dev/scripts/deploy-dev.sh'` because CI looked dead.
+
+### 2026-08-07 — CI, properly diagnosed
+P3 recorded "GitHub stopped dispatching to the `reprush` runner" and P4 worked around it. Both were
+half right, and the workaround was the correct call, but the note was wrong enough to mislead the
+next session — so it has been rewritten in `MEMORY.md §8`.
+
+Two separate things were happening. The runner registration really was stale for a few hours
+(GitHub's API said `offline` while the Pi journal said `Listening for Jobs`) and **it cleared itself
+with no further action**. Underneath that, GitHub's push-event delivery for this repo is running
+badly behind: a commit pushed at 22:06 had its workflow run created at **22:36**. Checking a minute
+after pushing and seeing nothing is not evidence of anything.
+
+Both paths verified green: dispatch run 31129070516 (1m28s) and push run 31129113963 (1m30s).
+`gh api repos/.../commits/<sha>/check-suites` is the reliable check — a `github-actions` suite means
+the run exists or is coming. The `vercel` and `cursor` suites that sit `queued` forever belong to
+apps installed on the repo and are not ours.
+
+The manual deploy script stays the fast path; it is not a fallback for a broken CI so much as the
+way to not wait half an hour.

@@ -10,6 +10,11 @@ import { cn } from '@/lib/utils';
 import { Bar } from '@/components/ui/display';
 
 export interface TopBarProps {
+  /**
+   * Level and currency are **omitted, not zeroed**, until P11 ships the XP
+   * ledger. Rendering `Lv.1 · 0` for someone with fifty sessions behind them
+   * reads as a broken app; showing nothing reads as "not yet".
+   */
   level?: number;
   /** 0–1 progress through the current level. */
   levelProgress?: number;
@@ -26,10 +31,10 @@ export interface TopBarProps {
 const ACTION_ICON = { bell: Bell, addFriend: UserPlus, help: HelpCircle } as const;
 
 export function TopBar({
-  level = 1,
+  level,
   levelProgress = 0,
   streak = 0,
-  currency = 0,
+  currency,
   avatar,
   action = 'bell',
   onAction,
@@ -51,15 +56,17 @@ export function TopBar({
           <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full border-2 border-primary bg-secondary">
             {avatar}
           </span>
-          <span className="min-w-0">
-            <span className="block text-xs font-extrabold leading-tight">Lv.{level}</span>
-            <Bar
-              value={levelProgress}
-              height={5}
-              className="mt-0.5 w-20"
-              label={`Level ${level} progress`}
-            />
-          </span>
+          {level !== undefined && (
+            <span className="min-w-0">
+              <span className="block text-xs font-extrabold leading-tight">Lv.{level}</span>
+              <Bar
+                value={levelProgress}
+                height={5}
+                className="mt-0.5 w-20"
+                label={`Level ${level} progress`}
+              />
+            </span>
+          )}
         </Link>
 
         <div className="flex-1" />
@@ -69,10 +76,12 @@ export function TopBar({
           <span className="nums text-sm font-extrabold">{streak}</span>
         </span>
 
-        <span className="flex items-center gap-1.5" title="Spark">
-          <Globe size={20} className="text-primary" />
-          <span className="nums text-sm font-extrabold">{currency}</span>
-        </span>
+        {currency !== undefined && (
+          <span className="flex items-center gap-1.5" title="Spark">
+            <Globe size={20} className="text-primary" />
+            <span className="nums text-sm font-extrabold">{currency}</span>
+          </span>
+        )}
 
         {Icon && (
           <button
