@@ -487,9 +487,15 @@ Deferred: `GET /ranks/leagues` → **P7**, which builds the screen and needs riv
 `GET MY RANK` will call.
 **Blockers:** none, but see the CI note below.
 
-**⚠️ CI:** pushes to `v2` stopped creating workflow runs partway through this session — the last
-three pushes produced none, while `gh workflow run deploy-dev.yml --ref v2` works every time and the
-runner is online and idle. Deploys in this session were dispatched manually. `deploy-dev.sh` does
-`git reset --hard origin/v2`, so a dispatch always ships whatever is on the branch regardless of
-which commit triggered it. Worth watching next session; if push triggers are still dead, dispatch
-manually and don't wait on a run that will never appear.
+**⚠️ CI is degraded — read `MEMORY.md §8` before waiting on a deploy.** Partway through this session
+GitHub stopped dispatching jobs to the `reprush` runner: first pushes to `v2` created no workflow run
+at all, then manual `workflow_dispatch` runs stuck in `queued` forever. The Pi side stayed healthy
+throughout (`√ Connected to GitHub`, `Listening for Jobs`) while GitHub's API reported the runner
+`offline`; restarting the runner service re-registered it without restoring dispatch. This looks
+like a stale registration on GitHub's side, not a repo or workflow problem.
+
+Everything in this session is deployed and verified — the last two deploys went out via the
+documented manual path, `ssh reezz@blackbox.local 'bash /var/www/reprush-dev/scripts/deploy-dev.sh'`,
+which resets to `origin/v2`, rebuilds both, restarts only the dev services and asserts prod is up.
+Dev is at branch tip with green self-checks; prod verified 200 and untouched. Use that path next
+session if CI is still dead, and don't wait on a run that will never appear.

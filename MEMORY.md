@@ -295,12 +295,21 @@ Two rules that fall out of it:
   `ssh reezz@blackbox.local 'sudo grep ADMIN /var/www/reprush-dev/backend/.env'`. Never commit them.
 - `deploy-dev.sh` snapshots the dev DB before every deploy (keeps 5) because `synchronize: true`
   migrates on service start.
-- **⚠️ Push-triggered CI stopped firing on 2026-08-07.** Three consecutive pushes to `v2` created no
-  workflow run at all, while `gh workflow run deploy-dev.yml --ref v2` worked every time and the
-  runner (`blackbox-reprush`) was online and idle with the workflow `active`. If a push seems not to
-  deploy, check `gh run list --workflow deploy-dev.yml` before waiting on it, and dispatch manually.
-  Because `deploy-dev.sh` does `git reset --hard origin/v2`, a dispatch always ships the current tip
-  of the branch no matter which commit triggered the run.
+- **⚠️ GitHub stopped dispatching jobs to the `reprush` runner on 2026-08-07.** Symptoms, in the
+  order they appeared: pushes to `v2` created no workflow run at all (not even a queued one), then
+  `workflow_dispatch` runs stuck in `queued` forever. Meanwhile the Pi side was healthy the whole
+  time — `systemctl is-active` green, journal showing `√ Connected to GitHub` / `Listening for Jobs`
+  — while `gh api .../actions/runners` reported the same runner **`offline`**. Restarting
+  `actions.runner.Rezwoan-RepRush-web.blackbox-reprush.service` re-registered it but did not restore
+  dispatch. This is a GitHub-side stale registration, not a repo or workflow problem.
+  **Working fallback, and it is the documented one:**
+  ```bash
+  ssh reezz@blackbox.local 'bash /var/www/reprush-dev/scripts/deploy-dev.sh'
+  ```
+  It resets to `origin/v2`, rebuilds both, restarts only the dev services and asserts prod is still
+  up. Check `gh run list --workflow deploy-dev.yml` before ever waiting on a run — and note that
+  because the script resets to `origin/v2`, *any* deploy ships the current branch tip regardless of
+  which commit triggered it.
 - `.gitattributes` now pins `*.sh` to LF. This workstation has `core.autocrlf=true`, which would
   otherwise be one bad checkout away from `\r: command not found` on the Pi.
 - `inspiration/` and `.claude/` are gitignored — the repo is **public** and those are 25 MB of a
