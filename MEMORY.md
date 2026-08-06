@@ -246,3 +246,25 @@ programmatically in ways a fixed asset can't be.
   otherwise be one bad checkout away from `\r: command not found` on the Pi.
 - `inspiration/` and `.claude/` are gitignored — the repo is **public** and those are 25 MB of a
   third-party app's screenshots. `docs/v2/SPEC.md` is the committed substitute.
+
+**P1 · 2026-08-06**
+
+- **`Cache-Control` on Next.js documents is a live bug, not just a QA annoyance.** Next marks
+  prerendered pages `s-maxage=31536000, stale-while-revalidate`, which assumes a CDN that gets
+  purged on every deploy. Nothing purges here. With no `max-age`, a browser treats it as
+  "serve stale immediately, revalidate in the background" — so every visitor is one deploy behind,
+  and right after a deploy the stale shell points at `/_next` chunks that no longer exist (white
+  screen until a hard refresh). Fixed on dev by having nginx send `no-cache` for documents while
+  `/_next/static/` keeps `immutable`.
+  **⚠️ Production still has this** (`curl -sI https://reprush.rezwoan.codes/login` shows the
+  1-year header). Not changed — prod is frozen until P14. Apply the same three lines to
+  `/etc/nginx/sites-available/reprush` at cutover.
+- Symptom to recognise: the deployed chunk on the Pi contains your change, but the browser keeps
+  running the previous build. Confirm with
+  `grep -o "<marker>" /var/www/reprush-dev/frontend/.next/static/chunks/app/**/*.js`; if the server
+  has it, it is this. A `?cb=1` query param bypasses it for QA.
+- `body-muscles` ships **no viewBox** and both figures share one small coordinate space, side by
+  side: front `x 0–32`, back `x 36–69`, both `y 0–93`. Measured with `getBBox()`. Strokes are in
+  those units, so a normal-looking `1.5` is ~4% of the body's width — use ~0.12.
+- The tsconfig target here predates `downlevelIteration`, so spreading a `Map`'s entries
+  (`[...map.entries()]`) does not compile. Use `Array.from(map.entries())`.

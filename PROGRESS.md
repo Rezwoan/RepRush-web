@@ -10,7 +10,7 @@ https://dev-reprush.rezwoan.codes, and its exit check below is verified in the b
 | Phase | Title | Status |
 |---|---|---|
 | P0 | Dev environment & isolation | **DONE** |
-| P1 | Design system, art, app shell | TODO |
+| P1 | Design system, art, app shell | **DONE** |
 | P2 | Data model & exercise catalog | TODO |
 | P3 | Rank engine | TODO |
 | P4 | Onboarding funnel | TODO |
@@ -60,24 +60,36 @@ dev-reprush.rezwoan.codes, with prod provably untouched.
 
 ---
 
-## P1 — Design system, art, app shell · `TODO`
+## P1 — Design system, art, app shell · `DONE` (2026-08-06)
 
-- [ ] Tailwind theme: CSS-variable token layer (bg/surface/elevated/border/text/primary/gold/
-      success/danger/warm + 7 tier colours), dark + light
-- [ ] Theme engine: `data-theme` on `<html>`, provider, persisted preference, all named themes from
-      SPEC §1 defined as variable sets
-- [ ] Typography scale, chunky button (`Button` variants: primary/gold/outline/ghost/danger)
-- [ ] Core kit: Card, Sheet/BottomSheet, SegmentedControl, Chip, RulerPicker (vertical + horizontal),
-      WheelPicker, StatTile, ProgressBar, Ring, Toggle, Avatar, EmptyState, CelebrationOverlay
-      (rays + confetti + spring), CoachMark
-- [ ] Art: mascot SVG with 6 poses
-- [ ] Art: `Bodygraph` component — front/back SVG, ~22 addressable muscle regions, props for
-      per-region colour + tap handler
-- [ ] Art: rank badge SVG (7 tiers × I/II/III + locked), medal SVG, equipment glyphs
-- [ ] App shell: 6-tab bottom nav, global top bar (avatar+level+XP, streak, currency, bell), safe-area
-      handling, route transitions
-- [ ] `prefers-reduced-motion` respected everywhere
-- [ ] **Exit check:** a `/kitchen-sink` dev route renders every component in every theme
+- [x] Token layer extended (the existing logo-derived cobalt/volt palette was already right):
+      added rank tier tokens, page wash vars, light-mode defaults
+- [x] Theme engine (`lib/themes.ts`): **34** themes derived from a small seed each rather than
+      hand-written CSS; `data-theme` on `<html>`, persisted, pre-paint boot script so a light theme
+      never flashes dark
+- [x] Chunky button family (`chunky` / `chunkyGold` / `chunkyLight` / `chunkyOutline` + `cta` size)
+- [x] Core kit: Sheet (on the installed radix dialog — free focus trap + scroll lock), Segmented,
+      TabBarLinks, Chip, Toggle, OptionCard, RulerPicker (h+v), WheelPicker, Ring, RingStack, Bar,
+      StatTile, EmptyState, Celebration (+ `useCelebrationQueue`), Rays, Confetti, CoachMark
+- [x] Art: Volt the mascot, 6 poses (hand-authored — a mascot must be original to the brand)
+- [x] Art: **`Bodygraph` now renders `body-muscles` (Apache-2.0)** — 89 anatomical regions, front
+      and back, left/right split, mapped onto our 21 trainable muscles. Replaced the hand-drawn
+      version; see `MEMORY.md §9` for why and for the sourcing policy
+- [x] Art: rank badges (7 tiers × I/II/III + locked + sheen), medals (6 emblems × 4 materials),
+      equipment glyphs
+- [x] App shell: 6-tab bottom nav, global top bar (avatar+level+XP, streak, currency, bell)
+- [x] `prefers-reduced-motion` respected globally
+- [x] **Exit check:** `/kitchen-sink` renders every primitive in every theme and runs four assert
+      self-checks in the browser — all green
+
+Caught and fixed along the way (each has a note in `MEMORY.md §8`):
+- `rankValue` was not strictly monotonic at band boundaries — Gold I at 100 LP and Platinum III at
+  0 LP scored identically, so a real promotion compared as "no change" and would have silently
+  swallowed the rank-up celebration. **The self-check caught this on first render.**
+- The global 401 interceptor bounced *every* route to `/login`, which would have thrown users out
+  of the pre-auth onboarding funnel in P4.
+- Picker scroll re-rendered the entire page tree per snapped tick and froze the renderer outright.
+- Next.js document caching served a stale HTML shell — see the ⚠️ prod note in `MEMORY.md §8`.
 
 ---
 
@@ -321,3 +333,21 @@ Cloudflare DoH + `curl --resolve`, not `dig`.
 (mascot, Bodygraph, rank badges), and the 6-tab app shell. Exit check is a `/kitchen-sink` route
 rendering everything in every theme.
 **Blockers:** none.
+
+### 2026-08-06 — P1 complete
+Design system, component kit, art and the six-tab shell are live on dev. `/kitchen-sink` renders
+everything in all 34 themes with four green self-checks.
+
+**Course correction, prompted by the owner mid-phase:** the art was being hand-authored without
+anyone checking what already exists, which was the wrong default. Researched and adopted
+`body-muscles` (Apache-2.0, 89 anatomical regions) for the Bodygraph, replacing 21 hand-drawn
+blobs, and switched P2's exercise catalog from "hand-author 200 exercises" to importing
+`yuhonas/free-exercise-db` (public domain, 800+ exercises **with images**) — which also reverses
+the earlier "no exercise images are possible" decision. `MEMORY.md §9` now holds the sourcing
+policy, what was adopted, what was evaluated and rejected, and the short list of things that stay
+hand-authored on purpose.
+
+**Next:** P2 — import the exercise catalog, extend the schema, backfill v1 history onto catalog ids.
+**Blockers:** none.
+**⚠️ For P14:** production still serves `s-maxage=31536000` on documents; apply the dev vhost's
+`no-cache` fix at cutover.
