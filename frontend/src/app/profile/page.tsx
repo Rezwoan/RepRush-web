@@ -12,6 +12,7 @@ import { Card, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ImageCropper } from '@/components/ui/image-cropper';
 import NotificationSettings from '@/components/profile/notification-settings';
+import { ArtAttribution } from '@/components/art/attribution';
 
 export default function ProfilePage() {
   const { refresh, logout } = useAuth();
@@ -229,6 +230,8 @@ export default function ProfilePage() {
         className="w-full flex items-center justify-center gap-2 py-3 text-muted-foreground border border-border rounded-2xl hover:border-destructive/40 hover:text-destructive hover:bg-destructive/5 transition-colors text-sm font-medium">
         <LogOut size={16} /> Sign out
       </motion.button>
+
+      <ArtAttribution className="pb-2 text-center text-[11px] leading-relaxed text-muted-foreground" />
 
       <ImageCropper src={cropSrc} busy={uploadingImg} onCancel={() => setCropSrc(null)} onConfirm={handleCroppedUpload} />
     </PageTransition>

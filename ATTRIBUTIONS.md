@@ -1,0 +1,13 @@
+# Third-party assets
+
+Everything shipped in the app that we did not author, and what its licence asks of us.
+
+| Asset | Where | Licence | Obligation |
+|---|---|---|---|
+| [game-icons.net](https://game-icons.net/) — badge/medal emblems by **lorc**, **delapouite**, **caro-asercion** | `frontend/src/components/art/game-icons.ts` (path data vendored, background rect stripped) | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) | Visible credit — rendered by `components/art/attribution.tsx` |
+| [`body-muscles`](https://www.npmjs.com/package/body-muscles) — anatomical regions | `frontend/src/components/art/bodygraph.tsx` (npm dependency) | Apache-2.0 | Preserve notice |
+| [`yuhonas/free-exercise-db`](https://github.com/yuhonas/free-exercise-db) — exercise catalog + images | P2, backend seed | Unlicense | None |
+
+Regenerate the vendored glyphs with `scripts/fetch-game-icons.js` if the set ever changes.
+
+Nothing in `inspiration/` is licensed to us — it is reference only, never copied.

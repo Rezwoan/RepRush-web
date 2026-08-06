@@ -351,3 +351,33 @@ hand-authored on purpose.
 **Blockers:** none.
 **⚠️ For P14:** production still serves `s-maxage=31536000` on documents; apply the dev vhost's
 `no-cache` fix at cutover.
+
+### 2026-08-07 — P1 follow-up: animated badges and medals
+Owner: *"try to find more animated and better badges/medals instead of these static boring ones."*
+Correct on both counts, and the same instinct as the P1 correction: search first.
+
+Adopted **game-icons.net** (CC BY 3.0, 4,100+ SVGs) — 23 glyphs vendored as raw path data by
+`scripts/fetch-game-icons.js`. Each tier now carries its own emblem, so the ladder reads as a
+picture without the label: lifting → flexed arm → biceps → laurels → crystal → cut diamond →
+Thor's fist → winged emblem. Medals went from 6 hand-drawn blobs to 15 real emblems.
+
+Motion is SMIL in the SVG: breathing halo everywhere, sheen sweep on the crest, orbiting sparks
+from Gold, a rotating ray halo from Platinum, wings from Diamond, plus a framer spring entrance for
+promotion moments. `animated={false}` for dense lists; `prefers-reduced-motion` is honoured.
+
+Rejected, with reasons in `MEMORY.md §9`: LottieFiles/IconScout animated badge packs (fixed
+colours, ranks 1–10, per-asset licensing), Rive (200 KB WASM + needs the Rive editor), Lottie
+(same colour problem). All three lose to the one hard constraint — 8 tiers × 3 divisions × locked
+is 48 states that must be tinted at runtime.
+
+Two real bugs found and fixed on the way, both now asserted or documented:
+- Branching SSR markup on `useReducedMotion` blew up hydration for anyone with reduced motion on —
+  React discarded the whole root. Fixed by `lib/use-idle-motion.ts` (mount gate first).
+- The winged tiers hung 13 units below the viewBox and painted over the labels beneath them. The
+  badge self-check now asserts every ornament's extents stay inside the box.
+
+Attribution obligation met: `ATTRIBUTIONS.md` plus `components/art/attribution.tsx`, rendered at
+the bottom of Profile. Move it to Profile → About when P11 rebuilds that screen.
+
+**Next:** P2 — import the exercise catalog, extend the schema, backfill v1 history onto catalog ids.
+**Blockers:** none.

@@ -27,6 +27,8 @@ import { __selfcheck as ranksCheck } from '@/lib/ranks';
 import { __selfcheck as musclesCheck } from '@/lib/muscles';
 import { __selfcheck as themesCheck } from '@/lib/themes';
 import { __selfcheck as bodygraphCheck } from '@/components/art/bodygraph';
+import { __selfcheck as badgeCheck } from '@/components/art/rank-badge';
+import { __selfcheck as medalCheck } from '@/components/art/medal';
 
 const POSES: MascotPose[] = ['idle', 'cheer', 'flex', 'fire', 'sleep', 'sad'];
 
@@ -46,6 +48,8 @@ function SelfChecks() {
     ['muscles', musclesCheck],
     ['ranks', ranksCheck],
     ['bodygraph', bodygraphCheck],
+    ['rank badges', badgeCheck],
+    ['medals', medalCheck],
   ] as const;
   return (
     <ul className="space-y-1 text-sm">
@@ -248,7 +252,7 @@ function OverlaysSection() {
         eyebrow="Rank up"
         title="Gold I"
         subtitle="Bench Press · stronger than 71% of lifters"
-        hero={<RankBadge tier="gold" division={1} size="xl" shine />}
+        hero={<RankBadge tier="gold" division={1} size="xl" entrance />}
         actionLabel="More gains ahead"
         rayColor="hsl(var(--tier-gold))"
       />
@@ -317,13 +321,13 @@ function ArtSection() {
         <div className="surface flex flex-wrap items-end gap-4 p-4">
           {TIERS.map((t) => (
             <div key={t} className="flex flex-col items-center gap-1">
-              <RankBadge tier={t as Tier} division={2} size="lg" shine={t === 'legend'} />
+              <RankBadge tier={t as Tier} division={2} size="lg" />
               <span className="text-[11px] capitalize text-muted-foreground">{t}</span>
             </div>
           ))}
         </div>
         <div className="surface flex flex-wrap items-center gap-4 p-4">
-          <RankBadge tier="gold" division={1} size="xl" shine />
+          <RankBadge tier="gold" division={1} size="xl" />
           <RankBadge tier="diamond" division={3} size="md" locked />
           <RankChip rank={{ tier: 'platinum', division: 2, lp: 40 }} />
           <RankChip rank={null} />

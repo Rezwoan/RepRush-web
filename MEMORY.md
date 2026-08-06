@@ -184,6 +184,7 @@ programmatically in ways a fixed asset can't be.
 | Exercise catalog | [`yuhonas/free-exercise-db`](https://github.com/yuhonas/free-exercise-db) | **Unlicense** (public domain) | 800+ exercises: name, force, level, mechanic, equipment, primary/secondary muscles, instructions, **and images**. Replaces the whole "hand-author 200 exercises" task in P2. |
 | Muscle map | [`body-muscles`](https://www.npmjs.com/package/body-muscles) v1.0.0 | **Apache-2.0** | 89 SVG regions (40 front / 49 back), left/right split, zero deps, ~29 KB min. We use its raw `FRONT_MUSCLES`/`BACK_MUSCLES` path data, **not** its DOM renderer, so `Bodygraph` stays our own React component with our tier colours and click handling. |
 | UI icons | `lucide-react` | ISC | Already installed. |
+| Badge / medal emblems | [game-icons.net](https://game-icons.net) (lorc, delapouite, caro-asercion) | **CC BY 3.0** | 23 glyphs vendored as path data by `scripts/fetch-game-icons.js` → `components/art/game-icons.ts`. All 512×512, background rect stripped. Attribution obligation met by `components/art/attribution.tsx`, rendered at the bottom of Profile, and by `ATTRIBUTIONS.md`. Add a glyph by adding a line to the script's `ICONS` map and re-running it. |
 
 ### Evaluated, not adopted (and why)
 
@@ -193,15 +194,43 @@ programmatically in ways a fixed asset can't be.
 - [Kenney](https://kenney.nl) UI Pack / Medals (CC0) — raster PNG at fixed colours. Rank badges need
   8 tiers × 3 divisions × a locked state, i.e. programmatic tinting, which is the one case where a
   fixed asset loses. Still the right source if a static badge set is ever wanted.
-- [game-icons.net](https://game-icons.net) (CC BY 3.0) — 4,100+ SVGs, but per-icon attribution is a
-  standing maintenance cost. Use only if the icon set genuinely can't be covered by lucide.
+- **Animated badge/medal packs** — LottieFiles and IconScout both have large "ranking badges /
+  medals" sets. All of them fail the same two tests: the art is authored at fixed colours (runtime
+  recolouring means walking the JSON's colour arrays by After Effects layer name, which breaks on
+  every asset update and re-mounts the animation on state change), and they ship rank 1–10, not
+  8 tiers × 3 divisions × locked. Licensing is per-asset and mostly account-gated. Rejected.
+- **Rive** (`@rive-app/react-canvas`) — the state-machine model is genuinely the best fit for
+  tier transitions, but it is a ~200 KB WASM runtime and the `.riv` files have to be authored in
+  the Rive editor. Authoring is a resource this project can't self-serve. Rejected.
+- **Lottie** (`lottie-react`) — ~60 KB runtime, but the same fixed-colour and authoring problems.
+  Rejected. Revisit only if a designer joins and the badge set stops needing 48 tinted states.
 
 ### Still hand-authored, deliberately
 
 - **Volt, the mascot** — a mascot has to be original to the brand; a stock character is the worst
   possible thing to borrow. Stays ours.
-- **Rank badges** — needs programmatic tier tinting (see Kenney above).
-- **Medals, equipment glyphs** — small, composable, already done, and consistent with the badges.
+- **Badge and medal bodies** (the crest, the heptagon, the ribbon, the ray halo) — geometry that
+  has to be tinted per tier and animated per state. The *emblems* inside them are game-icons
+  artwork; only the frame is ours.
+- **Equipment glyphs** — small, composable, already done.
+
+### Animation approach (decided 2026-08-07)
+
+Badge and medal motion is **SMIL inside the SVG** (`<animate>`, `<animateTransform>`), not CSS
+keyframes and not a runtime library. Reasons, in order: the art is drawn in user units and rendered
+anywhere from 24px to 120px, and CSS percentage transforms resolve against a box that changes with
+it; SMIL values do not. It is also zero bytes of JS and nothing to tree-shake.
+
+Two rules that fall out of it:
+
+1. **Never branch server-rendered markup on `useReducedMotion`.** It reads a media query the server
+   can't see, so it renders `false` there — on a machine that *does* prefer reduced motion, the
+   client's first render disagrees and React discards and re-renders the entire root. Use
+   `lib/use-idle-motion.ts`, which gates on mount first. Anything touching only a framer
+   `transition` is safe, because transitions never appear in the server HTML.
+2. **Keep every ornament inside the 100×100 viewBox.** `overflow-visible` is needed for the glow,
+   but ornaments that spill paint over whatever is laid out beneath them. `rank-badge.tsx`'s
+   self-check asserts the extents.
 
 ### Not yet needed but pre-vetted
 
