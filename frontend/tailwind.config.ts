@@ -57,6 +57,17 @@ const config: Config = {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',
+        // Rank tiers — theme-independent brand constants (see globals.css)
+        tier: {
+          unranked: 'hsl(var(--tier-unranked))',
+          bronze: 'hsl(var(--tier-bronze))',
+          silver: 'hsl(var(--tier-silver))',
+          gold: 'hsl(var(--tier-gold))',
+          platinum: 'hsl(var(--tier-platinum))',
+          diamond: 'hsl(var(--tier-diamond))',
+          titan: 'hsl(var(--tier-titan))',
+          legend: 'hsl(var(--tier-legend))',
+        },
       },
       borderRadius: {
         '2xl': 'calc(var(--radius) + 6px)',
@@ -94,11 +105,24 @@ const config: Config = {
           '0%, 100%': { backgroundPosition: '0% 50%' },
           '50%': { backgroundPosition: '100% 50%' },
         },
+        // Celebration: rays behind a badge, and the badge's own idle shine.
+        'rays-spin': { to: { transform: 'rotate(360deg)' } },
+        sheen: {
+          '0%': { transform: 'translateX(-120%) skewX(-18deg)' },
+          '60%, 100%': { transform: 'translateX(220%) skewX(-18deg)' },
+        },
+        'float-soft': {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-6px)' },
+        },
       },
       animation: {
         'pulse-soft': 'pulse-soft 2s ease-in-out infinite',
         shimmer: 'shimmer 1.6s infinite',
         'spark-pan': 'spark-pan 6s ease-in-out infinite',
+        'rays-spin': 'rays-spin 18s linear infinite',
+        sheen: 'sheen 3.2s ease-in-out infinite',
+        'float-soft': 'float-soft 3.5s ease-in-out infinite',
       },
     },
   },
