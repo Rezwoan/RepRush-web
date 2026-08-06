@@ -19,12 +19,24 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+/**
+ * Routes that are legitimately used while signed out. A 401 on these is the
+ * expected state, not a session expiry, so the interceptor must not bounce.
+ *
+ * Onboarding is the reason this exists: the whole funnel runs before an account
+ * exists and still talks to the API, so a blanket redirect would throw the user
+ * out of signup the moment anything 401s.
+ */
+const PUBLIC_ROUTES = ['/login', '/onboarding', '/welcome', '/kitchen-sink'];
+
+const isPublicRoute = (path: string) =>
+  PUBLIC_ROUTES.some((r) => path === r || path.startsWith(`${r}/`));
+
 api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401 && typeof window !== 'undefined') {
-      const isLoginPage = window.location.pathname === '/login';
-      if (!isLoginPage) window.location.href = '/login';
+      if (!isPublicRoute(window.location.pathname)) window.location.href = '/login';
     }
     return Promise.reject(err);
   },
