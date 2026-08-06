@@ -117,9 +117,19 @@ Caught and fixed along the way (each has a note in `MEMORY.md §8`):
       logs every unmatched name with its set count
 - [x] ~~Seed script for catalog + medals + quests + cosmetics~~ — the catalog needs no seeding;
       medals/quests/cosmetics belong to P10/P11
-- [x] **Exit check:** dev boots, v1 history renders, `GET /api/exercises/catalog` returns 873
-      exercises unauthenticated (public — P4's pre-signup rank flow needs it), filters by
-      `q`/`muscle`/`equipment`, and `GET /api/exercises/catalog/:id` returns instructions + images
+- [x] **Exit check, verified on dev:**
+      - `GET /api/exercises/catalog` → 873 exercises, unauthenticated (public — P4's pre-signup rank
+        flow needs it), 25 KB over the wire after Cloudflare's gzip; filters by `q`/`muscle`/`equipment`;
+        `GET /api/exercises/catalog/:id` returns instructions + working image URLs
+      - Backfill: **772 of 778 sets mapped**. The 6 misses are all `Core Exercise (User Choice)`,
+        which has no catalog equivalent by design. A restart maps 0 more — idempotent.
+      - v1 data intact after `synchronize`: 4 users, 48 sessions, 778 sets, every original column
+        still present, and `username`'s uniqueness landed as a separate index (`IDX_fe0bb3f…`) with
+        no table rebuild.
+      - All app routes 200, authed API routes still 401 (not 500), zero ERROR lines in the backend log.
+      - *Not* verified: an authenticated history page rendered in a browser. Reading the dev admin
+        password off the Pi was blocked, so this was checked at the database and HTTP layers instead.
+        No workouts code changed in this phase.
 
 ---
 
