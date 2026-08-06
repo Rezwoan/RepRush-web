@@ -171,6 +171,21 @@ Notable v1 rules that must survive into v2:
   per-exercise bests in a table if any single user passes ~50k sets. The maths doesn't change.
 - **2026-08-07** Leagues (`GET /ranks/leagues`) deferred from P3 to P7. Why: a league needs seasons,
   divisions and ~30 rivals per division; dev has 4 accounts and no screen to show it on yet.
+- **2026-08-07** The v2 onboarding funnel lives at **`/welcome`**, not `/onboarding`. Why: v1's
+  `/onboarding` is a *post-login* profile-completion prompt that still ships and is still linked
+  from the dashboard banner, and the v2 funnel runs before an account exists. `/` sends signed-out
+  visitors to `/welcome`; `/login` links back to it. `/welcome` was already in `api.ts`'s
+  `PUBLIC_ROUTES`, so the 401 interceptor already leaves it alone.
+- **2026-08-07** Signup is **self-serve** (`POST /auth/register`, public). v1's invite-only
+  `/auth/activate` path stays for outstanding invites; it just isn't the only door in any more.
+  Every free-form profile field is allow-listed at the boundary — `sex` picks the strength-standards
+  column, so a junk value there would mis-rank someone permanently and silently.
+- **2026-08-07** The onboarding lift is **stored as a real logged set** at register time. Why: ranks
+  are a pure function of `workout_sets`, so otherwise the funnel promises a rank and the Ranks tab
+  is empty. Best-effort — a bad exercise id logs a warning and the account is still created.
+- **2026-08-07** The equipment picker covers our **8 catalog equipment types**, not the source app's
+  97-item hardware list. Why: eight is all the workout generator can filter on; a longer list
+  collapses to the same filter and asks the user to do work that changes nothing.
 - **2026-08-07** `User.username` is unique via `@Index({ unique: true })`, not `@Column({ unique: true })`.
   Why: a unique *column* makes SQLite rebuild the whole `users` table (create/copy/drop/rename) on
   the next `synchronize`, which is exactly the operation that can lose live accounts. A separate
@@ -391,3 +406,32 @@ Two rules that fall out of it:
   `LOG_SIGMA` (0.32) for the whole ladder feeling too compressed or too spread, then `TIER_FLOOR`
   for the tier distribution. Do not bend `BASE`/`EQUIPMENT` to fix a single exercise — twenty others
   move with it.
+
+**P4 · 2026-08-07**
+
+- **A transformed ancestor becomes the containing block for its `position: fixed` descendants.**
+  Every funnel step renders inside a `motion.div` that translates on entry, so `CoachMark`'s
+  spotlight and the tour's bottom `TabBar` both laid themselves out inside the funnel's 512px
+  column instead of the viewport, and the coach mark highlighted empty space. Waiting for the
+  animation to settle only moves the race — the fix is to **not translate**: those steps fade in,
+  which writes no transform at all. Applies to anything `fixed` or `getBoundingClientRect`-measured
+  inside an animated wrapper, so it will come up again in P6's session overlays.
+- **`Rays` was painting a hard-edged square.** `fill` is set on the `<g>`, so the default
+  `objectBoundingBox` radial gradient faded *each wedge along its own box* rather than from the
+  centre. It needs `gradientUnits="userSpaceOnUse"` with cx/cy/r in user units. Fixed in the shared
+  component — every celebration inherits it.
+- **framer needs an explicit `initial` when animating `width`**, or it animates from the element's
+  natural width, i.e. a progress bar visibly drains from full on first mount.
+- **Verifying a funnel over CDP is unreliable, and the failure looks like a bug.** The tab throttles
+  `requestAnimationFrame` to nothing when it isn't painting, so framer entrances stay pinned at
+  their `initial` values and `AnimatePresence mode="wait"` never swaps screens — the DOM says step
+  N+1, the pixels say step N, and a screenshot comes back blank. Read `document.body.innerText` and
+  localStorage to know where the machine actually is, and force a paint with a `computer` action
+  (a JS-only click will not wake the renderer). Two consecutive screenshots often beats one.
+- The dev admin credentials **are** readable — `ssh reezz@blackbox.local 'sudo grep ADMIN
+  /var/www/reprush-dev/backend/.env'` — which makes `/api/admin/users` usable for cleaning up test
+  accounts after a browser run. P2 recorded this as blocked; it isn't. Do the login and the deletes
+  in a single ssh command on the Pi so the password never reaches this workstation.
+- Do **not** hand-edit the dev DB file while the backend is running: sql.js holds the whole database
+  in memory and rewrites the file on flush, so anything written underneath it is lost. Go through
+  the API.

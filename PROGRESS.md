@@ -13,7 +13,7 @@ https://dev-reprush.rezwoan.codes, and its exit check below is verified in the b
 | P1 | Design system, art, app shell | **DONE** |
 | P2 | Data model & exercise catalog | **DONE** |
 | P3 | Rank engine | **DONE** |
-| P4 | Onboarding funnel | TODO |
+| P4 | Onboarding funnel | **DONE** |
 | P5 | Home tab | TODO |
 | P6 | Workout tab | TODO |
 | P7 | Ranks tab | TODO |
@@ -182,21 +182,44 @@ Caught and fixed along the way (each has a note in `MEMORY.md §8`):
 
 ---
 
-## P4 — Onboarding funnel · `TODO`
+## P4 — Onboarding funnel · `DONE` (2026-08-07)
 
-- [ ] Route group `/(onboarding)` with a step machine, client-side answer store, resumable
-- [ ] Welcome + 4-slide value carousel
-- [ ] All 20 question screens from SPEC §3.3 (mascot bubble, progress bar, back, skip)
-- [ ] Ruler pickers (height/weight), wheel picker (age), press-and-hold commitment
-- [ ] Avatar picker + reveal
-- [ ] First-rank flow: exercise carousel → weight/reps → `GET MY RANK` → rank reveal celebration
-- [ ] Profile-building progress screen
-- [ ] Bodyrank explainer (3 coach marks) + streak explainer
-- [ ] Signup at the end; one `POST /auth/register` carrying the whole payload
-- [ ] First medal + welcome screens
-- [ ] Post-signup coach-mark tour of the 6 tabs
-- [ ] **Exit check:** a brand-new account can be created end-to-end on dev and lands on Home with a
-      populated profile, a starting rank and a medal
+- [x] ~~Route group `/(onboarding)`~~ — **one route, `/welcome`**, with a 32-screen machine, a
+      client-side answer store and localStorage resume. Not `/onboarding`: v1's route of that name
+      is a *post-login* profile-completion prompt that still ships and is still linked from the
+      dashboard banner. `/` now sends signed-out visitors to `/welcome`; `/login` links back to it.
+- [x] Welcome splash + 4-slide value carousel (badge ladder, Bodygraph, sample plan, macros+logger)
+- [x] All 20 question screens from SPEC §3.3 — mascot bubble, progress bar, back, skip. The ones
+      that are only a list of options are **data** in `app/welcome/config.ts`; only the screens that
+      need real UI are hand-written.
+- [x] Ruler pickers (height cm/ft·in, weight kg/lb), wheel picker (age), press-and-hold commitment
+- [x] Avatar picker + reveal — the mascot's six poses are the avatar set
+- [x] First-rank flow: exercise carousel → weight/reps → `GET MY RANK` → rank reveal with rays,
+      percentile line and share
+- [x] Profile-building progress screen (three bars in sequence)
+- [x] Bodyrank explainer (3 coach marks over the Bodygraph) + streak explainer
+- [x] Signup at the end; one `POST /auth/register` carrying the whole payload. Public, allow-listed:
+      every enum, equipment id and limitation is checked against a whitelist, height/weight against
+      a range, and anything unrecognised is dropped rather than stored. `sex` in particular picks
+      the strength-standards column, so junk there would mis-rank someone forever.
+- [x] First medal + welcome screens
+- [x] Post-signup coach-mark tour of the 6 tabs, over a real `<TabBar/>`
+- [x] **The onboarding lift is stored as a real logged set.** Ranks derive from `workout_sets` and
+      nothing else, so without it the funnel promised a rank and then handed over an empty Ranks tab.
+- [x] **Exit check — verified on dev, in the browser, end to end:**
+      - Splash → carousel → 20 questions → first rank → reveal → build → explainers → signup →
+        medal → welcome → 6-step tab tour → `/dashboard`, signed in.
+      - `POST /api/ranks/calculate` from the funnel returned **Silver III · 31st percentile** for
+        bench 60 × 5 (male, 25, 82 kg) — the same numbers as P3's documented ladder.
+      - The new account's `/api/auth/me` carries name, sex, birthDate, height, weight, avatar,
+        experience, goal, training location, equipment JSON and limitations JSON.
+      - `/api/ranks/me` on that account: Bodyrank **Silver III** (predicted), placements **1/10**,
+        Bench Press Silver III p31, `mid_chest` tinted on the Bodygraph.
+      - Rejections: duplicate email 409, short password 400, malformed email 400, blank name 400,
+        junk equipment/limitation values silently dropped, junk `firstRank.exerciseId` still 201.
+      - Prod 200 and untouched throughout; zero ERROR lines in the dev backend log.
+      - Test accounts created during the check were deleted afterwards — dev is back to its
+        2 non-admin users.
 
 ---
 
@@ -499,3 +522,49 @@ documented manual path, `ssh reezz@blackbox.local 'bash /var/www/reprush-dev/scr
 which resets to `origin/v2`, rebuilds both, restarts only the dev services and asserts prod is up.
 Dev is at branch tip with green self-checks; prod verified 200 and untouched. Use that path next
 session if CI is still dead, and don't wait on a run that will never appear.
+
+### 2026-08-07 — P4 complete
+The funnel is live at `/welcome`: 32 screens, all client-side until one `POST /auth/register` at the
+end carries the whole payload. `/` now sends signed-out visitors there instead of to `/login`, and
+`/login` links back — v2 is self-serve, so v1's invite-only path stops being the only door in
+(`/auth/activate` still works for outstanding invites).
+
+**It is not at `/onboarding`.** That route is v1's post-login profile-completion prompt, still linked
+from the dashboard banner; the two can't share a URL. Registering through the funnel also marks v1's
+checklist done, so nobody who just answered twenty questions lands on a "Profile 0% complete" nag.
+
+The questions that are only a list of options live as **data** in `app/welcome/config.ts` — with a
+module-load self-check that every step writes a field the answer store declares, and that every
+option value is one `/auth/register` will actually accept. That last assert is the one worth having:
+a value on the UI list but not the backend allow-list is silently dropped, which looks exactly like
+an answer that never saved.
+
+**Four bugs, and the honest thing is that only the end-to-end run in a browser found them:**
+- The "already signed in? go to the dashboard" guard reacted to `user` becoming set — which is
+  precisely what signup does — so the first medal, the welcome screen and the tab tour were skipped
+  every time. The API said 201 and the profile was perfect; nothing but walking the funnel showed it.
+- The tab tour's coach mark highlighted empty space. A transformed ancestor becomes the containing
+  block for its `position: fixed` descendants, so inside the sliding step wrapper the real bottom tab
+  bar laid itself out within the funnel's 512px column. Waiting for the animation to settle just
+  moved the race; the two coach-marked steps now fade instead of slide, and write no transform at all.
+- `Rays` painted a hard-edged square instead of a halo — `fill` sits on the `<g>`, so the default
+  `objectBoundingBox` gradient faded each wedge along its own box. Fixed in the shared component,
+  which means every celebration in the app gets it.
+- The funnel progress bar animated *down* from full on first mount (framer needs an explicit
+  `initial` width), and the vertical ruler's centre indicator covered its own tick labels.
+
+**One thing the spec didn't say but the product needs:** the onboarding lift is now stored as a real
+logged set. Ranks are a pure function of `workout_sets`, so telling someone they are Silver III on
+bench press and then showing them an empty Ranks tab would have been a lie by omission. It is
+best-effort — a bad exercise id logs a warning and the account is still created.
+
+**Deliberately smaller than SPEC:** the equipment picker is over our eight catalog equipment types,
+not the source app's 97-item hardware list, because eight is all the generator can filter on. The
+first medal is a screen, not a stored award — P11 owns the medal engine and will grant it for real.
+The mindshare / energy / relatability / has-a-plan answers are asked and shown but not persisted;
+nothing in the spec reads them, and columns for phases that don't exist get guessed and rewritten.
+
+**Next:** P5 — the Home tab. `/home` does not exist yet; the tab bar already points at it and the
+tour already describes it.
+**Blockers:** none. **CI is still not dispatching** — every deploy this session went out via
+`ssh reezz@blackbox.local 'bash /var/www/reprush-dev/scripts/deploy-dev.sh'`. See `MEMORY.md §8`.
