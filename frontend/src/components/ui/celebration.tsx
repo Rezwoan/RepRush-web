@@ -48,7 +48,10 @@ export function Rays({
       className={cn('pointer-events-none absolute inset-0 h-full w-full', spin && 'animate-rays-spin', className)}
     >
       <defs>
-        <radialGradient id={`${uid}-fade`} cx="0.5" cy="0.5" r="0.5">
+        {/* userSpaceOnUse, not the default objectBoundingBox: `fill` is set on
+            the <g>, so each wedge would fade along its *own* box and the burst
+            would paint as a hard-edged square instead of a halo. */}
+        <radialGradient id={`${uid}-fade`} gradientUnits="userSpaceOnUse" cx="100" cy="100" r="100">
           <stop offset="0%" stopColor={color} stopOpacity={0.55} />
           <stop offset="100%" stopColor={color} stopOpacity={0} />
         </radialGradient>

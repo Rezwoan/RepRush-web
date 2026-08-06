@@ -118,6 +118,14 @@ export class AuthService {
 
     if (Object.keys(profile).length) await this.usersService.updateProfile(user.id, profile);
 
+    // v1's "Profile N% complete" banner tracks a different, older checklist. The
+    // v2 funnel *is* onboarding, so an account that came through it is done —
+    // otherwise a user who just answered twenty questions lands on a nag.
+    await this.usersService.updateOnboarding(user.id, {
+      hasHeightWeight: height !== null && weight !== null,
+      dismissed: true,
+    });
+
     const fresh = await this.usersService.findById(user.id);
     const payload = { sub: fresh.id, email: fresh.email, role: fresh.role };
     const token = this.jwtService.sign(payload, {

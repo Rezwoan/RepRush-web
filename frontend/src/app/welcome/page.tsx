@@ -999,10 +999,24 @@ export default function WelcomePage() {
     setReady(true);
   }, []);
 
-  // An already-signed-in visitor has no business in the funnel.
+  /**
+   * An already-signed-in *visitor* has no business in the funnel — but signup
+   * happens at step 26, so from there on `user` is set and this must not fire.
+   * Hence the decision is made once, when auth first resolves, and `user`
+   * changing afterwards is our own doing.
+   */
+  const [gate, setGate] = useState<'checking' | 'funnel' | 'redirect'>('checking');
   useEffect(() => {
-    if (!loading && user) router.replace('/dashboard');
-  }, [user, loading, router]);
+    if (loading) return;
+    if (user) {
+      clearProgress();
+      setGate('redirect');
+      router.replace('/dashboard');
+    } else {
+      setGate('funnel');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   useEffect(() => {
     if (ready) saveProgress(idx, a);
@@ -1048,7 +1062,7 @@ export default function WelcomePage() {
     }
   }, [step, a, committed]);
 
-  if (!ready || loading || user) return <BrandLoader />;
+  if (!ready || gate !== 'funnel') return <BrandLoader />;
 
   // Full-bleed screens own their whole viewport and skip the funnel chrome.
   if (step.id === 'splash') return <Splash onStart={next} />;
@@ -1232,8 +1246,11 @@ export default function WelcomePage() {
             <ArrowLeft size={20} />
           </button>
           <div className="h-2 flex-1 overflow-hidden rounded-full bg-secondary">
+            {/* `initial` is not optional here: without it framer animates from
+                the div's natural width, which is the full track. */}
             <motion.div
               className="h-full rounded-full bg-primary"
+              initial={{ width: 0 }}
               animate={{ width: `${progress}%` }}
               transition={spring.soft}
             />

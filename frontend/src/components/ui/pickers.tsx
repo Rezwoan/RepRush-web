@@ -133,7 +133,9 @@ export function RulerPicker({
           aria-hidden
           className={cn(
             'pointer-events-none absolute z-10 rounded-full bg-primary',
-            horizontal ? 'left-1/2 top-0 h-14 w-1 -translate-x-1/2' : 'left-0 top-1/2 h-1 w-14 -translate-y-1/2',
+            // Vertical stays narrower than the labels' 36px offset, or it paints
+            // straight over the major tick numbers.
+            horizontal ? 'left-1/2 top-0 h-14 w-1 -translate-x-1/2' : 'left-0 top-1/2 h-1 w-8 -translate-y-1/2',
           )}
         />
         <div
