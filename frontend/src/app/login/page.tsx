@@ -145,7 +145,10 @@ function LoginContent() {
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
-          Don&apos;t have an account? Contact your admin.
+          Don&apos;t have an account?{' '}
+          <a href="/welcome" className="font-semibold text-primary hover:underline">
+            Get started
+          </a>
         </p>
       </motion.div>
     </div>

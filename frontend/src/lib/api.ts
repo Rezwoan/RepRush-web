@@ -46,6 +46,8 @@ api.interceptors.response.use(
 export const authApi = {
   login: (email: string, password: string) =>
     api.post('/auth/login', { email, password }),
+  /** Signup at the end of the onboarding funnel — the whole payload in one call. */
+  register: (payload: Record<string, unknown>) => api.post('/auth/register', payload),
   activate: (token: string, newPassword: string) =>
     api.post('/auth/activate', { token, newPassword }),
   logout: () => api.post('/auth/logout'),
@@ -141,6 +143,23 @@ export const exercisesApi = {
   getPlan: (id: number) => api.get(`/exercises/plans/${id}`),
   updateWeights: (planId: number, customWeights: Record<string, number>) =>
     api.patch(`/exercises/my-plans/${planId}/weights`, { customWeights }),
+};
+
+// ─── Ranks ────────────────────────────────────────────────────────────────────
+export const ranksApi = {
+  me: () => api.get('/ranks/me'),
+  exercises: () => api.get('/ranks/exercises'),
+  bodygraph: () => api.get('/ranks/bodygraph'),
+  exercise: (id: string) => api.get(`/ranks/exercise/${encodeURIComponent(id)}`),
+  /** Public — onboarding ranks a lift before the account exists. */
+  calculate: (body: {
+    exerciseId: string;
+    weightKg: number;
+    reps: number;
+    bodyweightKg: number;
+    sex?: string;
+    age?: number;
+  }) => api.post('/ranks/calculate', body),
 };
 
 // ─── Leaderboard ──────────────────────────────────────────────────────────────

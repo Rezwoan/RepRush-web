@@ -9,7 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Response, Request } from 'express';
-import { AuthService } from './auth.service';
+import { AuthService, RegisterDto } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { Public, CurrentUser } from './decorators';
 import { User } from '../users/user.entity';
@@ -30,6 +30,24 @@ export class AuthController {
   ) {
     const result = await this.authService.login(body.email, body.password);
     // Set httpOnly cookie for session persistence
+    res.cookie('reprush_token', result.token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: SESSION_MAX_AGE_MS,
+    });
+    return result;
+  }
+
+  /** Signup at the end of the onboarding funnel — carries the whole payload. */
+  @Public()
+  @Post('register')
+  @HttpCode(201)
+  async register(
+    @Body() body: RegisterDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.register(body);
     res.cookie('reprush_token', result.token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
