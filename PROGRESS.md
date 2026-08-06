@@ -162,13 +162,23 @@ Caught and fixed along the way (each has a note in `MEMORY.md §8`):
       | Bench 60 × 5 | Silver III | 31 |
       | **Bench 100 × 5** (SPEC's worked example) | **Diamond II** | **86.5** |
       | Bench 140 × 1 | Titan I | 96.2 |
+      | Bench 100 × 5, age 55 | Titan II | 93.9 |
       | Squat 100 × 5 | Gold II | 56.5 |
       | Deadlift 180 × 3 | Diamond I | 90.1 |
       | Barbell curl 35 × 8 | Gold II | 54.8 |
-      | Leg extension 50 × 10 | Gold I | 62.9 |
+      | Pec deck 60 × 8 | Platinum III | 69.5 |
+      | Leg extension 60 × 10 | Gold I | 60.0 |
       | Pull-up × 8 bodyweight | Gold I | 63.6 |
       | Pull-up × 1, female @ 65 kg | Diamond II | 85.5 |
       | Crunches × 40 | Gold III | 50.0 |
+
+- [x] **Exit check, against the real v1 history on dev** (the 772 backfilled sets, read-only):
+      both accounts produce a spread across tiers rather than a pile at one end — user5
+      `{titan 1, diamond 1, platinum 6, gold 6, silver 8, bronze 5}` over 27 ranked exercises,
+      Bodyrank **Silver III**; user6 `{diamond 1, gold 1, silver 9, bronze 18}` over 29, Bodyrank
+      **Bronze II**. Both have trained 12 of 21 muscles, and the nine empty ones are what hold the
+      Bodyrank down — which is the intended, honest behaviour, and exactly what the Bodygraph in P7
+      will be showing them.
 
 ---
 
@@ -447,3 +457,39 @@ which is a plain `CREATE UNIQUE INDEX` and touches no rows.
 **Next:** P3 — the rank engine: e1RM, the standards table, LP/tier/division maths, muscle ranks and
 Bodyrank, decay, and recomputing history from the v1 sets that P2 just mapped.
 **Blockers:** none.
+
+### 2026-08-07 — P3 complete
+The ladder works: e1RM → age-adjusted bodyweight ratio → percentile on a log-normal curve →
+tier/division/LP, with muscle ranks and Bodyrank stacked on top of it.
+
+**Ranks are derived, never stored.** No `ExerciseRank`/`MuscleRank`/`LpEvent` table and no nightly
+decay job, because a rank is a pure function of `workout_sets` plus the profile — a stored copy
+could only ever disagree with the sets, and keeping it honest would need both a backfill and a cron.
+Decay falls out of days-since-last-set at read time, so training a muscle restores it instantly.
+"Recompute historical ranks from v1 sets" stopped being a task at all: the first request already
+reflects all 772 sets P2 mapped.
+
+**Three real bugs, all caught by checks rather than by luck:**
+- The boot self-check refused to start the service with *"bodyweight crunches scored the 100th
+  percentile"* — bodyweight movements were being discounted twice, once by the bodyweight fraction
+  and again by the isolation factor. They now have their own branch, where the spread lives in the
+  rep count and the 12-rep cap correctly says that unlimited crunches prove nothing.
+- The isolation overrides had been written from working weights instead of e1RMs, paying out Titan
+  for an ordinary lateral raise. The distinction is now stated in the file, since I got it wrong.
+- Running the engine over the **real 778-set history** — the thing the synthetic anchors couldn't
+  tell me — showed pec deck, seated leg curl and overhead cable extension all handing out Legend. A
+  machine stack isn't a free-weight load, so isolation now scores against 0.75 of the compound
+  baseline on machines and cables versus 0.4 on free weights. Two new anchors pin it.
+
+Deferred: `GET /ranks/leagues` → **P7**, which builds the screen and needs rivals to fill a division.
+
+**Next:** P4 — the onboarding funnel. `POST /ranks/calculate` is already public and is what step 21's
+`GET MY RANK` will call.
+**Blockers:** none, but see the CI note below.
+
+**⚠️ CI:** pushes to `v2` stopped creating workflow runs partway through this session — the last
+three pushes produced none, while `gh workflow run deploy-dev.yml --ref v2` works every time and the
+runner is online and idle. Deploys in this session were dispatched manually. `deploy-dev.sh` does
+`git reset --hard origin/v2`, so a dispatch always ships whatever is on the branch regardless of
+which commit triggered it. Worth watching next session; if push triggers are still dead, dispatch
+manually and don't wait on a run that will never appear.

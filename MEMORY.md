@@ -295,6 +295,12 @@ Two rules that fall out of it:
   `ssh reezz@blackbox.local 'sudo grep ADMIN /var/www/reprush-dev/backend/.env'`. Never commit them.
 - `deploy-dev.sh` snapshots the dev DB before every deploy (keeps 5) because `synchronize: true`
   migrates on service start.
+- **⚠️ Push-triggered CI stopped firing on 2026-08-07.** Three consecutive pushes to `v2` created no
+  workflow run at all, while `gh workflow run deploy-dev.yml --ref v2` worked every time and the
+  runner (`blackbox-reprush`) was online and idle with the workflow `active`. If a push seems not to
+  deploy, check `gh run list --workflow deploy-dev.yml` before waiting on it, and dispatch manually.
+  Because `deploy-dev.sh` does `git reset --hard origin/v2`, a dispatch always ships the current tip
+  of the branch no matter which commit triggered the run.
 - `.gitattributes` now pins `*.sh` to LF. This workstation has `core.autocrlf=true`, which would
   otherwise be one bad checkout away from `\r: command not found` on the Pi.
 - `inspiration/` and `.claude/` are gitignored — the repo is **public** and those are 25 MB of a
@@ -366,6 +372,12 @@ Two rules that fall out of it:
   additionally asserts every `OVERRIDES` key names a real catalog exercise and every muscle in the
   taxonomy has a `BASE` entry. A failure takes the service down on purpose — a silently mis-ranking
   app is worse than one that won't start.
+- **Machine and cable isolation cannot be discounted like free-weight isolation.** A stack number
+  overstates what reaches the muscle and the machine supports the body, so `mechanicFactor()` returns
+  0.75 for machine/cable isolation against 0.4 for free weights. Without it, pec deck, seated leg
+  curl and overhead cable extension all paid out **Legend** for completely ordinary sets. The
+  synthetic anchors did not catch this — **running the engine over the real 778-set history did.**
+  Do that after any standards change: copy the DB aside on the Pi and score every user's sets.
 - Calibration knobs, in the order worth reaching for: an `OVERRIDES` line for one wrong lift, then
   `LOG_SIGMA` (0.32) for the whole ladder feeling too compressed or too spread, then `TIER_FLOOR`
   for the tier distribution. Do not bend `BASE`/`EQUIPMENT` to fix a single exercise — twenty others
