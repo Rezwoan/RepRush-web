@@ -16,13 +16,42 @@ const BODY =
 const TUFT = 'M64 26 L78 2 L72 22 L88 8 L74 30 Z';
 const CHEST_BOLT = 'M76 62 L60 88 h10 l-5 20 L82 80 H72 Z';
 
-const ARMS: Record<MascotPose, string[]> = {
-  idle: ['M26 84 C16 88 12 98 16 106', 'M114 84 C124 88 128 98 124 106'],
-  cheer: ['M28 70 C14 58 10 42 14 30', 'M112 70 C126 58 130 42 126 30'],
-  flex: ['M28 78 C14 76 8 62 16 50 C22 42 32 44 34 54', 'M112 78 C126 76 132 62 124 50 C118 42 108 44 106 54'],
-  fire: ['M28 76 C14 72 8 58 16 46', 'M112 76 C126 72 132 58 124 46'],
-  sleep: ['M26 88 C16 94 14 104 18 110', 'M114 88 C124 94 126 104 122 110'],
-  sad: ['M26 92 C18 100 16 110 20 116', 'M114 92 C122 100 124 110 120 116'],
+/**
+ * Arms are the whole pose. They have to clear the body (x 22–118) *and* the
+ * ears (centred at 22 / 118, rx 11), so anything that stops short of ~x8 is
+ * swallowed and every pose reads as "idle".
+ */
+interface Arm {
+  d: string;
+  /** Where the hand sits. Stored, not parsed back out of `d`. */
+  hand: [number, number];
+}
+
+const ARMS: Record<MascotPose, Arm[]> = {
+  idle: [
+    { d: 'M30 92 C16 96 8 106 6 118', hand: [6, 118] },
+    { d: 'M110 92 C124 96 132 106 134 118', hand: [134, 118] },
+  ],
+  cheer: [
+    { d: 'M30 78 C14 62 4 40 6 18', hand: [6, 18] },
+    { d: 'M110 78 C126 62 136 40 134 18', hand: [134, 18] },
+  ],
+  flex: [
+    { d: 'M30 86 C12 84 0 66 8 46 C14 32 32 34 34 50', hand: [34, 50] },
+    { d: 'M110 86 C128 84 140 66 132 46 C126 32 108 34 106 50', hand: [106, 50] },
+  ],
+  fire: [
+    { d: 'M30 84 C12 78 2 58 8 38', hand: [8, 38] },
+    { d: 'M110 84 C128 78 138 58 132 38', hand: [132, 38] },
+  ],
+  sleep: [
+    { d: 'M30 96 C16 102 8 112 8 124', hand: [8, 124] },
+    { d: 'M110 96 C124 102 132 112 132 124', hand: [132, 124] },
+  ],
+  sad: [
+    { d: 'M30 100 C20 110 14 122 16 132', hand: [16, 132] },
+    { d: 'M110 100 C120 110 126 122 124 132', hand: [124, 132] },
+  ],
 };
 
 /** Hot palette for the streak pose; everything else uses the brand blues. */
@@ -86,21 +115,22 @@ export function Mascot({ pose = 'idle', size = 120, className, float = false }: 
         <ellipse cx={79.5} cy={146} rx={9} ry={5} fill="#fff" />
       </g>
 
-      {/* arms */}
-      <g
-        stroke={c.dark}
-        strokeWidth={11}
-        strokeLinecap="round"
-        fill="none"
-      >
-        {ARMS[pose].map((d, i) => (
-          <path key={i} d={d} />
-        ))}
-      </g>
-
-      {/* ears */}
+      {/* ears — under the arms, so a raised arm passes in front of them */}
       <ellipse cx={22} cy={70} rx={11} ry={15} fill={c.dark} />
       <ellipse cx={118} cy={70} rx={11} ry={15} fill={c.dark} />
+
+      {/* arms */}
+      <g stroke={c.dark} strokeWidth={11} strokeLinecap="round" fill="none">
+        {ARMS[pose].map((a, i) => (
+          <path key={i} d={a.d} />
+        ))}
+      </g>
+      {/* hands, so the limbs end in something rather than a blunt stroke */}
+      <g fill="#fff">
+        {ARMS[pose].map((a, i) => (
+          <circle key={i} cx={a.hand[0]} cy={a.hand[1]} r={6} />
+        ))}
+      </g>
 
       {/* body */}
       <path d={TUFT} fill={c.dark} />
