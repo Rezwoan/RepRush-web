@@ -343,9 +343,12 @@ export class HomeService {
               ? 'Backing Off'
               : 'Holding Steady',
       // Oldest → newest, so the sparkline reads left to right like a chart.
+      // Sorted on `completedAt` rather than reversing the query's order: two
+      // sessions finished in the same second come back in an arbitrary order,
+      // and reversing that drew the trend line backwards.
       sparkline: inWindow
         .slice()
-        .reverse()
+        .sort((a, b) => new Date(a.completedAt).getTime() - new Date(b.completedAt).getTime())
         .map((s) => round(perSession.get(s.id) ?? 0)),
       durationMin: round(durationMin),
       records,
