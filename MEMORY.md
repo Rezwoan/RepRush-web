@@ -310,14 +310,18 @@ Two rules that fall out of it:
   `ssh reezz@blackbox.local 'sudo grep ADMIN /var/www/reprush-dev/backend/.env'`. Never commit them.
 - `deploy-dev.sh` snapshots the dev DB before every deploy (keeps 5) because `synchronize: true`
   migrates on service start.
-- **⚠️ GitHub stopped dispatching jobs to the `reprush` runner on 2026-08-07.** Symptoms, in the
-  order they appeared: pushes to `v2` created no workflow run at all (not even a queued one), then
-  `workflow_dispatch` runs stuck in `queued` forever. Meanwhile the Pi side was healthy the whole
-  time — `systemctl is-active` green, journal showing `√ Connected to GitHub` / `Listening for Jobs`
-  — while `gh api .../actions/runners` reported the same runner **`offline`**. Restarting
-  `actions.runner.Rezwoan-RepRush-web.blackbox-reprush.service` re-registered it but did not restore
-  dispatch. This is a GitHub-side stale registration, not a repo or workflow problem.
-  **Working fallback, and it is the documented one:**
+- **CI runner dispatch: broke 2026-08-07, recovered on its own the same day.** For a few hours
+  GitHub reported the `reprush` runner **`offline`** while the Pi side was healthy throughout
+  (`systemctl is-active` green, journal showing `√ Connected to GitHub` / `Listening for Jobs`);
+  pushes to `v2` created no workflow run at all and `workflow_dispatch` runs sat unclaimed until
+  they were cancelled. Restarting
+  `actions.runner.Rezwoan-RepRush-web.blackbox-reprush.service` did not appear to help *at the
+  time* — but the registration did come good later, with no further action. Verified working again
+  at run 31129070516 (dispatch, green, 1m28s) and by push. **So: a stale registration here is a
+  GitHub-side condition that clears itself. Restart the service once, then stop waiting on it.**
+  Diagnose with `gh api repos/Rezwoan/RepRush-web/actions/runners` — `status: online` means
+  dispatch works; `offline` with a healthy journal means wait it out and deploy manually.
+  **The manual fallback (always safe, use it whenever CI is slow or suspect):**
   ```bash
   ssh reezz@blackbox.local 'bash /var/www/reprush-dev/scripts/deploy-dev.sh'
   ```
