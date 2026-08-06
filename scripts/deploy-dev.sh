@@ -55,14 +55,32 @@ sudo systemctl restart reprush-dev-frontend.service
 
 # ── 6. Health check ───────────────────────────────────────
 echo "[6/6] Health check..."
-sleep 6
-BACKEND=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${BACKEND_PORT}/api/auth/me" 2>/dev/null || echo 000)
-FRONTEND=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${FRONTEND_PORT}" 2>/dev/null || echo 000)
+# `curl -w %{http_code}` already prints 000 when it cannot connect, so the old
+# `|| echo 000` appended a *second* 000 and a dead service read as "000000" —
+# which is not equal to "000", so the check passed and the deploy reported
+# success with the API crash-looping. Caught on 2026-08-07 when a failed boot
+# self-check took the dev backend down and the script said "✓ success".
+# Retry rather than a single sleep: a Pi can take longer than 6s to bind.
+probe() { curl -s -o /dev/null -m 5 -w "%{http_code}" "$1" 2>/dev/null || true; }
+await_backend() {
+  local url="$1" code=000
+  for _ in $(seq 1 10); do
+    code=$(probe "$url")
+    [[ "$code" == "401" ]] && break
+    sleep 3
+  done
+  echo "$code"
+}
+
+BACKEND=$(await_backend "http://localhost:${BACKEND_PORT}/api/auth/me")
+FRONTEND=$(probe "http://localhost:${FRONTEND_PORT}")
 echo "  backend  :${BACKEND_PORT} -> HTTP $BACKEND"
 echo "  frontend :${FRONTEND_PORT} -> HTTP $FRONTEND"
 
-if [[ "$BACKEND" == "000" ]]; then
-  echo "[deploy-dev] ✗ backend not responding"
+# A healthy API answers /auth/me with 401 when signed out. Anything else —
+# including no answer at all — means it did not come up.
+if [[ "$BACKEND" != "401" ]]; then
+  echo "[deploy-dev] ✗ backend unhealthy (HTTP ${BACKEND:-none}, expected 401)"
   sudo journalctl -u reprush-dev-backend.service -n 30 --no-pager; exit 1
 fi
 if [[ "$FRONTEND" != "200" && "$FRONTEND" != "307" && "$FRONTEND" != "302" ]]; then
@@ -71,7 +89,12 @@ if [[ "$FRONTEND" != "200" && "$FRONTEND" != "307" && "$FRONTEND" != "302" ]]; t
 fi
 
 # Production must still be up — a dev deploy that breaks prod is a bug in this script.
-PROD=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3100" 2>/dev/null || echo 000)
+PROD=$(probe "http://localhost:3100")
 echo "  prod     :3100 -> HTTP $PROD (must be unaffected)"
+if [[ "$PROD" != "200" && "$PROD" != "307" && "$PROD" != "302" ]]; then
+  echo "[deploy-dev] ✗ dev deployed, but PRODUCTION is not responding (HTTP ${PROD:-none})"
+  echo "[deploy-dev]   this script must never affect prod — investigate before deploying again"
+  exit 1
+fi
 
 echo "[deploy-dev] ✓ success — $(date)"

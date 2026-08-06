@@ -40,15 +40,31 @@ sudo systemctl restart reprush-frontend.service
 
 # ── 5. Health check ───────────────────────────────────────
 echo "[5/5] Health check..."
-sleep 6
-# Backend is "up" if it answers at all (401 on a protected route counts).
-BACKEND=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${BACKEND_PORT}/api/auth/me" 2>/dev/null || echo 000)
-FRONTEND=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${FRONTEND_PORT}" 2>/dev/null || echo 000)
+# `curl -w %{http_code}` already prints 000 when it cannot connect, so the old
+# `|| echo 000` appended a *second* 000 and a dead service read as "000000" —
+# which is not equal to "000", so the check passed and the deploy reported
+# success with the API crash-looping. Caught on 2026-08-07 when a failed boot
+# self-check took the dev backend down and the script said "✓ success".
+# Retry rather than a single sleep: a Pi can take longer than 6s to bind.
+probe() { curl -s -o /dev/null -m 5 -w "%{http_code}" "$1" 2>/dev/null || true; }
+await_backend() {
+  local url="$1" code=000
+  for _ in $(seq 1 10); do
+    code=$(probe "$url")
+    [[ "$code" == "401" ]] && break
+    sleep 3
+  done
+  echo "$code"
+}
+
+BACKEND=$(await_backend "http://localhost:${BACKEND_PORT}/api/auth/me")
+FRONTEND=$(probe "http://localhost:${FRONTEND_PORT}")
 echo "  backend  :${BACKEND_PORT} -> HTTP $BACKEND"
 echo "  frontend :${FRONTEND_PORT} -> HTTP $FRONTEND"
 
-if [[ "$BACKEND" == "000" ]]; then
-  echo "[deploy] ✗ backend not responding"; sudo journalctl -u reprush-backend.service -n 30 --no-pager; exit 1
+# A healthy API answers /auth/me with 401 when signed out.
+if [[ "$BACKEND" != "401" ]]; then
+  echo "[deploy] ✗ backend unhealthy (HTTP ${BACKEND:-none}, expected 401)"; sudo journalctl -u reprush-backend.service -n 30 --no-pager; exit 1
 fi
 if [[ "$FRONTEND" != "200" && "$FRONTEND" != "307" && "$FRONTEND" != "302" ]]; then
   echo "[deploy] ✗ frontend health check failed ($FRONTEND)"; sudo journalctl -u reprush-frontend.service -n 30 --no-pager; exit 1
