@@ -151,7 +151,20 @@ const BASE: Record<string, number> = {
   calves: 1.5,
 };
 
-const MECHANIC: Record<string, number> = { compound: 1, isolation: 0.4 };
+/**
+ * Isolation work scores against a fraction of the muscle's compound baseline —
+ * but *how much* of a fraction depends on the equipment.
+ *
+ * A machine or cable stack is not a free-weight load: the machine supports the
+ * body, the leverage is chosen to be favourable, and the number on the stack
+ * usually overstates what reaches the muscle. Discounting a pec deck as hard as
+ * a dumbbell fly is what made real users' machine work come out Legend on the
+ * first pass through actual training history.
+ */
+function mechanicFactor(mechanic: string | null, equipment: string): number {
+  if (mechanic !== 'isolation') return mechanic === 'compound' ? 1 : 0.7;
+  return equipment === 'machine' || equipment === 'cable' ? 0.75 : 0.4;
+}
 
 /** Dumbbells are logged per hand, which is most of why that number is so low. */
 const EQUIPMENT: Record<string, number> = {
@@ -221,16 +234,16 @@ const OVERRIDES: Record<string, number> = {
   Leg_Press: 2.3,
   Hack_Squat: 1.2,
   'Front_Barbell_Squat': 1.05,
-  Leg_Extensions: 0.75,
-  Lying_Leg_Curls: 0.6,
-  Seated_Leg_Curl: 0.6,
-  Standing_Calf_Raises: 1.4,
-  Seated_Calf_Raise: 0.9,
+  Leg_Extensions: 0.9,
+  Lying_Leg_Curls: 0.8,
+  Seated_Leg_Curl: 0.85,
+  Standing_Calf_Raises: 1.65,
+  Seated_Calf_Raise: 1.0,
   Incline_Dumbbell_Press: 0.42,
   Dumbbell_Bench_Press: 0.47,
   Seated_Dumbbell_Press: 0.33,
   Side_Lateral_Raise: 0.175,
-  'Triceps_Pushdown_-_Rope_Attachment': 0.38,
+  'Triceps_Pushdown_-_Rope_Attachment': 0.48,
   'EZ-Bar_Skullcrusher': 0.45,
   Hammer_Curls: 0.25,
 };
@@ -287,7 +300,7 @@ export function medianRatio(ex: ExerciseShape, sex: string | null, muscleGroup: 
     OVERRIDES[ex.id] ??
     (ex.equipment === 'bodyweight'
       ? bodyweightMedian(muscle)
-      : (BASE[muscle] ?? 0.6) * (MECHANIC[ex.mechanic ?? ''] ?? 0.7) * (EQUIPMENT[ex.equipment] ?? 1));
+      : (BASE[muscle] ?? 0.6) * mechanicFactor(ex.mechanic, ex.equipment) * (EQUIPMENT[ex.equipment] ?? 1));
   if (sex !== 'female') return male;
   return male * (FEMALE_FACTOR[muscleGroup ?? ''] ?? 0.65);
 }
@@ -376,6 +389,29 @@ export const __selfcheck = () => {
   if (!(p1 < p8 && p8 < p8weighted)) fail('pull-ups must reward reps, then added weight');
   if (!(p8 > 55 && p8 < 85)) fail(`8 strict pull-ups scored the ${p8.toFixed(0)}th percentile`);
   if (rankFromPercentile(p8).tier === 'legend') fail('8 pull-ups is not Legend');
+
+  // Machine and cable isolation. A 60 kg × 8 pec deck is an ordinary set in an
+  // ordinary gym; the first pass through real training history had it, and
+  // every other machine movement, paying out Legend, because a stack number was
+  // being discounted as hard as a dumbbell fly.
+  const pecDeck: ExerciseShape = { id: 'Butterfly', primary: ['mid_chest'], equipment: 'machine', mechanic: 'isolation' };
+  const pecP = percentileFor((60 * (1 + 8 / 30)) / 82, medianRatio(pecDeck, 'male', 'chest'));
+  if (pecP > 80) fail(`a 60kg x8 pec deck scored the ${pecP.toFixed(0)}th percentile`);
+
+  const cableExt: ExerciseShape = {
+    id: 'Cable_Rope_Overhead_Triceps_Extension',
+    primary: ['triceps'],
+    equipment: 'cable',
+    mechanic: 'isolation',
+  };
+  const cableP = percentileFor((40 * (1 + 8 / 30)) / 82, medianRatio(cableExt, 'male', 'arms'));
+  if (cableP > 80) fail(`a 40kg x8 overhead cable extension scored the ${cableP.toFixed(0)}th percentile`);
+
+  // ...but a machine must not become worthless either: the same movement at
+  // twice the load has to clear the one above it comfortably.
+  if (!(percentileFor((120 * (1 + 8 / 30)) / 82, medianRatio(pecDeck, 'male', 'chest')) > pecP + 20)) {
+    fail('doubling the load on a machine barely moved the percentile');
+  }
 
   // Age: monotonic upward past the prime, flat through it, never below 1.
   if (ageFactor(28) !== 1) fail('the prime is not handicapped');
