@@ -369,10 +369,14 @@ export function feetInches(totalInches: number): string {
   return `${Math.floor(whole / 12)}′ ${whole % 12}″`;
 }
 
-/** Age → an ISO date the backend can store; day precision we don't have. */
+/**
+ * Age → an ISO date the backend can store; day precision we don't have.
+ * Local calendar parts, not UTC: east of Greenwich a UTC date is yesterday for
+ * most of the local morning, and the stored birthday would be a day off.
+ */
 export function birthDateFromAge(age: number, now = new Date()): string {
-  const y = now.getUTCFullYear() - age;
-  return `${y}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+  const y = now.getFullYear() - age;
+  return `${y}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
 // ── Persistence ─────────────────────────────────────────────────────
@@ -480,8 +484,11 @@ export const __selfcheck = () => {
   if (feetInches(70) !== '5′ 10″') fail('70 in should read 5′ 10″');
   if (feetInches(72) !== '6′ 0″') fail('72 in should read 6′ 0″');
 
-  if (birthDateFromAge(25, new Date(Date.UTC(2026, 7, 7))) !== '2001-08-07')
+  // Local-time constructor on purpose — this is the calendar the user sees.
+  if (birthDateFromAge(25, new Date(2026, 7, 7, 3, 0)) !== '2001-08-07')
     fail('age 25 on 2026-08-07 should be born 2001-08-07');
+  if (birthDateFromAge(30, new Date(2026, 0, 1, 23, 30)) !== '1996-01-01')
+    fail('late-evening 1 January must not roll into the next day');
 
   return 'onboarding config ok';
 };

@@ -1,14 +1,20 @@
 import {
   Injectable,
+  Logger,
   UnauthorizedException,
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { UsersService } from '../users/users.service';
 import { User, UserRole } from '../users/user.entity';
+import { GymSession } from '../workouts/gym-session.entity';
+import { WorkoutSet } from '../workouts/workout-set.entity';
+import { CatalogService } from '../exercises/catalog.service';
 
 /** The whole onboarding funnel, submitted in one shot at step 26 (SPEC §3.3). */
 export interface RegisterDto {
@@ -25,6 +31,8 @@ export interface RegisterDto {
   trainingLocation?: string;
   equipment?: string[];
   limitations?: string[];
+  /** The lift ranked at step 21, so the rank the reveal promised actually exists. */
+  firstRank?: { exerciseId?: string; weightKg?: number; reps?: number };
 }
 
 /**
@@ -54,10 +62,15 @@ const inRange = (v: unknown, min: number, max: number) =>
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
     private config: ConfigService,
+    private catalog: CatalogService,
+    @InjectRepository(GymSession) private sessions: Repository<GymSession>,
+    @InjectRepository(WorkoutSet) private sets: Repository<WorkoutSet>,
   ) {}
 
   async validateUser(email: string, password: string): Promise<User | null> {
@@ -126,12 +139,54 @@ export class AuthService {
       dismissed: true,
     });
 
+    await this.recordFirstLift(user.id, dto.firstRank);
+
     const fresh = await this.usersService.findById(user.id);
     const payload = { sub: fresh.id, email: fresh.email, role: fresh.role };
     const token = this.jwtService.sign(payload, {
       expiresIn: this.config.get('JWT_EXPIRY') || '30d',
     });
     return { token, user: this.sanitize(fresh) };
+  }
+
+  /**
+   * Store the onboarding lift as one real logged set.
+   *
+   * Ranks are derived from `workout_sets` and nothing else (see MEMORY →
+   * Decisions), so without this the funnel tells someone they are Silver III on
+   * bench press and then hands them an empty Ranks tab. Best-effort: a failure
+   * here must not cost the user the account they just created.
+   */
+  private async recordFirstLift(userId: number, lift: RegisterDto['firstRank']) {
+    const exerciseId = typeof lift?.exerciseId === 'string' ? lift.exerciseId : null;
+    const weightKg = inRange(lift?.weightKg, 0, 1000);
+    const reps = inRange(lift?.reps, 1, 100);
+    if (!exerciseId || weightKg === null || reps === null) return;
+
+    try {
+      const exercise = this.catalog.get(exerciseId); // throws if the id is junk
+      const session = await this.sessions.save(
+        this.sessions.create({
+          userId,
+          workoutType: 'Onboarding',
+          completedAt: new Date(),
+          notes: 'First lift, logged during onboarding.',
+        }),
+      );
+      await this.sets.save(
+        this.sets.create({
+          sessionId: session.id,
+          exerciseName: exercise.name,
+          exerciseId: exercise.id,
+          setNumber: 1,
+          actualReps: Math.round(reps),
+          weightKg,
+          isWarmup: false,
+        }),
+      );
+    } catch (err) {
+      this.logger.warn(`first lift not recorded for user ${userId}: ${err?.message ?? err}`);
+    }
   }
 
   async activateAccount(token: string, newPassword: string) {

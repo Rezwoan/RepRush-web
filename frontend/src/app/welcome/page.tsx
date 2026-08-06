@@ -872,6 +872,10 @@ function SignupStep({ a, onDone }: { a: Answers; onDone: () => void }) {
         trainingLocation: a.trainingLocation || undefined,
         equipment: a.equipment,
         limitations: a.limitations.filter((l) => l !== 'none'),
+        // Logged as a real set, so the rank the reveal promised is on the account.
+        firstRank: a.firstRank
+          ? { exerciseId: a.firstRank.exerciseId, weightKg: a.firstRank.weightKg, reps: a.firstRank.reps }
+          : undefined,
       });
       if (res.data?.token) setToken(res.data.token);
       await refresh();
