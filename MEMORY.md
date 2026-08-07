@@ -312,6 +312,18 @@ Notable v1 rules that must survive into v2:
 - **2026-08-08** **No i18n scaffold**, though P13 listed one. Why: a translation layer with one
   language, no translators and no second locale on the roadmap is a wrapper around every string in
   the app that changes nothing about what renders. Revisit when there is a second locale to fill in.
+- **2026-08-08** **`--primary-fill` is a second token, and its lightness is derived per theme.**
+  White on the brand cobalt is 3.87:1 and AA wants 4.5; darkening `--primary` fixes the button and
+  breaks `text-primary` on the page background, so the fill and the accent cannot be one value.
+  Blue darkens into AA and still reads as the brand; a bright hue keeps its vivid fill and takes
+  **dark** text instead, because pushing it dark enough for white makes it a different colour.
+  `themes.ts`'s self-check walks all 34 and refuses any pair below 4.5:1 or any fill below 34%
+  lightness. Only fills that carry text use it — dots, underlines, toggle tracks and progress bars
+  keep the vivid `--primary`.
+- **2026-08-08** `routineUpdateAlert` **deleted rather than implemented**. Why: there are no
+  routine-update notifications for it to suppress, and inventing one to justify a switch is the
+  wrong direction. The rule this phase settled on for a dead preference is implement or delete,
+  never leave.
 - **2026-08-08** v1's `/dashboard` is **deleted and kept as a redirect to `/home`**. Why: it is the
   URL every existing account has bookmarked and the one v1's own sidebar still points at, but the
   screen itself is now the Profile cards plus `6-Month Activity`. Its creatine and supplement
@@ -759,3 +771,25 @@ Two rules that fall out of it:
   celebrates should open a `Celebration` rather than paint its own overlay.
 - `toLocaleString` without an explicit locale renders `6.460` in a German browser and would fail a
   formatting self-check for a reason unrelated to weight. `lib/units.ts` pins `en-US`.
+
+**P13c · 2026-08-08**
+
+- **There is no PWA category in Lighthouse any more** — dropped in v12, and 13.4 is current. Any
+  exit check that says "Lighthouse PWA ≥ 90" has to be met by hand instead: `manifest.json` 200,
+  `sw.js` 200 with the tab routes in its precache manifest, and `/offline` serving a real page.
+- **`seo` will always be ~66 on dev.** The vhost sends `X-Robots-Tag: noindex` deliberately, so
+  `is-crawlable` fails by design. Do not "fix" it; do check it is *absent* on prod at cutover.
+- **`best-practices` is capped at 96 by one console 401** — `/api/auth/me` for a signed-out visitor,
+  which is the auth context correctly probing for a session. The token can live in an httpOnly
+  cookie as well as localStorage, so skipping the probe to quiet the lint would sign out anyone
+  holding only the cookie. Left alone on purpose.
+- **Mobile LCP is ~5 s while FCP is 1.5 s, CLS 0 and TBT 10 ms.** The gap is hydration: the funnel
+  is entirely client-rendered because it gates on localStorage. Improving it is a rendering-strategy
+  change, not a polish item.
+- **Cloudflare bans `Python-urllib` outright** (`error code: 1010`, HTTP 403). Any verification
+  script written in Python must set a browser-ish `User-Agent`, or every request fails in a way that
+  looks like the API is down. `curl` is unaffected.
+- **Emoji do not survive this workstation's shell into a heredoc.** A `POST /social/posts/:id/react`
+  written with a literal 🔥 in a bash script comes back `400 Unknown reaction`. Write the script with
+  the Write tool (UTF-8) and send `\U0001F525`-style escapes, and print `hex(ord(...))` rather than
+  the emoji, because the Windows console encoder throws on it too.

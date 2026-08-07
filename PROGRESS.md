@@ -21,7 +21,7 @@ https://dev-reprush.rezwoan.codes, and its exit check below is verified in the b
 | P10 | Profile & settings | **DONE** |
 | P11 | Gamification glue | **DONE** |
 | P12 | Offline & PWA hardening | **DONE** |
-| P13 | Polish pass | **IN PROGRESS** (P13a + P13b done) |
+| P13 | Polish pass | **DONE** |
 | P14 | Cutover to production | TODO |
 
 **P8 was the Nutrition tab and has been removed** — the owner cut nutrition from the product
@@ -654,7 +654,7 @@ Deliberately not built here, and why:
       - `/offline` returns 200; the generated `sw.js` precache manifest contains `/home`,
         `/workout`, `/ranks`, `/friends`, `/profile` and `/offline`.
 
-## P13 — Polish pass · `IN PROGRESS`
+## P13 — Polish pass · `DONE` (2026-08-08)
 
 Split into two, because the first half turned out to be **correctness, not polish**: six settings
 that stored fine and were read by nothing, a feature with no door, and four links pointing into v1.
@@ -744,22 +744,76 @@ went nowhere: every screen printed kg, and signing up in pounds silently made yo
       - `?tab=boards`, Profile → Consumables and the `/dashboard` redirect all verified.
       - Prod 200 and untouched. The three test accounts were deleted; dev is back to its 2 real users.
 
-### P13c — what is left · `TODO`
+### P13c — Reactions, the last dead preferences, accessibility · `DONE` (2026-08-08)
 
-- [ ] **Reactions** is the last shortcut tile without a screen. `post_reactions` has the rows;
-      nothing reads them as "given" and "received" yet, so it needs one endpoint and a small panel.
-- [ ] Three preferences are still read by nothing: `weekStart` (Profile's activity grid and
-      Analysis's Su–Sa row are both hardcoded Sunday), `analysisWindow` (rolling vs calendar) and
-      `routineUpdateAlert` (there are no routine-update notifications to alert about). Each is a
-      small feature, not a formatter — implement or drop the row, do not leave them.
-- [ ] Sound design beyond the four cues; animation pass over the remaining interactive elements
-- [ ] Accessibility: labels, contrast in every theme, screen-reader pass on the main flows
-- [ ] Image/SVG optimisation; the rest of the bundle audit (`/achievements` and `/progress` still
-      render inside v1's shell)
-- [ ] ~~i18n scaffold with English filled in~~ — **deliberately not built**, see `MEMORY.md`
-      Decisions. A translation layer with one language, no translators and no second locale on the
-      roadmap is a wrapper around every string in the app that changes nothing about what renders.
-- [ ] **Exit check:** Lighthouse PWA + a11y ≥ 90 on mobile against the dev URL
+- [x] **Reactions** — `GET /social/reactions/mine`, plus the panel. The rows have been in
+      `post_reactions` since P9; nothing read them as "given" and "received", so the tile opened a
+      coming-soon for data that was already there. `given` is filtered through the same visibility
+      rule as everything else — not because your own reaction is a secret, but because the row names
+      *whose* session it was on and a friendship can be removed afterwards. Rows open the person,
+      not the post: nothing opens a single post by URL.
+- [x] `analysisWindow` decides how the Totals window is measured — `rolling` counts back from now,
+      `calendar` starts at the boundary. Computed in the backend, because the client only receives
+      the totals and not the sessions behind them. `calendarStart` self-checks at boot, including
+      the case a plain subtraction gets wrong: under a Monday start, Sunday belongs to the week that
+      began six days ago, not to the one starting tomorrow.
+- [x] `weekStart` rotates the Analysis week row, which was hardcoded Su–Sa.
+- [x] `routineUpdateAlert` **deleted**. There are no routine-update notifications for it to
+      suppress. Removed rather than left, which is the rule this phase has been applying.
+- [x] Two push payloads still deep-linked to v1's `/dashboard` — the test notification and the
+      creatine reminder, which now points at Consumables.
+- [x] **Accessibility.** Eleven icon-only buttons announced nothing; five were real. The worst were
+      the set grid's number cells, which announce a bare number — or `—` when empty — so a screen
+      reader read the whole tracker as a row of dashes. And no tab had an `<h1>`: every screen is a
+      stack of `<h2>`s, so nothing named the page. One visually-hidden heading in the tab shell
+      covers all five. Five routes outside the shell gained a `<main>` landmark.
+- [x] **Contrast, in all 34 themes.** White on the brand cobalt is 3.87:1 and AA wants 4.5, so the
+      app's main CTA has never passed. Darkening `--primary` cannot fix it — at the lightness where
+      white passes, `text-primary` on the page background drops to 4.2 — so the two uses needed two
+      tokens. `--primary-fill` is derived per theme: blue darkens into AA and still reads as the
+      brand, a bright hue keeps its vivid fill and takes **dark** text, which is what a lime or
+      amber button wants anyway. The self-check walks every theme; the lowest ratio in the set is
+      **4.51:1**. It earned its keep immediately — the first cut drove Spring Blossom's fill to 28%
+      lightness and the check refused it.
+- [x] A favicon. `/favicon.ico` had never existed, so every page load 404'd for one.
+- [x] ~~i18n scaffold~~ — **deliberately not built**, see `MEMORY.md` Decisions. A translation layer
+      with one language, no translators and no second locale on the roadmap is a wrapper around
+      every string in the app that changes nothing about what renders.
+- [x] **Exit check — Lighthouse, mobile, against the dev URL:**
+
+      | Route | a11y | best-practices | perf |
+      |---|---|---|---|
+      | `/welcome` | **100** | 96 | 77–81 |
+      | `/login` | **100** | 96 | — |
+      | `/offline` | **100** | 96 | — |
+
+      - a11y went **93 → 100** on the funnel; the two failures were the CTA's contrast and the
+        missing `<main>`.
+      - **There is no PWA category any more** — Lighthouse dropped it in v12, and this ran on 13.4.
+        Verified by hand instead: `manifest.json` 200, `sw.js` 200 with `/`, `/home`, `/workout`,
+        `/ranks`, `/friends`, `/profile` and `/offline` in its precache manifest, and `/offline`
+        serving a real page.
+      - `best-practices` is capped at 96 by one console entry: `/api/auth/me` returning 401 for a
+        signed-out visitor. That is the auth context correctly probing for a session, and the token
+        can live in an httpOnly cookie as well as localStorage — skipping the probe to quiet a lint
+        would sign out anyone holding only the cookie. Left alone deliberately.
+      - `seo` is 66 on dev and only on dev: the vhost sends `X-Robots-Tag: noindex` on purpose, so
+        `is-crawlable` fails by design. It will not apply to production.
+      - Not chased: mobile LCP is ~5 s. FCP is 1.5 s, CLS is 0 and TBT is 10 ms, so the gap is
+        hydration — the funnel is entirely client-rendered because it gates on localStorage. Fixing
+        it is a rendering-strategy change, not a polish item.
+- [x] **Exit check — the Reactions endpoint, verified on dev:** two accounts, one friends-only post
+      and one discovery post, a reaction each way. Both saw `received` and `given` with the right
+      person and workout; an unknown emoji **400**. After unfriending, the reaction given on the
+      *discovery* post survived and the one given on the *friends-only* post disappeared, while both
+      kept the reactions on their own posts. Test accounts deleted; dev is back to its 2 real users.
+
+### What is still open after P13
+
+- [ ] Image/SVG optimisation, and the rest of the bundle audit — `/achievements` and `/progress`
+      still render inside v1's shell, which drops a v2 user out of the tab bar.
+- [ ] Sound design beyond the four cues; an animation pass over the remaining interactive elements.
+- [ ] A screen-reader run through the main flows on a real device. Lighthouse is a floor, not a pass.
 
 ---
 
@@ -1288,4 +1342,39 @@ every string in the app that changes nothing about what renders.
 
 **Next:** P13c — the Reactions screen, the three remaining dead preferences, the accessibility and
 image passes, and the Lighthouse exit check.
+**Blockers:** none.
+
+### 2026-08-08 — P13c complete, and P13 with it
+The last three items were a screen, three preferences and the accessibility pass.
+
+**Reactions** closes the last shortcut tile that opened a coming-soon. The data had been sitting in
+`post_reactions` since P9 — the only new thing is a read of it, and the only judgement in that read
+is that `given` runs through the same visibility rule as every other social read. Not because your
+own reaction is a secret, but because the row names *whose* session it was on, and a friendship can
+be removed after the fact. Verified by unfriending mid-test: the reaction given on a discovery post
+survives, the one given on a friends-only post disappears, and both people keep the reactions on
+their own posts.
+
+**The three dead preferences got the rule this phase has been applying all along** — implement or
+delete, never leave. `analysisWindow` and `weekStart` are real now; `routineUpdateAlert` is gone,
+because there are no routine-update notifications for it to suppress and there was no honest way to
+make one up.
+
+**The accessibility pass found the app's main button had never passed contrast.** White on the brand
+cobalt is 3.87:1 against AA's 4.5, in every theme, since P1. The interesting part is that darkening
+`--primary` does not fix it: at the lightness where white passes, `text-primary` on the page
+background falls to 4.2, so no single value satisfies both and the two uses needed two tokens. And
+one *lightness* is not enough either — a bright hue pushed dark enough for white is a different
+colour, so those keep their vivid fill and take dark text instead. The generator picks per hue and
+the self-check refuses any theme it gets wrong, which it did on the first attempt: Spring Blossom's
+fill went to 28% lightness and the check caught it before it shipped.
+
+Lighthouse went 93 → **100** on accessibility, mobile, on every public route. Two notes for whoever
+runs it next: **the PWA category no longer exists** (dropped in Lighthouse 12; this ran on 13.4), so
+the PWA half of the exit check was verified by hand — manifest, precache manifest and `/offline`.
+And `seo` is 66 purely because the dev vhost sends `X-Robots-Tag: noindex` on purpose.
+
+**Next:** P14 — cutover to production. Note three things it must carry across, all recorded above:
+`UsersService.deleteUser` still orphans rows on prod (P9), prod still serves `s-maxage=31536000` on
+documents (P1), and the prod DB needs a full backup before the merge.
 **Blockers:** none.
