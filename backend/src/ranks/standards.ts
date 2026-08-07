@@ -493,7 +493,15 @@ export const __selfcheck = () => {
     const next = nextDivisionPercentile(cursor);
     if (next === null) break;
     if (!(next > cursor)) fail(`nextDivisionPercentile went backwards at ${cursor}`);
-    if (rankValue(rankFromPercentile(next)) <= rankValue(rankFromPercentile(cursor)))
+    // Every boundary must be a real band edge — the rank a hair above it must
+    // differ from the rank a hair below. Comparing rankValue alone is too weak:
+    // LP rises inside a division, so a non-boundary would sail through, which
+    // is how the rank strip came to promise the division the user already held.
+    const below = rankFromPercentile(next - 1e-6);
+    const above = rankFromPercentile(next + 1e-6);
+    if (below.tier === above.tier && below.division === above.division)
+      fail(`${next} is not a division boundary (${below.tier} ${below.division} on both sides)`);
+    if (rankValue(above) <= rankValue(rankFromPercentile(cursor)))
       fail(`crossing ${next} from ${cursor} is not a promotion`);
     cursor = next;
     if (++steps > 100) fail('nextDivisionPercentile does not terminate');

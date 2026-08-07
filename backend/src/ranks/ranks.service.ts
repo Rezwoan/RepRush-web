@@ -393,6 +393,11 @@ export class RanksService implements OnModuleInit {
     if (!ex) return null;
     const target = nextDivisionPercentile(percentile);
     if (target === null) return null;
+    // `target` is exactly the boundary, and `rankFromPercentile` floors, so at
+    // 87.333… the multiply-by-three lands on 1.9999999 and the label comes back
+    // as the division the user is already in — the strip read "beat 102.5×5 to
+    // hit Diamond II" to someone who was Diamond II. Score a hair past it.
+    const reached = rankFromPercentile(target + 1e-6);
 
     const group = this.catalog.muscle(ex.primary[0])?.group ?? null;
     const median = medianRatio(ex, sex, group);
@@ -416,7 +421,7 @@ export class RanksService implements OnModuleInit {
       const needed = Math.ceil(Math.max(0, requiredE1rm / carried - 1) * 30);
       return {
         percentile: Math.round(target * 10) / 10,
-        rank: rankFromPercentile(target),
+        rank: reached,
         weightKg: null,
         reps: Math.max(1, Math.min(12, needed)),
         progress,
@@ -425,7 +430,7 @@ export class RanksService implements OnModuleInit {
 
     return {
       percentile: Math.round(target * 10) / 10,
-      rank: rankFromPercentile(target),
+      rank: reached,
       // Round *up* — the prescription has to actually clear the bar it names.
       weightKg: Math.ceil(load / 2.5) * 2.5,
       reps,
