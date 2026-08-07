@@ -1,13 +1,11 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Cron } from '@nestjs/schedule';
 import { In, IsNull, Not, Repository } from 'typeorm';
-import { User, UserRole } from '../users/user.entity';
+import { User } from '../users/user.entity';
 import { GymSession } from '../workouts/gym-session.entity';
 import { WorkoutSet } from '../workouts/workout-set.entity';
 import { CatalogService } from '../exercises/catalog.service';
 import { RanksService } from '../ranks/ranks.service';
-import { PushService } from '../push/push.service';
 import { XP, levelFromXp } from '../profile/xp';
 import { RewardClaim } from './claim.entity';
 import {
@@ -24,8 +22,6 @@ import {
   streakWithFreezes,
   type QuestDef,
 } from './rules';
-
-const DAY_MS = 86_400_000;
 
 /** Referral quests (SPEC §8) — P9 showed them; this is what makes CLAIM real. */
 const REFERRAL_QUESTS: QuestDef[] = [
@@ -56,7 +52,6 @@ export class GamificationService implements OnModuleInit {
     @InjectRepository(RewardClaim) private claims: Repository<RewardClaim>,
     private catalog: CatalogService,
     private ranks: RanksService,
-    private push: PushService,
   ) {}
 
   onModuleInit() {
@@ -94,6 +89,14 @@ export class GamificationService implements OnModuleInit {
     const lifetime = this.measure(sessions, sets, streak.current, () => true);
     const daily = this.measure(sessions, sets, streak.current, (s) => dayKey(new Date(s.completedAt)) === today);
     const weekly = this.measure(sessions, sets, streak.current, (s) => isoWeek(new Date(s.completedAt)) === week);
+
+    // Rank-ups are the rank engine's business — it already records the instant
+    // each band was crossed, so the quest counts those rather than guessing.
+    // Without this the weekly `Rank up once` quest sat at 0/1 forever.
+    const { rankUps } = await this.ranks.overview(userId);
+    lifetime.rankUps = rankUps.length;
+    daily.rankUps = rankUps.filter((at) => dayKey(new Date(at)) === today).length;
+    weekly.rankUps = rankUps.filter((at) => isoWeek(new Date(at)) === week).length;
     const referred = await this.users.count({ where: { referredByUserId: userId } });
 
     // XP is training XP (derived, exactly as the post-session chain shows it)
@@ -251,7 +254,8 @@ export class GamificationService implements OnModuleInit {
       volume: Math.round(volume),
       minutes: Math.round(minutes),
       records,
-      // Rank-ups are the rank engine's business; it already counts them.
+      // Filled in by the caller from the rank engine — a session's sets do not
+      // know whether they crossed a band.
       rankUps: 0,
       muscles: muscles.size,
       streak,

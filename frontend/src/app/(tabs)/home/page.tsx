@@ -1,7 +1,7 @@
 'use client';
 /**
- * Home tab — SPEC §4. Three sub-tabs; For You carries all the real content and
- * Friends / Discovery are feed shells until P9 builds posts.
+ * Home tab — SPEC §4. Three sub-tabs: For You carries the training content,
+ * Friends and Discovery are the P9 post feeds.
  *
  * Everything comes from one `GET /home/summary`, cached in localStorage so the
  * tab paints instantly (and still paints offline) while the fresh copy loads.
@@ -11,7 +11,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { CalendarDays, Calculator, ChevronRight, Plus, Trophy, Users } from 'lucide-react';
-import { bodyWeightApi, goalsApi, homeApi } from '@/lib/api';
+import { goalsApi, homeApi } from '@/lib/api';
+import { flushOutbox, queueBodyWeight } from '@/lib/offline';
 import { spring } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { MUSCLE_BY_ID, type MuscleId } from '@/lib/muscles';
@@ -330,16 +331,15 @@ function LogWeightSheet({
     }
     setBusy(true);
     setError('');
-    try {
-      await bodyWeightApi.log(kg);
-      onOpenChange(false);
-      setValue('');
-      onSaved();
-    } catch (err: any) {
-      setError(err?.response?.data?.message ?? 'Could not save that.');
-    } finally {
-      setBusy(false);
-    }
+    // Queued, like the finish flow's entry: this sheet is one tap from the
+    // Recovery card, and weighing yourself at the gym is exactly where the
+    // signal is worst. The outbox's idempotency key stops a retry duplicating it.
+    queueBodyWeight(kg);
+    void flushOutbox();
+    onOpenChange(false);
+    setValue('');
+    onSaved();
+    setBusy(false);
   };
 
   return (
