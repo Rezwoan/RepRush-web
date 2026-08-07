@@ -572,6 +572,11 @@ Deliberately not built here, and why:
 - [x] Quests: one daily + three weekly, rotating deterministically per user per day/week, plus
       P9's referral quests — whose `CLAIM` buttons are now real. Countdowns derive from the clock.
 - [x] Level rewards, claimable once reached.
+- [x] **Fixed after the phase closed:** `measure()` returned a hardcoded `rankUps: 0`, so the
+      weekly *Rank up once* quest sat at 0/1 forever and its reward could never be claimed. The
+      rank engine already records the instant each band is crossed, so the quest counts those,
+      windowed by day and ISO week like every other metric. Verified on dev: three progressively
+      heavier benches took `rankUps` 0 → **3**, matching `GET /ranks/me`.
 - [x] Notification trigger: the **existing** 5pm reminder is streak-aware now
       (`"3 day streak at risk"`, and it mentions a freeze if one is banked). A second nightly cron
       would have meant two pushes on the same evening for the same reason.
@@ -1096,3 +1101,21 @@ app to be offline.
 
 **Next session:** finish P12's remaining four items (listed above), then P13 — the polish pass.
 **Blockers:** none.
+
+### 2026-08-07 — post-phase cleanup
+Three small things, all found by re-reading what the last four phases left behind rather than by
+new work.
+
+**A quest nobody could ever finish.** P11's `measure()` returned `rankUps: 0` as a placeholder, so
+the weekly *Rank up once* quest was permanently 0/1 — visible, promising a reward, and unclaimable.
+It counts the rank engine's own rank-up timestamps now. Verified 0 → 3 against `GET /ranks/me`.
+
+**The same offline bug in a second place.** P12 fixed the finish flow's fire-and-forget bodyweight
+POST; Home's log-bodyweight sheet had the identical shape and the identical failure — an entry
+made on gym wifi that has stopped routing showed an error and vanished. Both go through the outbox
+now. Worth remembering as a pattern: when a write path turns out to be wrong, grep for the others.
+
+**Dead weight removed.** `GamificationService` still injected `PushService` after its cron was
+dropped in favour of making the existing reminder streak-aware — that injection was the only thing
+making Gamification depend on Push (which depends on Workouts). Also gone: unused `Cron`,
+`UserRole` and `DAY_MS` imports, and `coming-soon.tsx`, which no tab has used since P9.

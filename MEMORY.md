@@ -691,3 +691,10 @@ Two rules that fall out of it:
   or the guard has quietly broken every non-outbox caller.
 - v1's manifest `start_url` and the service worker's document fallback both pointed at
   `/dashboard`. Anything naming a v1 route is suspect now that the tab shell owns the app.
+- **A placeholder value in a rewards path is a bug, not a TODO.** `rankUps: 0` shipped as a
+  stand-in and made a quest permanently unclaimable — it looked complete on screen, so nothing
+  flagged it. If a metric cannot be computed where it is measured, fill it at the caller in the
+  same commit, or leave the quest out of the pool.
+- **When one write path turns out to be wrong, grep for its siblings.** The finish flow's
+  fire-and-forget bodyweight POST had an exact twin in Home's log-bodyweight sheet. Same bug, same
+  fix, found only by looking.
