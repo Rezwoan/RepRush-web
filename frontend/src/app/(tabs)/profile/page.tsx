@@ -44,6 +44,7 @@ import { ProfileHeaderCard, useProfile } from './header';
 import { EditProfile } from './edit';
 import { ConsumablesPanel } from './consumables';
 import { HealthPanel } from './health';
+import { ReactionsPanel } from './reactions';
 import { MedalsPanel, QuestsPanel } from './quests';
 import { RoutinesPanel } from './routines';
 import { SettingsPanel } from './settings';
@@ -301,17 +302,18 @@ export default function ProfilePage() {
     if (view === 'statistics') return <StatisticsPanel onBack={back} />;
     if (view === 'quests') return <QuestsPanel onBack={back} />;
     if (view === 'medals') return <MedalsPanel onBack={back} />;
-    // Reactions is the last shortcut without a screen. It needs an endpoint
-    // listing what you have given and received — `post_reactions` has the rows,
-    // nothing reads them that way yet.
+    if (view === 'reactions') return <ReactionsPanel onBack={back} />;
+    // Every shortcut above resolves to a real screen now, so this is only
+    // reachable by a hand-typed `?view=`.
     return (
       <div className="pb-6 pt-4">
         <button onClick={back} className="press mb-4 text-sm font-bold text-primary">
           ‹ Profile
         </button>
         <EmptyState
-          title={`${view[0].toUpperCase()}${view.slice(1)} is coming`}
-          description="The reactions you have given and received will live here." 
+          pose="sad"
+          title="No such screen"
+          description={`There is nothing at "${view}". Head back to your profile.`}
         />
       </div>
     );

@@ -25,6 +25,30 @@ const DAY_MS = 86_400_000;
 const dayKey = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
+/**
+ * Where a `calendar` window starts, for the Totals card (Settings → Analysis).
+ *
+ * The four windows the card offers are 7 / 30 / 180 / 365 days, so their
+ * calendar equivalents are this week, this month, this half-year and this year.
+ * `firstDay` is 0 for a Sunday week and 1 for a Monday one — the same
+ * `weekStart` preference the calendar preview already shows.
+ *
+ * Local calendar parts throughout, never UTC: east of Greenwich a UTC day is
+ * yesterday for most of the local morning, and "this week" would start a day
+ * early for half of every day.
+ */
+export function calendarStart(now: Date, windowDays: number, firstDay: 0 | 1): Date {
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (windowDays >= 365) return new Date(now.getFullYear(), 0, 1);
+  if (windowDays >= 180) return new Date(now.getFullYear(), now.getMonth() < 6 ? 0 : 6, 1);
+  if (windowDays >= 30) return new Date(now.getFullYear(), now.getMonth(), 1);
+  // ((day - firstDay) + 7) % 7 — the +7 is what stops Sunday going backwards a
+  // week under a Monday start, where a plain difference would be -1.
+  const back = (midnight.getDay() - firstDay + 7) % 7;
+  midnight.setDate(midnight.getDate() - back);
+  return midnight;
+}
+
 /** The cards the Profile tab can show, in their default order (SPEC §9). */
 export const PROFILE_CARDS = [
   'memories',
@@ -72,7 +96,9 @@ export const DEFAULT_PREFERENCES = {
   haptics: true,
   sfx: true,
   restAlert: true,
-  routineUpdateAlert: true,
+  // `routineUpdateAlert` lived here and nothing could ever send one — there
+  // are no routine-update notifications. Removed rather than left as a switch
+  // that changes nothing (P13, see MEMORY → Decisions).
 };
 type Preferences = typeof DEFAULT_PREFERENCES;
 
@@ -202,8 +228,18 @@ export class ProfileService {
     );
 
     // Totals — the windowed chart behind Duration | Volume | Reps.
+    //
+    // Settings → Analysis picks how the window is measured. `rolling` counts
+    // back from right now, so a Monday and a Friday are compared the same way;
+    // `calendar` starts at the boundary, so the number resets and climbs
+    // through the period. Read here rather than on the client because the
+    // client only receives the totals, not the sessions behind them.
     const windowDays = [7, 30, 180, 365].includes(window) ? window : 7;
-    const sinceWindow = now.getTime() - windowDays * DAY_MS;
+    const prefs = this.preferences(user);
+    const sinceWindow =
+      prefs.analysisWindow === 'calendar'
+        ? calendarStart(now, windowDays, prefs.weekStart === 'sunday' ? 0 : 1).getTime()
+        : now.getTime() - windowDays * DAY_MS;
     const inWindow = sessions.filter((s) => new Date(s.completedAt).getTime() >= sinceWindow);
     let duration = 0;
     let volume = 0;
@@ -680,3 +716,39 @@ const EQUIPMENT = [
   'band',
   'plate',
 ];
+
+// ── self-check ──────────────────────────────────────────────────────
+// Week boundaries are where an off-by-one is invisible: the number is still
+// plausible, just measured from the wrong Monday.
+export function __selfcheck() {
+  const fail = (m: string) => {
+    throw new Error(`profile: ${m}`);
+  };
+  const key = (d: Date) => dayKey(d);
+
+  // Wednesday 2026-08-05, mid-afternoon.
+  const wed = new Date(2026, 7, 5, 15, 30);
+  if (key(calendarStart(wed, 7, 1)) !== '2026-08-03') fail('a Monday week should start Mon 3 Aug');
+  if (key(calendarStart(wed, 7, 0)) !== '2026-08-02') fail('a Sunday week should start Sun 2 Aug');
+
+  // Sunday is the case a plain subtraction gets wrong: under a Monday start it
+  // belongs to the week that began six days ago, not the one starting tomorrow.
+  const sun = new Date(2026, 7, 2, 9, 0);
+  if (key(calendarStart(sun, 7, 1)) !== '2026-07-27') fail('Sunday belongs to the Monday six days back');
+  if (key(calendarStart(sun, 7, 0)) !== '2026-08-02') fail('Sunday starts its own Sunday week');
+
+  if (key(calendarStart(wed, 30, 1)) !== '2026-08-01') fail('a month window starts on the 1st');
+  if (key(calendarStart(wed, 180, 1)) !== '2026-07-01') fail('August is in the second half-year');
+  if (key(calendarStart(new Date(2026, 2, 9), 180, 1)) !== '2026-01-01')
+    fail('March is in the first half-year');
+  if (key(calendarStart(wed, 365, 1)) !== '2026-01-01') fail('a year window starts on 1 Jan');
+
+  // A calendar window can never reach further back than the rolling one it
+  // replaces, or the card would silently widen when the preference flipped.
+  for (const days of [7, 30, 180, 365])
+    for (const first of [0, 1] as const)
+      if (wed.getTime() - calendarStart(wed, days, first).getTime() > days * DAY_MS)
+        fail(`a ${days}-day calendar window reached back further than ${days} days`);
+
+  return 'calendar windows ok';
+}

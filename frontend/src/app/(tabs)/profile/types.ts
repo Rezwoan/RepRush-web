@@ -33,7 +33,6 @@ export interface Preferences {
   haptics: boolean;
   sfx: boolean;
   restAlert: boolean;
-  routineUpdateAlert: boolean;
 }
 
 export interface Overview {

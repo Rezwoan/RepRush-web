@@ -243,6 +243,7 @@ export const socialApi = {
   feed: (scope: 'friends' | 'discovery', before?: string) =>
     api.get('/social/feed', { params: { scope, before } }),
   post: (sessionId: number) => api.get(`/social/posts/${sessionId}`),
+  myReactions: () => api.get('/social/reactions/mine'),
   react: (sessionId: number, emoji: string | null, key?: string) =>
     api.post(`/social/posts/${sessionId}/react`, { emoji }, idem(key)),
   comments: (sessionId: number) => api.get(`/social/posts/${sessionId}/comments`),

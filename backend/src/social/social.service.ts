@@ -539,6 +539,76 @@ export class SocialService implements OnModuleInit {
 
   // ── reactions and comments ────────────────────────────────────────
 
+  /**
+   * Profile → Reactions: what you have been given, and what you have given.
+   *
+   * `given` is filtered through the same visibility rule as everything else,
+   * not because the reaction is a secret — you made it — but because the row
+   * names *whose* session it was on, and a friendship can be removed after the
+   * fact. A screen that keeps naming someone who has since unfriended you is
+   * the one way this list could leak something.
+   */
+  async myReactions(userId: number) {
+    const [received, given] = await Promise.all([
+      // Reactions on my sessions. Mine are always visible to me, so no filter.
+      this.sessions.find({ where: { userId }, select: ['id'] }).then((mine) =>
+        mine.length
+          ? this.reactions.find({
+              where: { sessionId: In(mine.map((s) => s.id)) },
+              order: { createdAt: 'DESC' },
+              take: 100,
+            })
+          : [],
+      ),
+      this.reactions.find({ where: { userId }, order: { createdAt: 'DESC' }, take: 100 }),
+    ]);
+
+    const sessionIds = Array.from(new Set([...received, ...given].map((r) => r.sessionId)));
+    const sessions = sessionIds.length
+      ? await this.sessions.find({ where: { id: In(sessionIds) } })
+      : [];
+    const bySession = new Map(sessions.map((s) => [s.id, s]));
+    const friends = await this.friendIds(userId);
+
+    const visible = (s?: GymSession) =>
+      !!s &&
+      (s.userId === userId ||
+        s.privacy === 'discovery' ||
+        (s.privacy === 'friends' && friends.includes(s.userId)));
+
+    // `received` names the reactor; `given` names the post's author.
+    const people = await this.byIds([
+      ...received.map((r) => r.userId),
+      ...given.map((r) => bySession.get(r.sessionId)?.userId ?? 0),
+    ]);
+
+    const shape = (r: PostReaction, personId: number) => {
+      const person = people.get(personId);
+      const session = bySession.get(r.sessionId);
+      if (!person || !session) return null;
+      return {
+        emoji: r.emoji,
+        at: r.createdAt,
+        sessionId: r.sessionId,
+        workoutType: session.workoutType ?? 'Workout',
+        sessionAt: session.completedAt ?? session.startedAt,
+        user: publicUser(person),
+      };
+    };
+
+    return {
+      received: received
+        // Your own reaction to your own post is not something anyone gave you.
+        .filter((r) => r.userId !== userId)
+        .map((r) => shape(r, r.userId))
+        .filter(Boolean),
+      given: given
+        .filter((r) => visible(bySession.get(r.sessionId)))
+        .map((r) => shape(r, bySession.get(r.sessionId)!.userId))
+        .filter(Boolean),
+    };
+  }
+
   async react(userId: number, sessionId: number, emoji: string | null) {
     const session = await this.sessions.findOne({ where: { id: sessionId } });
     if (!session?.completedAt) throw new NotFoundException('Post not found');

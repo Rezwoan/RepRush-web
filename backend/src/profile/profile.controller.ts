@@ -18,6 +18,7 @@ import { User } from '../users/user.entity';
 import { HEALTH_METRICS, PROFILE_CARDS, ProfileService } from './profile.service';
 import { __selfcheck as cosmeticsSelfCheck } from './cosmetics';
 import { __selfcheck as xpSelfCheck } from './xp';
+import { __selfcheck as windowsSelfCheck } from './profile.service';
 
 @UseGuards(JwtAuthGuard)
 @Controller('profile')
@@ -29,7 +30,8 @@ export class ProfileController implements OnModuleInit {
   onModuleInit() {
     cosmeticsSelfCheck();
     xpSelfCheck();
-    this.logger.log('ProfileService: cosmetics ok, xp ok');
+    windowsSelfCheck();
+    this.logger.log('ProfileService: cosmetics ok, xp ok, calendar windows ok');
   }
 
   /** Everything the Profile tab renders (SPEC §9), in one round trip. */

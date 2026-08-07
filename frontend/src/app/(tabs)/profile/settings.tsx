@@ -205,17 +205,6 @@ export function SettingsPanel({
               />
             }
           />
-          <Row
-            label="Routine update alert"
-            sub="Ask to save changes you make mid-session"
-            right={
-              <Toggle
-                checked={prefs.routineUpdateAlert}
-                onChange={(v) => set('routineUpdateAlert', v)}
-                label="Routine update alert"
-              />
-            }
-          />
         </Group>
         <Group title="Feel">
           <Row

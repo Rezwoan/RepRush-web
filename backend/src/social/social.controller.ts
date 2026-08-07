@@ -101,6 +101,12 @@ export class SocialController implements OnModuleInit {
     return REACTIONS;
   }
 
+  /** `reactions/mine`, not `reactions`, because that name was already the emoji set. */
+  @Get('reactions/mine')
+  myReactions(@CurrentUser() user: User) {
+    return this.social.myReactions(user.id);
+  }
+
   @Get('posts/:id')
   post(@CurrentUser() user: User, @Param('id', ParseIntPipe) id: number) {
     return this.social.post(user.id, id);

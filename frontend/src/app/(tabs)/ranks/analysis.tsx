@@ -7,18 +7,19 @@
  * a stroke-dasharray circle rather than a chart library — recharts is installed
  * but a single ring of arcs does not need an axis system.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { MUSCLE_BY_ID, type MuscleId } from '@/lib/muscles';
 import { TIERS, TIER_LABEL, rankLabel, rankValue, type Tier } from '@/lib/ranks';
 import { useUnits } from '@/lib/units';
+import { getPrefs } from '@/lib/feedback';
 import { cn } from '@/lib/utils';
 import { Bar, EmptyState } from '@/components/ui/display';
 import { RankBadge } from '@/components/art/rank-badge';
 import { Thumb, useCatalog } from '@/components/workout/exercise-picker';
 import { bestLabel, targetLabel, tierColor, type Overview } from './types';
 
-/** Su–Sa, matching the week row the source app shows. */
+/** Sunday-first, and rotated below to whichever day Settings → Calendar picks. */
 const DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 /** A donut arc set. Values are counts; the ring is drawn clockwise from 12 o'clock. */
@@ -76,20 +77,28 @@ export function AnalysisPanel({ data }: { data: Overview }) {
   const u = useUnits();
   const [showAllCategories, setShowAllCategories] = useState(false);
   const [scope, setScope] = useState(0);
+  // Settings → Calendar. In an effect, like every other preference: it comes
+  // from localStorage, which the server pass cannot see.
+  const [firstDay, setFirstDay] = useState(0);
+  useEffect(() => setFirstDay(getPrefs().weekStart === 'sunday' ? 0 : 1), []);
+  const days = useMemo(() => [...DAYS.slice(firstDay), ...DAYS.slice(0, firstDay)], [firstDay]);
 
   const categories = data.categories;
 
   // ── Statistics: rank-ups, this week Su–Sa ─────────────────────────
   const week = useMemo(() => {
     const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+    // `+ 7` before the modulo: under a Monday start, Sunday is six days into
+    // the week that has already begun, not minus one day of the next.
+    const column = (d: Date) => (d.getDay() - firstDay + 7) % 7;
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - column(now));
     const counts = [0, 0, 0, 0, 0, 0, 0];
     for (const iso of data.rankUps) {
       const d = new Date(iso);
-      if (d >= start) counts[d.getDay()]++;
+      if (d >= start) counts[column(d)]++;
     }
-    return { counts, today: now.getDay() };
-  }, [data.rankUps]);
+    return { counts, today: column(now) };
+  }, [data.rankUps, firstDay]);
 
   // ── Distribution, filterable by body region / muscle group ────────
   const scopes = useMemo(() => {
@@ -216,7 +225,7 @@ export function AnalysisPanel({ data }: { data: Overview }) {
           <p className="text-sm text-muted-foreground">Number of Rank Ups</p>
           <p className="nums text-4xl font-extrabold leading-none">{data.rankUps.length}</p>
           <div className="mt-4 flex justify-between gap-1">
-            {DAYS.map((d, i) => (
+            {days.map((d, i) => (
               <div key={i} className="flex flex-1 flex-col items-center gap-1.5">
                 <span
                   className={cn(

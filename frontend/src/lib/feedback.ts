@@ -25,7 +25,6 @@ const DEFAULTS = {
   haptics: true,
   sfx: true,
   restAlert: true,
-  routineUpdateAlert: true,
 };
 
 export type Prefs = typeof DEFAULTS;

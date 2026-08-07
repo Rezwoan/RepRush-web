@@ -85,7 +85,7 @@ export class PushService implements OnModuleInit {
 
   /** Manual confirmation ping when a user turns notifications on. */
   async sendTest(userId: number) {
-    await this.sendToUser(userId, { title: 'RepRush', body: 'Notifications are on — see you in the gym! 💪', url: '/dashboard', tag: 'test' });
+    await this.sendToUser(userId, { title: 'RepRush', body: 'Notifications are on — see you in the gym! 💪', url: '/home', tag: 'test' });
     return { ok: this.enabled };
   }
 
@@ -144,7 +144,7 @@ export class PushService implements OnModuleInit {
       if (!(await this.hasSubscription(u.id))) continue;
       const { totalGrams } = await this.creatineService.getTodayLogs(u.id);
       if (totalGrams > 0) continue;
-      await this.sendToUser(u.id, { title: 'Creatine reminder 💊', body: "You haven't logged your creatine today.", url: '/dashboard', tag: 'creatine' });
+      await this.sendToUser(u.id, { title: 'Creatine reminder 💊', body: "You haven't logged your creatine today.", url: '/profile?view=consumables', tag: 'creatine' });
     }
   }
 }
