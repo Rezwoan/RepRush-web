@@ -22,6 +22,8 @@ export interface GenExercise {
   equipment: string;
   level: 'beginner' | 'intermediate' | 'expert';
   mechanic: 'compound' | 'isolation' | null;
+  /** free-exercise-db's category: strength, powerlifting, stretching, cardio… */
+  category: string;
   repMin: number;
   repMax: number;
   restSec: number;
@@ -146,6 +148,25 @@ const LIMITATION_MUSCLES: Record<string, string[]> = {
 
 const FREE_WEIGHT = new Set(['barbell', 'dumbbell', 'kettlebell', 'plate']);
 
+/**
+ * What this app programs, and what it does not.
+ *
+ * The catalog is 873 exercises across seven categories, and only three of them
+ * are resistance training. The first pass ignored this and the generator
+ * cheerfully prescribed *Alternate Leg Diagonal Bound*, *Box Jump* and
+ * *Backward Drag* for a strength session — all legitimate quad exercises, none
+ * of them loadable, so every weight field came back blank and the rank engine
+ * had nothing to score. The synthetic self-check could not have caught it;
+ * running the generator against the real catalog did, immediately.
+ *
+ * Stretching and cardio are excluded outright — this is a lifting app, and
+ * neither ranks. Plyometrics, strongman and olympic work are *fallbacks*: real
+ * training, but not what someone who asked for a 60-minute session expects to
+ * be handed first.
+ */
+const PRIMARY_CATEGORIES = new Set(['strength', 'powerlifting']);
+const EXCLUDED_CATEGORIES = new Set(['stretching', 'cardio']);
+
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 /** Gyms load in 2.5 kg steps; a suggestion of 47.3 kg is not a suggestion. */
@@ -200,6 +221,7 @@ export function candidatesFor(input: GenInput, muscleId: string): GenExercise[] 
   return input.catalog
     .filter((ex) => {
       if (ex.primary[0] !== muscleId) return false;
+      if (EXCLUDED_CATEGORIES.has(ex.category)) return false;
       if (kit && !kit.has(ex.equipment)) return false;
       if (!levels.has(ex.level)) return false;
       if (limited.has(muscleId)) {
@@ -210,7 +232,10 @@ export function candidatesFor(input: GenInput, muscleId: string): GenExercise[] 
     })
     .sort(
       (a, b) =>
-        // Something the user has done before wins: it comes with real PREV
+        // Resistance training first. Plyometrics and strongman work are still
+        // here, but only once the barbell has run out.
+        Number(PRIMARY_CATEGORIES.has(b.category)) - Number(PRIMARY_CATEGORIES.has(a.category)) ||
+        // Something the user has done before wins next: it comes with real PREV
         // numbers instead of an estimate, which is the difference between
         // logging a set and guessing at one.
         Number(!!input.history[b.id]) - Number(!!input.history[a.id]) ||
@@ -345,6 +370,7 @@ export const __selfcheck = () => {
     equipment: string,
     mechanic: GenExercise['mechanic'],
     level: GenExercise['level'] = 'intermediate',
+    category = 'strength',
   ): GenExercise => ({
     id,
     name: id.replace(/_/g, ' '),
@@ -353,12 +379,18 @@ export const __selfcheck = () => {
     equipment,
     level,
     mechanic,
+    category,
     repMin: 6,
     repMax: 10,
     restSec: 90,
   });
 
   const catalog: GenExercise[] = [
+    // `a_…` names so alphabetical order puts the wrong answers first — the
+    // ranking rules have to be what surfaces the barbell squat, not luck.
+    ex('a_box_jump', 'quads', 'bodyweight', 'compound', 'intermediate', 'plyometrics'),
+    ex('a_quad_stretch', 'quads', 'bodyweight', 'isolation', 'beginner', 'stretching'),
+    ex('a_treadmill', 'quads', 'machine', 'compound', 'beginner', 'cardio'),
     ex('squat', 'quads', 'barbell', 'compound'),
     ex('leg_press', 'quads', 'machine', 'compound'),
     ex('leg_extension', 'quads', 'machine', 'isolation'),
@@ -400,6 +432,23 @@ export const __selfcheck = () => {
   // A short session is focused; a long one is broad.
   if (!(pickMuscles({ ...base, durationMin: 20 }).length < pickMuscles({ ...base, durationMin: 90 }).length))
     fail('duration should change how many muscles are trained');
+
+  // ── what counts as a workout ──
+  // This is the bug real data found and the synthetic fixture originally
+  // could not: every one of these is a legitimate quad exercise, and none of
+  // them is what someone asking for a lifting session means.
+  const quads = candidatesFor(base, 'quads');
+  if (quads.some((c) => c.category === 'stretching' || c.category === 'cardio'))
+    fail('a stretch or a treadmill was offered as a workout exercise');
+  const lastLifting = quads.map((c) => PRIMARY_CATEGORIES.has(c.category)).lastIndexOf(true);
+  const firstOther = quads.map((c) => PRIMARY_CATEGORIES.has(c.category)).indexOf(false);
+  if (firstOther !== -1 && firstOther < lastLifting)
+    fail(`${quads[firstOther].category} ranked above resistance training`);
+  // ...but plyometrics stay available rather than being deleted from the app.
+  if (!quads.some((c) => c.category === 'plyometrics'))
+    fail('plyometrics should still be reachable, just not first');
+  if (generate(base).exercises.some((e) => ['a_box_jump', 'a_treadmill', 'a_quad_stretch'].includes(e.exerciseId)))
+    fail('a generated session contained a non-strength exercise while barbell work was available');
 
   // ── equipment and limitations ──
   const home = candidatesFor({ ...base, equipment: ['bodyweight'] }, 'mid_chest');
