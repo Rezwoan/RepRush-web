@@ -66,6 +66,12 @@ export function CalculatorPanel({ onSaved }: { onSaved: () => void }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [weight, setWeight] = useState(60);
   const [reps, setReps] = useState(5);
+  // 60 kg is a round default; 132.3 lb is not, and the ruler would snap the
+  // tick while the result card kept the unsnapped number. Land on a plate.
+  const [touched, setTouched] = useState(false);
+  useEffect(() => {
+    if (!touched && u.imperial) setWeight(u.wkg(135));
+  }, [u.imperial, touched]);
   const [save, setSave] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -180,6 +186,7 @@ export function CalculatorPanel({ onSaved }: { onSaved: () => void }) {
           label="Weight"
           value={u.wv(weight, 1)}
           onChange={(v) => {
+            setTouched(true);
             setWeight(u.wkg(v));
             setResult(null);
           }}

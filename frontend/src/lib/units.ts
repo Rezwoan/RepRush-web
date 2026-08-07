@@ -78,7 +78,11 @@ function build(system: UnitSystem): Units {
     imperial,
     w: imperial ? 'lb' : 'kg',
     wv,
-    wkg: (display: number) => (imperial ? lbToKg(display) : display),
+    // Rounded to 10 g. 135 lb is 61.23496995 kg exactly, and storing that puts
+    // a nine-decimal float in a column a metric user might one day read back.
+    // Finer than any plate, so nothing is lost.
+    wkg: (display: number) =>
+      imperial ? Math.round(lbToKg(display) * 100) / 100 : display,
     n: (kg: number, dp = 0) => num(imperial ? kgToLb(kg) : kg, dp),
     weight: (kg: number, dp = 1) => `${num(imperial ? kgToLb(kg) : kg, dp)} ${imperial ? 'lb' : 'kg'}`,
     height: (cm: number) => (imperial ? feetInches(cmToIn(cm)) : `${Math.round(cm)} cm`),
@@ -126,10 +130,13 @@ export const __selfcheck = () => {
   if (METRIC.height(178) !== '178 cm') fail('metric height should be cm');
   if (IMPERIAL.height(178) !== '5′ 10″') fail('178 cm should read 5′ 10″');
 
-  // The keypad round-trip: what is typed must be what is stored back.
+  // The keypad round-trip: what is typed must come back as what it was.
   for (const u of [METRIC, IMPERIAL])
     if (Math.abs(u.wkg(u.wv(102.5, 2)) - 102.5) > 0.01)
       fail(`${u.system} keypad round trip drifted`);
+  // …and what is stored must be a tidy number, not a nine-decimal float.
+  if (IMPERIAL.wkg(135) !== 61.23) fail('135 lb should store as 61.23 kg');
+  if (METRIC.wkg(102.5) !== 102.5) fail('metric must pass through untouched');
 
   // Volume is where a stray decimal is loudest — six digits of it.
   if (METRIC.volume(6460.4) !== '6,460 kg') fail('volume should be whole and grouped');
