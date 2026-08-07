@@ -14,6 +14,20 @@ BRANCH="v2"
 BACKEND_PORT=3121
 FRONTEND_PORT=3120
 
+# ── 0. One deploy at a time ───────────────────────────────
+# The CI workflow and a manual `ssh … deploy-dev.sh` both run this script
+# against the same checkout, and GitHub's push-event delivery for this repo can
+# lag by tens of minutes (MEMORY.md §8) — so a CI run routinely lands while a
+# manual run is mid-`npm ci`. Two npm processes rewriting one node_modules is
+# what produced the ENOTEMPTY rmdir failures and the half-populated
+# node_modules/.bin behind "sh: 1: nest: not found". CI's concurrency group
+# only serialises CI against itself; this serialises everything.
+exec 9>/tmp/reprush-dev-deploy.lock
+if ! flock -w 1200 9; then
+  echo "[deploy-dev] another deploy is holding the lock — giving up"
+  exit 1
+fi
+
 echo "[deploy-dev] $(date) — starting"
 
 # Guard: refuse to run against the production checkout.
