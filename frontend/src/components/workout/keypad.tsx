@@ -112,7 +112,9 @@ export function Keypad({
         </div>
       </div>
 
-      {field === 'weight' && (
+      {/* Only once there is a number to load — an empty field is not an
+          unloadable bar, and saying so reads as an error. */}
+      {field === 'weight' && value !== '' && (
         <p className="nums px-4 pt-2 text-xs text-muted-foreground">
           {plates?.length
             ? `Per side: ${plates.join(' + ')} kg on a ${barKg} kg bar`
@@ -122,55 +124,65 @@ export function Keypad({
         </p>
       )}
 
-      <div className="mx-auto grid max-w-md grid-cols-4 gap-2 p-3">
-        <button onClick={() => bump(-step)} className={keyCls('accent')}>
-          −{trim(step)}
-        </button>
-        <button onClick={() => bump(step)} className={keyCls('accent')}>
-          +{trim(step)}
-        </button>
-        <button
-          onClick={() => previous && onChange(previous)}
-          disabled={!previous}
-          aria-label="Copy previous set"
-          className={cn(keyCls('accent'), 'disabled:opacity-35')}
-        >
-          <Copy size={18} />
-        </button>
-        <button onClick={onNext} className={cn(keyCls('primary'), 'row-span-2')}>
-          <span className="flex flex-col items-center gap-0.5 text-xs font-extrabold uppercase tracking-wider">
-            <ChevronRight size={20} />
-            Next
-          </span>
-        </button>
-
-        {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((k) => (
-          <button key={k} onClick={() => press(k)} className={keyCls()}>
-            {k}
+      {/*
+        Two columns rather than one 4-wide grid: NEXT is a full-height key, and
+        spanning rows inside a single grid pushed the digits into the gap it
+        left, so the pad read 1 2 3 / 4 5 6 7 / 8 9 ▦ 0.
+      */}
+      <div className="mx-auto flex max-w-md gap-2 p-3">
+        <div className="grid flex-1 grid-cols-3 gap-2">
+          <button onClick={() => bump(-step)} className={keyCls('accent')}>
+            −{trim(step)}
           </button>
-        ))}
+          <button onClick={() => bump(step)} className={keyCls('accent')}>
+            +{trim(step)}
+          </button>
+          <button
+            onClick={() => previous && onChange(previous)}
+            disabled={!previous}
+            aria-label="Copy previous set"
+            className={cn(keyCls('accent'), 'disabled:opacity-35')}
+          >
+            <Copy size={18} />
+          </button>
 
-        <button
-          onClick={() => field === 'weight' && onChange(trim(barKg))}
-          disabled={field !== 'weight'}
-          aria-label="Empty bar"
-          className={cn(keyCls('accent'), 'disabled:opacity-35')}
-        >
-          <Calculator size={18} />
-        </button>
-        <button onClick={() => press('0')} className={keyCls()}>
-          0
-        </button>
-        <button
-          onClick={() => press('.')}
-          disabled={field === 'reps'}
-          className={cn(keyCls(), 'disabled:opacity-35')}
-        >
-          .
-        </button>
-        <button onClick={() => press('⌫')} aria-label="Backspace" className={keyCls('accent')}>
-          <Delete size={18} />
-        </button>
+          {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((k) => (
+            <button key={k} onClick={() => press(k)} className={keyCls()}>
+              {k}
+            </button>
+          ))}
+
+          <button
+            onClick={() => field === 'weight' && onChange(trim(barKg))}
+            disabled={field !== 'weight'}
+            aria-label={`Empty ${barKg} kg bar`}
+            className={cn(keyCls('accent'), 'disabled:opacity-35')}
+          >
+            <Calculator size={18} />
+          </button>
+          <button onClick={() => press('0')} className={keyCls()}>
+            0
+          </button>
+          <button
+            onClick={() => press('.')}
+            disabled={field === 'reps'}
+            className={cn(keyCls(), 'disabled:opacity-35')}
+          >
+            .
+          </button>
+        </div>
+
+        <div className="flex w-[76px] shrink-0 flex-col gap-2">
+          <button onClick={() => press('⌫')} aria-label="Backspace" className={keyCls('accent')}>
+            <Delete size={18} />
+          </button>
+          <button onClick={onNext} className={cn(keyCls('primary'), 'h-auto flex-1')}>
+            <span className="flex flex-col items-center gap-0.5 text-xs font-extrabold uppercase tracking-wider">
+              <ChevronRight size={20} />
+              Next
+            </span>
+          </button>
+        </div>
       </div>
     </motion.div>
   );
