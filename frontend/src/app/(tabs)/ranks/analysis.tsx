@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 import { Bar, EmptyState } from '@/components/ui/display';
 import { RankBadge } from '@/components/art/rank-badge';
 import { Thumb, useCatalog } from '@/components/workout/exercise-picker';
-import { tierColor, type ExerciseRank, type Overview } from './types';
+import { bestLabel, targetLabel, tierColor, type Overview } from './types';
 
 /** Su–Sa, matching the week row the source app shows. */
 const DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -174,7 +174,7 @@ export function AnalysisPanel({ data }: { data: Overview }) {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold">{r.name}</p>
                     <p className="nums text-xs text-muted-foreground">
-                      Best {r.bestWeightKg} kg × {r.bestReps}
+                      Best {bestLabel(r.bestWeightKg, r.bestReps)}
                     </p>
                   </div>
                   <RankBadge
@@ -197,7 +197,7 @@ export function AnalysisPanel({ data }: { data: Overview }) {
                     label={`Progress to ${rankLabel(n.rank)}`}
                   />
                   <span className="nums shrink-0 text-sm font-extrabold" style={{ color: tierColor(n.rank) }}>
-                    {n.weightKg === null ? `×${n.reps}` : `${n.weightKg}×${n.reps}`}
+                    {targetLabel(n)}
                   </span>
                 </div>
               </div>

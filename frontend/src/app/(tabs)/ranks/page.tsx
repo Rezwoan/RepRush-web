@@ -27,7 +27,7 @@ import { Thumb, useCatalog } from '@/components/workout/exercise-picker';
 import { AnalysisPanel } from './analysis';
 import { CalculatorPanel } from './calculator';
 import { LeaguesPanel } from './leagues';
-import { tierColor, type ExerciseRank, type MuscleRank, type Overview } from './types';
+import { bestLabel, tierColor, type ExerciseRank, type MuscleRank, type Overview } from './types';
 
 const CACHE_KEY = 'reprush_ranks_v1';
 
@@ -121,7 +121,7 @@ function ExerciseRow({ r, onOpen }: { r: ExerciseRank; onOpen: () => void }) {
           </span>
         </div>
         <p className="nums mt-0.5 text-[11px] text-muted-foreground">
-          Top {Math.max(1, Math.round(100 - r.rank.percentile))}% · {r.bestWeightKg} kg × {r.bestReps}
+          Top {Math.max(1, Math.round(100 - r.rank.percentile))}% · {bestLabel(r.bestWeightKg, r.bestReps)}
         </p>
       </div>
       <RankBadge tier={r.rank.tier} division={r.rank.division} size="sm" animated={false} />
@@ -417,8 +417,10 @@ function GalleryPanel({ data, onExercise }: { data: Overview; onExercise: (r: Ex
               <p className="line-clamp-2 text-xs font-bold leading-tight">{r.name}</p>
               <div className="flex w-full gap-2">
                 <span className="nums flex-1 rounded-lg bg-background/60 py-1.5 text-sm font-extrabold">
-                  {r.bestWeightKg}
-                  <span className="ml-0.5 text-[10px] font-bold text-muted-foreground">KG</span>
+                  {r.bestWeightKg > 0 ? r.bestWeightKg : 'BW'}
+                  <span className="ml-0.5 text-[10px] font-bold text-muted-foreground">
+                    {r.bestWeightKg > 0 ? 'KG' : ''}
+                  </span>
                 </span>
                 <span className="nums flex-1 rounded-lg bg-background/60 py-1.5 text-sm font-extrabold">
                   {r.bestReps}
@@ -474,7 +476,7 @@ function ExerciseSheet({ r, onClose }: { r: ExerciseRank | null; onClose: () => 
           </div>
 
           <div className="flex gap-3">
-            <StatTile label="Best" value={`${r.bestWeightKg} × ${r.bestReps}`} />
+            <StatTile label="Best" value={bestLabel(r.bestWeightKg, r.bestReps)} />
             <StatTile label="Est. 1RM" value={r.bestE1rm} unit="kg" />
           </div>
 
@@ -484,7 +486,7 @@ function ExerciseSheet({ r, onClose }: { r: ExerciseRank | null; onClose: () => 
                 <TrendingUp size={13} /> To {rankLabel(r.next.rank)}
               </p>
               <p className="nums mt-1 text-3xl font-extrabold" style={{ color: tierColor(r.next.rank) }}>
-                {r.next.weightKg === null ? `${r.next.reps} reps` : `${r.next.weightKg} kg × ${r.next.reps}`}
+                {r.next.weightKg ? `${r.next.weightKg} kg × ${r.next.reps}` : `${r.next.reps} reps`}
               </p>
               <Bar
                 value={r.next.progress}

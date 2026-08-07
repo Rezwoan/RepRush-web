@@ -477,11 +477,16 @@ export class RanksService implements OnModuleInit {
     const index = Math.floor(mine / LEAGUE_SIZE);
     const rows = scored.slice(index * LEAGUE_SIZE, (index + 1) * LEAGUE_SIZE);
 
+    // A five-person division cannot promote five and demote five — everyone
+    // would be in both zones at once, which is what dev actually showed. Cap
+    // each zone at a third of the table so the two can never meet.
+    const zone = Math.floor(rows.length / 3);
+
     return {
       season: { week: isoWeek(new Date()), endsAt: nextWeekStart(new Date()).toISOString() },
       division: { index, size: rows.length },
-      promoteTop: LEAGUE_PROMOTE,
-      demoteBottom: LEAGUE_DEMOTE,
+      promoteTop: Math.min(LEAGUE_PROMOTE, zone),
+      demoteBottom: Math.min(LEAGUE_DEMOTE, zone),
       rows,
     };
   }

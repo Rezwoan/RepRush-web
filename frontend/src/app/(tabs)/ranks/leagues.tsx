@@ -65,8 +65,8 @@ export function LeaguesPanel() {
       </div>
 
       <p className="mt-3 text-sm text-muted-foreground">
-        Ranked by the LP you earn this week — a new personal best on any lift moves you up. Top{' '}
-        {promoteTop} promote, bottom {demoteBottom} drop.
+        Ranked by the LP you earn this week — a new personal best on any lift moves you up.
+        {promoteTop > 0 && ` Top ${promoteTop} promote, bottom ${demoteBottom} drop.`}
       </p>
 
       <ul className="mt-4 space-y-1.5">

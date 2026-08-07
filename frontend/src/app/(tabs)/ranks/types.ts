@@ -75,3 +75,16 @@ export interface Leagues {
 /** The tier's brand colour, which is the same token everywhere in the app. */
 export const tierColor = (rank: Rank | null | undefined) =>
   `hsl(var(--tier-${rank?.tier ?? 'unranked'}))`;
+
+/**
+ * "100 kg × 5", or "8 reps" for a bodyweight movement.
+ *
+ * A pull-up is logged with weightKg 0 — that is the added weight, not the load
+ * — so the obvious template renders "Best 0 kg × 8", which reads as a bug.
+ */
+export const bestLabel = (weightKg: number, reps: number) =>
+  weightKg > 0 ? `${weightKg} kg × ${reps}` : `${reps} reps`;
+
+/** Same idea for a prescription: bodyweight lifts promote on reps. */
+export const targetLabel = (n: NextTarget) =>
+  n.weightKg === null || n.weightKg <= 0 ? `${n.reps} reps` : `${n.weightKg}×${n.reps}`;
