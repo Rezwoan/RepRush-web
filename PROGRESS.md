@@ -870,9 +870,23 @@ Only start when P0–P13 are all `DONE`. They are.
       ignores the columns it does not know), and a full restore that does not. Plus what a rollback
       does *not* undo, and why restoring the nginx change would be a mistake.
 - [ ] **Carry P1's document-cache fix to the prod vhost** — production still serves
-      `s-maxage=31536000, stale-while-revalidate` on documents. Script written and ready
-      (backs the vhost up, inserts the three lines, `nginx -t`, reload). **Blocked: needs approval.**
-- [ ] Merge `v2` → `main` — **blocked: needs approval** (triggers the production deploy)
+      `s-maxage=31536000, stale-while-revalidate` on documents. **Staged, not run:**
+      `scripts/prod-cache-headers.sh` — backs the vhost up, asserts it is editing the one frontend
+      `location` block, inserts the two lines, `nginx -t`, reloads, and prints the resulting
+      headers. Idempotent. Run it *before* the merge, so the revalidation it triggers happens
+      against unchanged v1 content and the deploy that follows is picked up on the first load.
+      ```bash
+      ssh reezz@blackbox.local 'bash -s' < scripts/prod-cache-headers.sh
+      ```
+- [ ] Merge `v2` → `main` — **staged, not run.** Triggers the production deploy.
+      ```bash
+      git checkout main && git merge --no-ff v2 && git push origin main
+      # GitHub's push-event delivery for this repo lags up to 30 min (MEMORY §8);
+      # the fast path is:
+      ssh reezz@blackbox.local 'bash /var/www/reprush/scripts/deploy.sh'
+      ```
+      Held on 2026-08-08 at the owner's request, to be reviewed before it runs. Everything it
+      depends on is verified: backup, dry run, rollback procedure.
 - [ ] Watch the prod deploy; verify login, an existing user's history, and a full session
 - [ ] Keep the dev stack alive as the ongoing staging environment
 - [ ] **Exit check:** reprush.rezwoan.codes runs v2, every existing account still works with its full
