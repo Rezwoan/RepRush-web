@@ -37,6 +37,38 @@ export class GymSession {
   @Column({ nullable: true, type: 'text' })
   notes: string;
 
+  /**
+   * The generated plan, as JSON (`GeneratedWorkout` from `generator.ts`).
+   *
+   * A blob rather than rows because it is written once at session start, read
+   * whole, and never queried by any of its fields — and because sql.js rewrites
+   * the whole database file on flush, so a plan_exercises table would tax every
+   * unrelated write. The *logged* sets are the durable record; this is the
+   * prescription the user was working from, kept so a resumed session still
+   * knows what was left to do.
+   */
+  @Column({ nullable: true, type: 'text' })
+  plan: string;
+
+  /**
+   * Finish-flow fields (SPEC §5.3). `notes` above is the in-session notepad and
+   * already existed in v1; this is the caption written on the way out.
+   *
+   * `tracked` is nullable with null meaning true, rather than `default: true`.
+   * A NOT NULL column added to an existing table is the change that can make
+   * SQLite rebuild `gym_sessions` under `synchronize`, and that table holds
+   * every session anyone has ever logged.
+   */
+  @Column({ nullable: true, type: 'text' })
+  caption: string;
+
+  @Column({ nullable: true })
+  tracked: boolean;
+
+  /** 'private' | 'friends' | 'discovery'. Posts themselves land in P9. */
+  @Column({ nullable: true })
+  privacy: string;
+
   @OneToMany(() => WorkoutSet, (set) => set.session, { cascade: true })
   sets: WorkoutSet[];
 }

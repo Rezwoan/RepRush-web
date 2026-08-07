@@ -68,16 +68,25 @@ export const usersApi = {
 
 // ─── Workouts ─────────────────────────────────────────────────────────────────
 export const workoutsApi = {
-  startSession: (workoutType: string, workoutPlanId?: number) =>
-    api.post('/workouts/sessions', { workoutType, workoutPlanId }),
+  startSession: (workoutType: string, workoutPlanId?: number, plan?: unknown) =>
+    api.post('/workouts/sessions', { workoutType, workoutPlanId, plan }),
+  /** Build a session (SPEC §5.1). Reads and writes nothing until Start Workout. */
+  generate: (params: {
+    durationMin?: number;
+    difficulty?: string;
+    equipment?: string;
+    muscles?: string;
+  }) => api.get('/workouts/generate', { params }),
+  /** Last session's actual sets for one exercise — the tracker's PREV column. */
+  getPrevious: (exerciseId: string) => api.get(`/workouts/previous/${encodeURIComponent(exerciseId)}`),
   getSessions: () => api.get('/workouts/sessions'),
   getSessionHistory: () => api.get('/workouts/sessions/history'),
   getSession: (id: number) => api.get(`/workouts/sessions/${id}`),
   getSessionSummary: (id: number) => api.get(`/workouts/sessions/${id}/summary`),
   getExercises: () => api.get('/workouts/exercises'),
   getExerciseHistory: (name: string) => api.get('/workouts/exercises/history', { params: { name } }),
-  completeSession: (id: number, notes?: string) =>
-    api.patch(`/workouts/sessions/${id}/complete`, { notes }),
+  completeSession: (id: number, finish?: object) =>
+    api.patch(`/workouts/sessions/${id}/complete`, finish ?? {}),
   resetSession: (id: number) =>
     api.delete(`/workouts/sessions/${id}`),
   logSet: (sessionId: number, data: any) =>
@@ -138,6 +147,10 @@ export const supplementsApi = {
 
 // ─── Exercises ────────────────────────────────────────────────────────────────
 export const exercisesApi = {
+  /** The 873-exercise catalog. Public, and cached by the picker. */
+  catalog: (params?: { q?: string; muscle?: string; equipment?: string }) =>
+    api.get('/exercises/catalog', { params }),
+  catalogExercise: (id: string) => api.get(`/exercises/catalog/${encodeURIComponent(id)}`),
   getMyPlans: () => api.get('/exercises/my-plans'),
   getAllPlans: () => api.get('/exercises/plans'),
   getPlan: (id: number) => api.get(`/exercises/plans/${id}`),

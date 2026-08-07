@@ -15,15 +15,48 @@ import { CurrentUser } from '../auth/decorators';
 import { User } from '../users/user.entity';
 import { WorkoutsService } from './workouts.service';
 
+/** Post scopes (SPEC §5.3). Posts themselves arrive in P9; the flag is stored now. */
+const PRIVACY = ['private', 'friends', 'discovery'];
+
 @UseGuards(JwtAuthGuard)
 @Controller('workouts')
 export class WorkoutsController {
   constructor(private workoutsService: WorkoutsService) {}
 
+  /**
+   * Build a session (SPEC §5.1). A GET because it reads and writes nothing —
+   * the plan only becomes real when the user taps Start Workout.
+   */
+  @Get('generate')
+  generate(
+    @CurrentUser() user: User,
+    @Query('durationMin') durationMin?: string,
+    @Query('difficulty') difficulty?: string,
+    @Query('equipment') equipment?: string,
+    @Query('muscles') muscles?: string,
+  ) {
+    const list = (v?: string) => (v ? v.split(',').map((s) => s.trim()).filter(Boolean) : undefined);
+    return this.workoutsService.generateWorkout(user.id, {
+      durationMin: durationMin ? parseInt(durationMin, 10) : undefined,
+      difficulty,
+      equipment: list(equipment),
+      muscles: list(muscles),
+    });
+  }
+
+  /** Last session's actual sets for one exercise — the tracker's PREV column. */
+  @Get('previous/:exerciseId')
+  previous(@CurrentUser() user: User, @Param('exerciseId') exerciseId: string) {
+    return this.workoutsService.previousSets(user.id, exerciseId);
+  }
+
   // Sessions
   @Post('sessions')
-  startSession(@CurrentUser() user: User, @Body() body: { workoutType: string; workoutPlanId?: number }) {
-    return this.workoutsService.startSession(user.id, body.workoutType, body.workoutPlanId);
+  startSession(
+    @CurrentUser() user: User,
+    @Body() body: { workoutType: string; workoutPlanId?: number; plan?: unknown },
+  ) {
+    return this.workoutsService.startSession(user.id, body.workoutType, body.workoutPlanId, body.plan);
   }
 
   @Get('sessions')
@@ -60,9 +93,15 @@ export class WorkoutsController {
   completeSession(
     @CurrentUser() user: User,
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { notes?: string },
+    @Body() body: { notes?: string; caption?: string; tracked?: boolean; privacy?: string },
   ) {
-    return this.workoutsService.completeSession(id, user.id, body.notes);
+    return this.workoutsService.completeSession(id, user.id, body.notes, {
+      caption: body.caption,
+      tracked: body.tracked,
+      // Anything unrecognised falls back to the private option, never the
+      // public one — a privacy field must fail closed.
+      privacy: body.privacy && PRIVACY.includes(body.privacy) ? body.privacy : undefined,
+    });
   }
 
   @Delete('sessions/:id')
@@ -80,10 +119,20 @@ export class WorkoutsController {
   logSet(
     @CurrentUser() user: User,
     @Param('id', ParseIntPipe) sessionId: number,
-    @Body() body: { exerciseName: string; setNumber: number; actualReps: number; weightKg: number; targetReps?: number; isWarmup?: boolean },
+    @Body() body: {
+      exerciseName: string;
+      exerciseId?: string;
+      setNumber: number;
+      actualReps: number;
+      weightKg: number;
+      targetReps?: number;
+      isWarmup?: boolean;
+      rpe?: number;
+    },
   ) {
     return this.workoutsService.logSet(
-      sessionId, user.id, body.exerciseName, body.setNumber, body.actualReps, body.weightKg, body.targetReps, body.isWarmup,
+      sessionId, user.id, body.exerciseName, body.setNumber, body.actualReps, body.weightKg,
+      body.targetReps, body.isWarmup, body.exerciseId, body.rpe,
     );
   }
 

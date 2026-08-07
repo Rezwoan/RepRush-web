@@ -9,21 +9,10 @@ import { BodyWeightLog } from '../body-weight/body-weight-log.entity';
 import { CatalogService } from '../exercises/catalog.service';
 import { RanksService } from '../ranks/ranks.service';
 import { effectiveLoad } from '../ranks/e1rm';
-import {
-  FRESH_BELOW,
-  FatigueSet,
-  MuscleFatigue,
-  RecoveryStatus,
-  fatigueByMuscle,
-  readinessOf,
-  statusOf,
-} from '../ranks/recovery';
+import { FRESH_BELOW, RecoveryStatus } from '../ranks/recovery';
 
 /** The Last-14-Workouts block's window, and the comparison window behind it. */
 const WINDOW_DAYS = 14;
-
-/** Beyond this a set has decayed to nothing, so there is no point loading it. */
-const RECOVERY_LOOKBACK_DAYS = 14;
 
 /**
  * Resistance training sits around 5 METs. kcal = MET × 3.5 × kg / 200 × minutes
@@ -110,7 +99,7 @@ export class HomeService {
     const active = sessions.find((s) => !s.completedAt) ?? null;
 
     const { current: streak, best: bestStreak } = this.streaks(completed, now);
-    const recovery = await this.recovery(userId, sessions, now);
+    const recovery = await this.recovery(userId);
     const last14 = await this.window(userId, completed, user, now);
     const today = await this.today(userId, active, recovery);
 
@@ -159,57 +148,14 @@ export class HomeService {
 
   // ── recovery ──────────────────────────────────────────────────────
 
-  private muscleSizes(): Record<string, number> {
-    return Object.fromEntries(this.catalog.muscles.map((m) => [m.id, m.size]));
-  }
-
-  private async recovery(userId: number, sessions: GymSession[], now: Date) {
-    const since = new Date(now.getTime() - RECOVERY_LOOKBACK_DAYS * DAY_MS);
-    const recent = sessions.filter((s) => new Date(s.startedAt) >= since).map((s) => s.id);
-
-    const rows = recent.length
-      ? await this.sets.find({ where: { sessionId: In(recent), isWarmup: false } })
-      : [];
-
-    const inputs: FatigueSet[] = [];
-    for (const s of rows) {
-      const ex = s.exerciseId ? this.catalog.find(s.exerciseId) : undefined;
-      if (!ex || !s.actualReps) continue; // unmapped v1 rows train no known muscle
-      inputs.push({
-        primary: ex.primary,
-        secondary: ex.secondary,
-        reps: s.actualReps,
-        rpe: s.rpe ?? null,
-        ageHours: (now.getTime() - new Date(s.loggedAt).getTime()) / (60 * 60 * 1000),
-      });
-    }
-
-    const sizes = this.muscleSizes();
-    const byMuscle = fatigueByMuscle(inputs, sizes);
-    const readiness = readinessOf(byMuscle, sizes);
-    const status = statusOf(readiness);
-
-    // Least-worked first, then biggest. Sorting by size alone let the copy call
-    // a muscle "fresh" that had taken secondary work an hour earlier — true by
-    // the threshold, but not what someone with sore glutes wants to read.
-    const fresh = this.catalog.muscles
-      .filter((m) => (byMuscle[m.id]?.fatigue ?? 0) < FRESH_BELOW)
-      .sort(
-        (a, b) =>
-          (byMuscle[a.id]?.fatigue ?? 0) - (byMuscle[b.id]?.fatigue ?? 0) || b.size - a.size,
-      )
-      .slice(0, 3)
-      .map((m) => m.label);
-
-    return {
-      readiness: round(readiness, 3),
-      status,
-      headline: this.recoveryCopy(status, fresh),
-      fresh,
-      fatigue: Object.fromEntries(
-        Object.entries(byMuscle).map(([id, f]: [string, MuscleFatigue]) => [id, round(f.fatigue, 3)]),
-      ),
-    };
+  /**
+   * The numbers come from `RanksService.recovery` — the same call the workout
+   * generator makes, deliberately. This card and the generator disagreeing
+   * about which muscles are fresh would read as a bug in both.
+   */
+  private async recovery(userId: number) {
+    const r = await this.ranks.recovery(userId);
+    return { ...r, headline: this.recoveryCopy(r.status, r.fresh) };
   }
 
   private recoveryCopy(status: RecoveryStatus, fresh: string[]) {

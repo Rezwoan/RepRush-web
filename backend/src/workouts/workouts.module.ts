@@ -5,16 +5,21 @@ import { WorkoutSet } from './workout-set.entity';
 import { PersonalRecord } from './personal-record.entity';
 import { WorkoutsService } from './workouts.service';
 import { WorkoutsController } from './workouts.controller';
+import { User } from '../users/user.entity';
 import { UsersModule } from '../users/users.module';
 import { ExercisesModule } from '../exercises/exercises.module';
+import { RanksModule } from '../ranks/ranks.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([GymSession, WorkoutSet, PersonalRecord]),
+    TypeOrmModule.forFeature([GymSession, WorkoutSet, PersonalRecord, User]),
     UsersModule,
     // For the catalog lookup in logSet — a set without an exerciseId is
     // invisible to the rank engine and the recovery model.
     ExercisesModule,
+    // The generator needs recovery and muscle ranks. No cycle: RanksModule
+    // reaches the sets through the repository, not through this module.
+    RanksModule,
   ],
   providers: [WorkoutsService],
   controllers: [WorkoutsController],

@@ -121,6 +121,68 @@ export function percentileFor(ratio: number, median: number): number {
   return normalCdf(Math.log(ratio / median) / LOG_SIGMA) * 100;
 }
 
+/**
+ * Inverse standard normal CDF — Acklam's rational approximation, |ε| < 1.15e-9.
+ *
+ * Needed because the app has to answer the question in the other direction:
+ * SPEC §5.2's rank strip names *the set that promotes you* (`82.5x3`), which
+ * means turning a target percentile back into a load. A search over
+ * `percentileFor` would do it too, but this is closed-form and exact enough.
+ */
+function normalInv(p: number): number {
+  if (!(p > 0) || !(p < 1)) return p <= 0 ? -Infinity : Infinity;
+  const a = [-39.6968302866538, 220.946098424521, -275.928510446969, 138.357751867269, -30.6647980661472, 2.50662827745924];
+  const b = [-54.4760987982241, 161.585836858041, -155.698979859887, 66.8013118877197, -13.2806815528857];
+  const c = [-0.00778489400243029, -0.322396458041136, -2.40075827716184, -2.54973253934373, 4.37466414146497, 2.93816398269878];
+  const d = [0.00778469570904146, 0.32246712907004, 2.445134137143, 3.75440866190742];
+  const lo = 0.02425;
+
+  if (p < lo) {
+    const q = Math.sqrt(-2 * Math.log(p));
+    return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+  }
+  if (p > 1 - lo) {
+    const q = Math.sqrt(-2 * Math.log(1 - p));
+    return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+  }
+  const q = p - 0.5;
+  const r = q * q;
+  return ((((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q) /
+    (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+}
+
+/** The bodyweight multiple that lands exactly on this percentile. Inverse of `percentileFor`. */
+export function ratioForPercentile(percentile: number, median: number): number {
+  if (!(median > 0)) return 0;
+  const p = Math.max(0.05, Math.min(99.95, percentile)) / 100;
+  return median * Math.exp(LOG_SIGMA * normalInv(p));
+}
+
+/**
+ * The percentile at which the *next* division begins, or null at the top.
+ *
+ * Divisions are the tier band split in three, so the boundaries are the two
+ * thirds inside the current tier and then the next tier's floor. Derived from
+ * TIER_FLOOR rather than listed, so it cannot drift from `rankFromPercentile`.
+ */
+export function nextDivisionPercentile(percentile: number): number | null {
+  const p = Math.max(0, Math.min(100, percentile));
+  let i = TIER_FLOOR.length - 1;
+  while (i > 0 && p < TIER_FLOOR[i][1]) i--;
+  const top = i + 1 >= TIER_FLOOR.length;
+  const lo = TIER_FLOOR[i][1];
+  const hi = top ? 100 : TIER_FLOOR[i + 1][1];
+  // The third edge *is* the next tier's floor — a real boundary everywhere
+  // except the top tier, where it is just the end of the scale.
+  for (const step of top ? [1, 2] : [1, 2, 3]) {
+    const edge = lo + ((hi - lo) * step) / 3;
+    if (edge > p + 1e-9) return Math.min(edge, 100);
+  }
+  return null; // already in the top division of the top tier
+}
+
 // ── the coefficients ──────────────────────────────────────────────
 
 /**
@@ -412,6 +474,33 @@ export const __selfcheck = () => {
   if (!(percentileFor((120 * (1 + 8 / 30)) / 82, medianRatio(pecDeck, 'male', 'chest')) > pecP + 20)) {
     fail('doubling the load on a machine barely moved the percentile');
   }
+
+  // The curve must invert. This is what the rank strip's "beat 82.5x3" is built
+  // on, so a wrong inverse would print a prescription that does not promote you.
+  for (const p of [1, 12.5, 31, 50, 69.5, 86.5, 96.2, 99]) {
+    const back = percentileFor(ratioForPercentile(p, 1.0), 1.0);
+    if (Math.abs(back - p) > 0.01) fail(`ratioForPercentile did not round-trip at p=${p} (got ${back})`);
+  }
+  if (!(ratioForPercentile(80, 1) > ratioForPercentile(50, 1))) fail('the inverse must be increasing');
+  if (Math.abs(ratioForPercentile(50, 1.35) - 1.35) > 1e-6) fail('the median percentile is the median ratio');
+
+  // Every step up the ladder must be reachable and strictly ahead of where you
+  // stand — a boundary that returns the percentile you already have would make
+  // the rank strip say "beat what you just did".
+  let cursor = 0;
+  let steps = 0;
+  while (true) {
+    const next = nextDivisionPercentile(cursor);
+    if (next === null) break;
+    if (!(next > cursor)) fail(`nextDivisionPercentile went backwards at ${cursor}`);
+    if (rankValue(rankFromPercentile(next)) <= rankValue(rankFromPercentile(cursor)))
+      fail(`crossing ${next} from ${cursor} is not a promotion`);
+    cursor = next;
+    if (++steps > 100) fail('nextDivisionPercentile does not terminate');
+  }
+  // 7 tiers x 3 divisions = 21 bands, so 20 boundaries from the very bottom.
+  if (steps !== 20) fail(`expected 20 division boundaries, walked ${steps}`);
+  if (nextDivisionPercentile(100) !== null) fail('the top of the ladder has nothing above it');
 
   // Age: monotonic upward past the prime, flat through it, never below 1.
   if (ageFactor(28) !== 1) fail('the prime is not handicapped');

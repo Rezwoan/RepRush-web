@@ -1,0 +1,210 @@
+'use client';
+/**
+ * The docked number pad (SPEC §5.2).
+ *
+ * Deliberately **not** the OS keyboard. On a phone the system keyboard eats
+ * half the screen, hides the set grid you are typing into, and puts `.` and the
+ * digits in different places on every device. This pad is always the same size,
+ * always in the same place, and carries the three keys that actually matter in
+ * a gym: ±2.5 kg, duplicate the previous set, and a plate calculator.
+ *
+ * `ponytail:` no system-keyboard fallback toggle. The source app has one; the
+ * pad here covers digits, a decimal point and backspace, so the only thing the
+ * OS keyboard adds is a different layout. Add it if anyone asks.
+ */
+import { useMemo } from 'react';
+import { motion } from 'framer-motion';
+import { Delete, Copy, Calculator, ChevronRight, X } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { spring } from '@/lib/motion';
+
+export type Field = 'weight' | 'reps';
+
+export interface KeypadProps {
+  field: Field;
+  value: string;
+  onChange: (next: string) => void;
+  /** Advance to the next field / set. */
+  onNext: () => void;
+  onClose: () => void;
+  /** Copies the previous set's number into this field. Hidden when there isn't one. */
+  previous?: string;
+  /** Bar weight for the plate calculator, in kg. */
+  barKg?: number;
+  onHelp?: () => void;
+}
+
+/** Weight steps in 2.5 kg (the smallest pair of plates); reps step by one. */
+const STEP: Record<Field, number> = { weight: 2.5, reps: 1 };
+
+/** What a loaded bar is actually made of, heaviest first. */
+const PLATES = [25, 20, 15, 10, 5, 2.5, 1.25];
+
+const trim = (n: number) => String(Math.round(n * 100) / 100);
+
+/** Plates per side for a target total. Returns null when it cannot be loaded. */
+export function platesFor(totalKg: number, barKg: number): number[] | null {
+  let side = (totalKg - barKg) / 2;
+  if (side < 0) return null;
+  const out: number[] = [];
+  for (const p of PLATES) {
+    while (side >= p - 1e-9) {
+      out.push(p);
+      side -= p;
+    }
+  }
+  return side < 1e-9 ? out : null;
+}
+
+export function Keypad({
+  field,
+  value,
+  onChange,
+  onNext,
+  onClose,
+  previous,
+  barKg = 20,
+  onHelp,
+}: KeypadProps) {
+  const step = STEP[field];
+
+  const press = (key: string) => {
+    if (key === '⌫') return onChange(value.slice(0, -1));
+    if (key === '.') return onChange(value.includes('.') || field === 'reps' ? value : `${value || '0'}.`);
+    // A leading zero is never what anyone means.
+    onChange(value === '0' ? key : `${value}${key}`);
+  };
+
+  const bump = (delta: number) => {
+    const next = Math.max(0, (parseFloat(value) || 0) + delta);
+    onChange(trim(next));
+  };
+
+  const plates = useMemo(
+    () => (field === 'weight' ? platesFor(parseFloat(value) || 0, barKg) : null),
+    [field, value, barKg],
+  );
+
+  return (
+    <motion.div
+      initial={{ y: '100%' }}
+      animate={{ y: 0 }}
+      exit={{ y: '100%' }}
+      transition={spring.snappy}
+      className="fixed inset-x-0 bottom-0 z-[70] border-t border-border bg-popover safe-bottom"
+    >
+      {/* The banner is the single most misunderstood thing in a lifting log. */}
+      <div className="flex items-center justify-between gap-2 bg-primary px-4 py-2 text-primary-foreground">
+        <p className="text-xs font-semibold">
+          {field === 'weight'
+            ? 'Log the total weight (bar included if applicable)'
+            : 'Reps you completed on this set'}
+        </p>
+        <div className="flex shrink-0 items-center gap-1">
+          {onHelp && (
+            <button onClick={onHelp} className="rounded-full px-2 py-0.5 text-xs font-bold underline">
+              How to Log?
+            </button>
+          )}
+          <button onClick={onClose} aria-label="Close keypad" className="rounded-full p-1">
+            <X size={16} />
+          </button>
+        </div>
+      </div>
+
+      {field === 'weight' && (
+        <p className="nums px-4 pt-2 text-xs text-muted-foreground">
+          {plates?.length
+            ? `Per side: ${plates.join(' + ')} kg on a ${barKg} kg bar`
+            : plates
+              ? `Just the ${barKg} kg bar`
+              : 'Not loadable with standard plates'}
+        </p>
+      )}
+
+      <div className="mx-auto grid max-w-md grid-cols-4 gap-2 p-3">
+        <button onClick={() => bump(-step)} className={keyCls('accent')}>
+          −{trim(step)}
+        </button>
+        <button onClick={() => bump(step)} className={keyCls('accent')}>
+          +{trim(step)}
+        </button>
+        <button
+          onClick={() => previous && onChange(previous)}
+          disabled={!previous}
+          aria-label="Copy previous set"
+          className={cn(keyCls('accent'), 'disabled:opacity-35')}
+        >
+          <Copy size={18} />
+        </button>
+        <button onClick={onNext} className={cn(keyCls('primary'), 'row-span-2')}>
+          <span className="flex flex-col items-center gap-0.5 text-xs font-extrabold uppercase tracking-wider">
+            <ChevronRight size={20} />
+            Next
+          </span>
+        </button>
+
+        {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((k) => (
+          <button key={k} onClick={() => press(k)} className={keyCls()}>
+            {k}
+          </button>
+        ))}
+
+        <button
+          onClick={() => field === 'weight' && onChange(trim(barKg))}
+          disabled={field !== 'weight'}
+          aria-label="Empty bar"
+          className={cn(keyCls('accent'), 'disabled:opacity-35')}
+        >
+          <Calculator size={18} />
+        </button>
+        <button onClick={() => press('0')} className={keyCls()}>
+          0
+        </button>
+        <button
+          onClick={() => press('.')}
+          disabled={field === 'reps'}
+          className={cn(keyCls(), 'disabled:opacity-35')}
+        >
+          .
+        </button>
+        <button onClick={() => press('⌫')} aria-label="Backspace" className={keyCls('accent')}>
+          <Delete size={18} />
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
+const keyCls = (tone: 'plain' | 'accent' | 'primary' = 'plain') =>
+  cn(
+    'press grid h-12 place-items-center rounded-xl text-lg font-extrabold',
+    'border-b-2 active:translate-y-[2px] active:border-b-0',
+    tone === 'primary'
+      ? 'h-auto border-b-black/25 bg-primary text-primary-foreground'
+      : tone === 'accent'
+        ? 'border-b-border bg-secondary text-foreground'
+        : 'border-b-border bg-card text-foreground',
+  );
+
+// ── self-check ────────────────────────────────────────────────────
+// The plate calculator is the one thing here that can be quietly wrong, and a
+// wrong answer sends someone to load a bar that does not add up.
+export const __selfcheck = () => {
+  const eq = (a: number[] | null, b: number[] | null, msg: string) => {
+    if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`keypad: ${msg} (got ${JSON.stringify(a)})`);
+  };
+
+  eq(platesFor(20, 20), [], 'an empty bar needs no plates');
+  eq(platesFor(60, 20), [20], '60 kg is a 20 on each side');
+  eq(platesFor(100, 20), [20, 20], '100 kg is two 20s a side');
+  eq(platesFor(102.5, 20), [20, 20, 1.25], '102.5 kg needs the small plates');
+  eq(platesFor(10, 20), null, 'below the bar is not loadable');
+  eq(platesFor(21, 20), null, '21 kg cannot be made from standard plates');
+  // Greedy is optimal here because every plate divides the next one up.
+  const heavy = platesFor(180, 20);
+  if (!heavy || heavy[0] !== 25) throw new Error('keypad: the calculator should reach for the biggest plate first');
+  if (Math.abs((heavy.reduce((a, b) => a + b, 0) * 2 + 20) - 180) > 1e-9)
+    throw new Error('keypad: the plates do not add up to the target');
+  return 'keypad ok';
+};

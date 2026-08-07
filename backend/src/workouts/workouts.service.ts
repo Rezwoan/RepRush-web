@@ -4,9 +4,51 @@ import { Repository, Between, Not, IsNull } from 'typeorm';
 import { GymSession } from './gym-session.entity';
 import { WorkoutSet } from './workout-set.entity';
 import { PersonalRecord } from './personal-record.entity';
+import { User } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
 import { CatalogService } from '../exercises/catalog.service';
+import { RanksService } from '../ranks/ranks.service';
+import { ratioForPercentile, medianRatio, ageFactor } from '../ranks/standards';
+import {
+  Difficulty,
+  GenExercise,
+  GeneratedWorkout,
+  LastPerformance,
+  generate,
+  roundLoad,
+} from './generator';
 import { ymd } from '../common/date.util';
+
+const DIFFICULTIES: Difficulty[] = ['beginner', 'intermediate', 'advanced'];
+
+/** Assumed bodyweight when a user has never logged one. Mirrors RanksService. */
+const DEFAULT_BODYWEIGHT_KG = 75;
+
+/** What the user's `experience` answer means to the generator's difficulty chip. */
+const EXPERIENCE_DIFFICULTY: Record<string, Difficulty> = {
+  never: 'beginner',
+  beginner: 'beginner',
+  intermediate: 'intermediate',
+  advanced: 'advanced',
+};
+
+export interface GenerateOptions {
+  durationMin?: number;
+  difficulty?: string;
+  /** Overrides the profile's stored kit — the builder's Equipment chip. */
+  equipment?: string[];
+  muscles?: string[];
+}
+
+const parseJsonArray = (raw: string | null | undefined): string[] | null => {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : null;
+  } catch {
+    return null;
+  }
+};
 
 @Injectable()
 export class WorkoutsService {
@@ -14,23 +56,175 @@ export class WorkoutsService {
     @InjectRepository(GymSession) private sessionRepo: Repository<GymSession>,
     @InjectRepository(WorkoutSet) private setRepo: Repository<WorkoutSet>,
     @InjectRepository(PersonalRecord) private prRepo: Repository<PersonalRecord>,
+    @InjectRepository(User) private userRepo: Repository<User>,
     private usersService: UsersService,
     private catalog: CatalogService,
+    private ranks: RanksService,
   ) {}
 
   // ─── Sessions ───────────────────────────────────────────────────────────────
 
-  async startSession(userId: number, workoutType: string, workoutPlanId?: number) {
-    const session = this.sessionRepo.create({ userId, workoutType, workoutPlanId });
+  async startSession(userId: number, workoutType: string, workoutPlanId?: number, plan?: unknown) {
+    const session = this.sessionRepo.create({
+      userId,
+      workoutType,
+      workoutPlanId,
+      plan: plan ? JSON.stringify(plan) : null,
+      tracked: true,
+    });
     return this.sessionRepo.save(session);
   }
 
-  async completeSession(sessionId: number, userId: number, notes?: string) {
+  async completeSession(
+    sessionId: number,
+    userId: number,
+    notes?: string,
+    finish?: { caption?: string; tracked?: boolean; privacy?: string },
+  ) {
     const session = await this.sessionRepo.findOne({ where: { id: sessionId, userId } });
     if (!session) throw new NotFoundException('Session not found');
-    session.completedAt = new Date();
-    if (notes) session.notes = notes;
+    // Completing twice must not move the clock — the outbox retries, and a
+    // replayed completion would otherwise stretch the recorded duration.
+    if (!session.completedAt) session.completedAt = new Date();
+    if (notes !== undefined) session.notes = notes;
+    if (finish?.caption !== undefined) session.caption = finish.caption;
+    if (finish?.tracked !== undefined) session.tracked = finish.tracked;
+    if (finish?.privacy !== undefined) session.privacy = finish.privacy;
     return this.sessionRepo.save(session);
+  }
+
+  // ─── The generator (SPEC §5.1) ──────────────────────────────────────────────
+
+  /**
+   * Build a session for this user, right now.
+   *
+   * All the judgement lives in `generator.ts`; this only gathers the inputs —
+   * the profile, what is recovered, what is weakest and what they lifted last
+   * time — and supplies the strength-standard estimate for lifts they have
+   * never performed.
+   */
+  async generateWorkout(userId: number, opts: GenerateOptions = {}): Promise<GeneratedWorkout> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const [recovery, muscleRanks, history] = await Promise.all([
+      this.ranks.recovery(userId),
+      this.ranks.muscleRanks(userId),
+      this.lastPerformances(userId),
+    ]);
+
+    const bw = user.weightKg > 0 ? user.weightKg : DEFAULT_BODYWEIGHT_KG;
+    const age = user.birthDate
+      ? Math.floor((Date.now() - new Date(user.birthDate).getTime()) / (365.25 * 86400000))
+      : null;
+    const percentile = Object.fromEntries(muscleRanks.map((m) => [m.muscleId, m.rank.percentile]));
+
+    const difficulty = DIFFICULTIES.includes(opts.difficulty as Difficulty)
+      ? (opts.difficulty as Difficulty)
+      : (EXPERIENCE_DIFFICULTY[user.experience] ?? 'intermediate');
+
+    const equipment = opts.equipment?.length ? opts.equipment : parseJsonArray(user.equipment);
+
+    return generate({
+      muscles: this.catalog.muscles.map((m) => ({ id: m.id, label: m.label, group: m.group, size: m.size })),
+      fatigue: recovery.fatigue,
+      percentile,
+      catalog: this.catalog.list() as unknown as GenExercise[],
+      equipment,
+      limitations: parseJsonArray(user.limitations) ?? [],
+      durationMin: Math.max(10, Math.min(180, Number(opts.durationMin) || 60)),
+      difficulty,
+      history,
+      onlyMuscles: opts.muscles,
+      estimate: (ex, reps) => this.estimateLoad(ex, reps, percentile, bw, user.sex, age),
+    });
+  }
+
+  /**
+   * What to put in the weight field for a lift the user has never done.
+   *
+   * Their muscle's current percentile, run backwards through the same standards
+   * curve the rank engine uses — i.e. "whatever on this exercise would rank you
+   * where you already rank". Null when there is nothing to go on, because a
+   * blank field is honest and an invented number is not.
+   */
+  private estimateLoad(
+    ex: GenExercise,
+    reps: number,
+    percentile: Record<string, number>,
+    bodyweightKg: number,
+    sex: string | null,
+    age: number | null,
+  ): number | null {
+    // Bodyweight movements have no load to suggest — the bar is your own mass,
+    // and the field is for *added* weight.
+    if (ex.equipment === 'bodyweight') return 0;
+    const p = percentile[ex.primary[0]] ?? 0;
+    if (!(p > 0)) return null;
+
+    const group = this.catalog.muscle(ex.primary[0])?.group ?? null;
+    const median = medianRatio(ex, sex, group);
+    const requiredE1rm = (ratioForPercentile(p, median) * bodyweightKg) / ageFactor(age);
+    const load = roundLoad(requiredE1rm / (1 + Math.min(reps, 12) / 30));
+    return load > 0 ? load : null;
+  }
+
+  /**
+   * The last working set the user performed on each exercise, keyed by catalog
+   * id. This is the PREV column and the pre-filled numbers — a lookup of what
+   * actually happened, never a projection of what should happen next (v1 rule).
+   */
+  async lastPerformances(userId: number): Promise<Record<string, LastPerformance>> {
+    const rows = await this.setRepo
+      .createQueryBuilder('s')
+      .innerJoin('gym_sessions', 'g', 'g.id = s.sessionId')
+      .where('g.userId = :userId', { userId })
+      .andWhere('s.exerciseId IS NOT NULL')
+      .andWhere('s.isWarmup = :warmup', { warmup: false })
+      .orderBy('s.loggedAt', 'ASC')
+      .getMany();
+
+    // Group by exercise *and* session so "sets" is how many they did that day,
+    // not how many they have ever done.
+    const bySession = new Map<string, { sessionId: number; sets: WorkoutSet[] }>();
+    for (const s of rows) {
+      const key = `${s.exerciseId}#${s.sessionId}`;
+      const entry = bySession.get(key) ?? { sessionId: s.sessionId, sets: [] };
+      entry.sets.push(s);
+      bySession.set(key, entry);
+    }
+
+    const out: Record<string, LastPerformance> = {};
+    for (const [key, entry] of Array.from(bySession.entries())) {
+      const exerciseId = key.split('#')[0];
+      const top = entry.sets.reduce((b, s) => (s.weightKg > b.weightKg ? s : b), entry.sets[0]);
+      // Iteration follows the loggedAt ordering above, so the last write wins.
+      out[exerciseId] = { weightKg: top.weightKg, reps: top.actualReps, sets: entry.sets.length };
+    }
+    return out;
+  }
+
+  /** The PREV column for one exercise: last session's sets, in order. */
+  async previousSets(userId: number, exerciseId: string) {
+    const rows = await this.setRepo
+      .createQueryBuilder('s')
+      .innerJoin('gym_sessions', 'g', 'g.id = s.sessionId')
+      .where('g.userId = :userId', { userId })
+      .andWhere('s.exerciseId = :exerciseId', { exerciseId })
+      .andWhere('s.isWarmup = :warmup', { warmup: false })
+      .orderBy('s.loggedAt', 'DESC')
+      .getMany();
+    if (!rows.length) return { exerciseId, sessionId: null, sets: [] as unknown[] };
+
+    const sessionId = rows[0].sessionId;
+    return {
+      exerciseId,
+      sessionId,
+      sets: rows
+        .filter((s) => s.sessionId === sessionId)
+        .sort((a, b) => a.setNumber - b.setNumber)
+        .map((s) => ({ setNumber: s.setNumber, weightKg: s.weightKg, reps: s.actualReps })),
+    };
   }
 
   async resetSession(sessionId: number, userId: number) {
@@ -240,6 +434,8 @@ export class WorkoutsService {
     weightKg: number,
     targetReps?: number,
     isWarmup = false,
+    exerciseId?: string,
+    rpe?: number,
   ) {
     // Verify session belongs to user
     const session = await this.sessionRepo.findOne({ where: { id: sessionId, userId } });
@@ -250,15 +446,24 @@ export class WorkoutsService {
     // without it is invisible to both — it would silently not count. P2's
     // backfill fixed the historical rows; this stops new ones being written the
     // same way. Null stays legitimate for names with no catalog equivalent.
+    //
+    // A caller that knows the id (everything in v2 does — the picker and the
+    // generator both work in catalog ids) passes it and skips the name lookup,
+    // which is a fuzzy match and the weaker of the two paths.
+    const resolved = exerciseId && this.catalog.find(exerciseId)
+      ? exerciseId
+      : this.catalog.resolveLegacyName(exerciseName);
+
     const set = this.setRepo.create({
       sessionId,
       exerciseName,
-      exerciseId: this.catalog.resolveLegacyName(exerciseName),
+      exerciseId: resolved,
       setNumber,
       actualReps,
       weightKg,
       targetReps,
       isWarmup,
+      rpe: typeof rpe === 'number' && rpe >= 1 && rpe <= 10 ? rpe : null,
     });
     const saved = await this.setRepo.save(set);
 

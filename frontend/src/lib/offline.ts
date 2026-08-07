@@ -22,19 +22,37 @@ export interface CachedSet {
   id?: number;        // server id, once synced
   localId: string;    // stable client id, always present
   exerciseName: string;
+  /** Catalog id. Ranks and recovery key off this, so v2 always sends it. */
+  exerciseId?: string;
   setNumber: number;
   actualReps: number;
   weightKg: number;
   targetReps?: number;
   isWarmup?: boolean;
+  rpe?: number;
   pending?: boolean;  // not yet acknowledged by the server
 }
 
+/** What the finish flow collects (SPEC §5.3), replayed with the completion. */
+export interface FinishPayload {
+  notes?: string;
+  caption?: string;
+  tracked?: boolean;
+  privacy?: 'private' | 'friends' | 'discovery';
+}
+
 type Op =
-  | { id: string; kind: 'startSession'; tempSessionId: number; workoutType: string; workoutPlanId?: number }
+  | {
+      id: string;
+      kind: 'startSession';
+      tempSessionId: number;
+      workoutType: string;
+      workoutPlanId?: number;
+      plan?: unknown;
+    }
   | { id: string; kind: 'logSet'; sessionId: number; localId: string; payload: Record<string, unknown> }
   | { id: string; kind: 'deleteSet'; sessionId: number; setId: number }
-  | { id: string; kind: 'completeSession'; sessionId: number; notes?: string };
+  | { id: string; kind: 'completeSession'; sessionId: number; finish?: FinishPayload };
 
 // ─── Storage helpers ─────────────────────────────────────────────────────────
 
@@ -94,8 +112,22 @@ interface CachedSession {
   workoutPlanId?: number;
   startedAt?: string;
   completedAt?: string | null;
+  /** The generated plan the user is working from. Parsed, not the JSON string. */
+  plan?: unknown;
+  notes?: string;
   sets: CachedSet[];
 }
+
+/** The server stores the plan as a JSON string; the UI wants the object. */
+const parsePlan = (v: unknown) => {
+  if (!v) return undefined;
+  if (typeof v !== 'string') return v;
+  try {
+    return JSON.parse(v);
+  } catch {
+    return undefined;
+  }
+};
 
 const getCache = (): Record<string, CachedSession> => read(SESSION_KEY, {});
 const setCache = (c: Record<string, CachedSession>) => write(SESSION_KEY, c);
@@ -108,15 +140,21 @@ export function cacheSession(sessionId: number, data: any) {
     workoutPlanId: data?.workoutPlanId,
     startedAt: data?.startedAt,
     completedAt: data?.completedAt ?? null,
+    // Never overwrite a locally-held plan with nothing: a session started
+    // offline has its plan only here until the outbox drains.
+    plan: parsePlan(data?.plan) ?? c[String(sessionId)]?.plan,
+    notes: data?.notes ?? c[String(sessionId)]?.notes,
     sets: (data?.sets || []).map((s: any) => ({
       id: s.id,
       localId: s.localId || `srv-${s.id}`,
       exerciseName: s.exerciseName,
+      exerciseId: s.exerciseId ?? undefined,
       setNumber: s.setNumber,
       actualReps: s.actualReps,
       weightKg: s.weightKg,
       targetReps: s.targetReps,
       isWarmup: !!s.isWarmup,
+      rpe: s.rpe ?? undefined,
     })),
   };
   setCache(c);
@@ -140,11 +178,13 @@ export function materializeSets(sessionId: number): CachedSet[] {
       sets.push({
         localId: op.localId,
         exerciseName: p.exerciseName,
+        exerciseId: p.exerciseId,
         setNumber: p.setNumber,
         actualReps: p.actualReps,
         weightKg: p.weightKg,
         targetReps: p.targetReps,
         isWarmup: !!p.isWarmup,
+        rpe: p.rpe,
         pending: true,
       });
     }
@@ -157,20 +197,36 @@ export function materializeSets(sessionId: number): CachedSet[] {
 
 // ─── Public write API (used by the session page) ─────────────────────────────
 
-export function queueStartSession(workoutType: string, workoutPlanId?: number): number {
+export function queueStartSession(workoutType: string, workoutPlanId?: number, plan?: unknown): number {
   const tempSessionId = -Date.now();
-  enqueue({ id: uid(), kind: 'startSession', tempSessionId, workoutType, workoutPlanId });
+  enqueue({ id: uid(), kind: 'startSession', tempSessionId, workoutType, workoutPlanId, plan });
   const c = getCache();
   c[String(tempSessionId)] = {
     id: tempSessionId,
     workoutType,
     workoutPlanId,
+    plan,
     startedAt: new Date().toISOString(),
     completedAt: null,
     sets: [],
   };
   setCache(c);
   return tempSessionId;
+}
+
+/** The plan the session is running, from cache — works offline, by design. */
+export function getSessionPlan(sessionId: number): any {
+  return getCachedSession(resolveSessionId(sessionId))?.plan ?? getCachedSession(sessionId)?.plan ?? null;
+}
+
+/** Notes survive a reload and a dropped connection, like everything else here. */
+export function setSessionNotes(sessionId: number, notes: string) {
+  const c = getCache();
+  const s = c[String(sessionId)];
+  if (s) {
+    s.notes = notes;
+    setCache(c);
+  }
 }
 
 export function queueLogSet(sessionId: number, payload: Record<string, unknown>): string {
@@ -191,8 +247,8 @@ export function queueDeleteSet(sessionId: number, set: CachedSet) {
   enqueue({ id: uid(), kind: 'deleteSet', sessionId, setId: set.id });
 }
 
-export function queueCompleteSession(sessionId: number, notes?: string) {
-  enqueue({ id: uid(), kind: 'completeSession', sessionId, notes });
+export function queueCompleteSession(sessionId: number, finish?: FinishPayload) {
+  enqueue({ id: uid(), kind: 'completeSession', sessionId, finish });
   const c = getCache();
   const s = c[String(sessionId)];
   if (s) { s.completedAt = new Date().toISOString(); setCache(c); }
@@ -223,7 +279,7 @@ export async function flushOutbox(): Promise<{ synced: number; failed: number }>
 
       try {
         if (op.kind === 'startSession') {
-          const res = await workoutsApi.startSession(op.workoutType, op.workoutPlanId);
+          const res = await workoutsApi.startSession(op.workoutType, op.workoutPlanId, op.plan);
           const realId = res.data.id as number;
           const map = getIdMap();
           map[String(op.tempSessionId)] = realId;
@@ -241,7 +297,7 @@ export async function flushOutbox(): Promise<{ synced: number; failed: number }>
           await workoutsApi.deleteSet(op.setId);
           touched.add(resolveSessionId(op.sessionId));
         } else if (op.kind === 'completeSession') {
-          await workoutsApi.completeSession(resolveSessionId(op.sessionId), op.notes);
+          await workoutsApi.completeSession(resolveSessionId(op.sessionId), op.finish);
           touched.add(resolveSessionId(op.sessionId));
         }
 

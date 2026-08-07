@@ -5,7 +5,17 @@ import { CatalogService, CatalogExercise } from '../exercises/catalog.service';
 import { User } from '../users/user.entity';
 import { WorkoutSet } from '../workouts/workout-set.entity';
 import { e1rm, effectiveLoad, __selfcheck as e1rmSelfCheck } from './e1rm';
-import { __selfcheck as recoverySelfCheck } from './recovery';
+import { __selfcheck as generatorSelfCheck } from '../workouts/generator';
+import {
+  FRESH_BELOW,
+  FatigueSet,
+  MuscleFatigue,
+  RecoveryStatus,
+  fatigueByMuscle,
+  readinessOf,
+  statusOf,
+  __selfcheck as recoverySelfCheck,
+} from './recovery';
 import {
   Rank,
   UNRANKED,
@@ -13,9 +23,11 @@ import {
   baseMuscleIds,
   bodyweightFraction,
   medianRatio,
+  nextDivisionPercentile,
   overrideIds,
   percentileFor,
   rankFromPercentile,
+  ratioForPercentile,
   rankValue,
   __selfcheck as standardsSelfCheck,
 } from './standards';
@@ -33,6 +45,9 @@ const DECAY_FLOOR = 0.4;
 
 /** Rank-value a single set can contribute to league LP. A whole tier is 303. */
 const LP_CLAMP_PER_SET = 150;
+
+/** Beyond this a set has decayed to nothing, so there is no point loading it. */
+const RECOVERY_LOOKBACK_DAYS = 14;
 
 export interface ExerciseRank {
   exerciseId: string;
@@ -97,7 +112,9 @@ export class RanksService implements OnModuleInit {
    * is wrong and should say so loudly rather than quietly mis-rank everybody.
    */
   onModuleInit() {
-    this.logger.log(`${e1rmSelfCheck()}, ${standardsSelfCheck()}, ${recoverySelfCheck()}`);
+    this.logger.log(
+      [e1rmSelfCheck(), standardsSelfCheck(), recoverySelfCheck(), generatorSelfCheck()].join(', '),
+    );
 
     const missing = overrideIds().filter((id) => !this.catalog.find(id));
     if (missing.length) throw new Error(`standards.ts overrides name unknown exercises: ${missing.join(', ')}`);
@@ -342,6 +359,154 @@ export class RanksService implements OnModuleInit {
         reps: s.actualReps,
         e1rm: Math.round(e1rm(this.load(ex, s.weightKg, snap.bw), s.actualReps) * 10) / 10,
       }));
-    return { exercise: ex, rank: mine, history };
+    return {
+      exercise: ex,
+      rank: mine,
+      history,
+      next: this.nextRankTarget(exerciseId, mine?.rank.percentile ?? 0, snap.bw, snap.user.sex, snap.age, mine?.bestReps),
+    };
+  }
+
+  // ── "TO NEXT RANK: 82.5x3" ──────────────────────────────────────
+
+  /**
+   * The set that promotes you (SPEC §5.2).
+   *
+   * The rank strip is the best motivator on the session screen precisely
+   * because it is specific, so this runs the whole chain backwards: next
+   * division's percentile → required bodyweight multiple → required e1RM →
+   * the load at the rep count the user actually trains at.
+   *
+   * Returns null at the top of the ladder, and for bodyweight movements, where
+   * "add 2.5 kg" is not the answer — those promote on reps, and the honest
+   * prescription is the rep count, so that is what comes back.
+   */
+  nextRankTarget(
+    exerciseId: string,
+    percentile: number,
+    bodyweightKg: number,
+    sex: string | null,
+    age: number | null,
+    atReps?: number,
+  ): { percentile: number; rank: Rank; weightKg: number | null; reps: number; progress: number } | null {
+    const ex = this.catalog.find(exerciseId);
+    if (!ex) return null;
+    const target = nextDivisionPercentile(percentile);
+    if (target === null) return null;
+
+    const group = this.catalog.muscle(ex.primary[0])?.group ?? null;
+    const median = medianRatio(ex, sex, group);
+    const bw = bodyweightKg > 0 ? bodyweightKg : DEFAULT_BODYWEIGHT_KG;
+    // The ratio was age-adjusted on the way in, so undo that on the way out —
+    // otherwise a 55-year-old is quoted a load they do not need to lift.
+    const requiredE1rm = (ratioForPercentile(target, median) * bw) / ageFactor(age);
+
+    const reps = Math.max(1, Math.min(12, atReps || Math.round((ex.repMin + ex.repMax) / 2)));
+    const load = requiredE1rm / (1 + reps / 30);
+
+    // How far through the current division they already are, for the bar.
+    const from = nextDivisionPercentile(Math.max(0, percentile - 1e-6)) === target
+      ? this.divisionFloor(percentile)
+      : percentile;
+    const progress = target > from ? Math.max(0, Math.min(1, (percentile - from) / (target - from))) : 0;
+
+    if (ex.equipment === 'bodyweight') {
+      // Solve for reps instead: the load is fixed at a fraction of bodyweight.
+      const carried = bw * bodyweightFraction(ex.primary[0]);
+      const needed = Math.ceil(Math.max(0, requiredE1rm / carried - 1) * 30);
+      return {
+        percentile: Math.round(target * 10) / 10,
+        rank: rankFromPercentile(target),
+        weightKg: null,
+        reps: Math.max(1, Math.min(12, needed)),
+        progress,
+      };
+    }
+
+    return {
+      percentile: Math.round(target * 10) / 10,
+      rank: rankFromPercentile(target),
+      // Round *up* — the prescription has to actually clear the bar it names.
+      weightKg: Math.ceil(load / 2.5) * 2.5,
+      reps,
+      progress,
+    };
+  }
+
+  /** The percentile at which the division the user is currently in began. */
+  private divisionFloor(percentile: number): number {
+    let lo = 0;
+    let cursor = 0;
+    while (true) {
+      const next = nextDivisionPercentile(cursor);
+      if (next === null || next > percentile) return lo;
+      lo = next;
+      cursor = next;
+    }
+  }
+
+  // ── recovery ────────────────────────────────────────────────────
+
+  /**
+   * Per-muscle fatigue right now.
+   *
+   * Lives here rather than in HomeService because the Home tab's Recovery Zone
+   * and the workout generator have to agree — a card that says "quads are
+   * fresh" beside a generator that refuses to program them is worse than
+   * either being wrong on its own.
+   */
+  async recovery(userId: number): Promise<{
+    readiness: number;
+    status: RecoveryStatus;
+    fresh: string[];
+    fatigue: Record<string, number>;
+  }> {
+    const since = new Date(Date.now() - RECOVERY_LOOKBACK_DAYS * 86400000);
+    const rows = await this.sets
+      .createQueryBuilder('s')
+      .innerJoin('gym_sessions', 'g', 'g.id = s.sessionId')
+      .where('g.userId = :userId', { userId })
+      .andWhere('s.isWarmup = :warmup', { warmup: false })
+      .andWhere('s.loggedAt >= :since', { since: since.toISOString() })
+      .getMany();
+
+    const now = Date.now();
+    const inputs: FatigueSet[] = [];
+    for (const s of rows) {
+      const ex = s.exerciseId ? this.catalog.find(s.exerciseId) : undefined;
+      if (!ex || !s.actualReps) continue; // unmapped v1 rows train no known muscle
+      inputs.push({
+        primary: ex.primary,
+        secondary: ex.secondary,
+        reps: s.actualReps,
+        rpe: s.rpe ?? null,
+        ageHours: (now - new Date(s.loggedAt).getTime()) / 3600000,
+      });
+    }
+
+    const sizes = Object.fromEntries(this.catalog.muscles.map((m) => [m.id, m.size]));
+    const byMuscle = fatigueByMuscle(inputs, sizes);
+    const readiness = readinessOf(byMuscle, sizes);
+
+    // Least-worked first, then biggest. Sorting by size alone let the copy call
+    // a muscle "fresh" that had taken secondary work an hour earlier — true by
+    // the threshold, but not what someone with sore glutes wants to read.
+    const fresh = this.catalog.muscles
+      .filter((m) => (byMuscle[m.id]?.fatigue ?? 0) < FRESH_BELOW)
+      .sort((a, b) => (byMuscle[a.id]?.fatigue ?? 0) - (byMuscle[b.id]?.fatigue ?? 0) || b.size - a.size)
+      .slice(0, 3)
+      .map((m) => m.label);
+
+    return {
+      readiness: Math.round(readiness * 1000) / 1000,
+      status: statusOf(readiness),
+      fresh,
+      fatigue: Object.fromEntries(
+        Object.entries(byMuscle).map(([id, f]: [string, MuscleFatigue]) => [
+          id,
+          Math.round(f.fatigue * 1000) / 1000,
+        ]),
+      ),
+    };
   }
 }
