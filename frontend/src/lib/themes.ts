@@ -65,14 +65,41 @@ const luminance = (h: number, s: number, l: number) => {
   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
 };
 
-/** Contrast of white against this colour. 21 is black, 1 is white on white. */
-export const contrastWithWhite = (h: number, s: number, l: number) =>
-  1.05 / (luminance(h, s, l) + 0.05);
+/** WCAG contrast between two relative luminances. 21:1 is black on white. */
+const contrast = (a: number, b: number) =>
+  (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 
-/** The lightest shade of this hue that still carries white text at AA. */
-export function fillLightness(h: number, s: number, start: number, target = 4.5): number {
-  for (let l = start; l >= 20; l -= 1) if (contrastWithWhite(h, s, l) >= target) return l;
-  return 20;
+/** Contrast of white against this colour. */
+export const contrastWithWhite = (h: number, s: number, l: number) =>
+  contrast(1, luminance(h, s, l));
+
+/** Contrast between two HSL triplets. */
+export const contrastOf = (
+  h1: number, s1: number, l1: number,
+  h2: number, s2: number, l2: number,
+) => contrast(luminance(h1, s1, l1), luminance(h2, s2, l2));
+
+/**
+ * How dark the fill may go before it stops reading as the brand rather than as
+ * a navy rectangle. Found empirically: the first draft had no floor and Spring
+ * Blossom's hue drove its fill to 28%, which the self-check refused.
+ */
+const FILL_FLOOR = 34;
+
+/**
+ * The fill white sits on, and the text that goes on it.
+ *
+ * Blue can be darkened into AA and still look like the brand. A bright hue
+ * cannot — pushing it dark enough for white makes it a different colour — so
+ * those keep their vivid fill and take **dark** text instead, which is what a
+ * yellow button wants anyway. Two strategies, one per hue, decided here rather
+ * than guessed per theme.
+ */
+export function primaryPair(h: number, s: number, start: number, target = 4.5) {
+  for (let l = start; l >= FILL_FLOOR; l -= 1)
+    if (contrastWithWhite(h, s, l) >= target) return { fill: l, fg: hsl(0, 0, 100) };
+  // Too bright to carry white without leaving the brand behind.
+  return { fill: start, fg: hsl(h, Math.min(s, 40), 12) };
 }
 
 /** Derive the full CSS-variable set for a theme. */
@@ -82,6 +109,7 @@ export function themeVars(t: Theme): Record<string, string> {
   const bs = t.baseSat;
   const ps = t.primarySat ?? 92;
   const as = t.accentSat ?? 96;
+  const pair = primaryPair(t.primary, ps, dark ? 50 : 45);
 
   // Surfaces step away from the page background in the same direction as the mode.
   const L = dark
@@ -100,8 +128,8 @@ export function themeVars(t: Theme): Record<string, string> {
     '--popover-foreground': hsl(b, Math.min(bs + 8, 40), L.fg),
 
     '--primary': hsl(t.primary, ps, dark ? 50 : 45),
-    '--primary-fill': hsl(t.primary, ps, fillLightness(t.primary, ps, dark ? 50 : 45)),
-    '--primary-foreground': hsl(0, 0, 100),
+    '--primary-fill': hsl(t.primary, ps, pair.fill),
+    '--primary-foreground': pair.fg,
 
     '--secondary': hsl(b, bs - 4 < 0 ? 0 : bs - 4, dark ? 16 : 94),
     '--secondary-foreground': hsl(b, Math.min(bs + 4, 30), dark ? 92 : 18),
@@ -254,10 +282,12 @@ export const __selfcheck = () => {
     // hue that fails AA in theme 27 is otherwise invisible until someone with
     // low vision opens theme 27.
     const [fh, fs, fl] = (v['--primary-fill'] ?? '').match(/[\d.]+/g)!.map(Number);
-    const ratio = contrastWithWhite(fh, fs, fl);
-    if (ratio < 4.5) throw new Error(`${t.id}: white on --primary-fill is ${ratio.toFixed(2)}:1`);
-    // …and it must not have gone so dark it stopped looking like the brand.
-    if (fl < 30) throw new Error(`${t.id}: --primary-fill went to ${fl}% lightness`);
+    const [gh, gs, gl] = (v['--primary-foreground'] ?? '').match(/[\d.]+/g)!.map(Number);
+    const ratio = contrastOf(fh, fs, fl, gh, gs, gl);
+    if (ratio < 4.5)
+      throw new Error(`${t.id}: --primary-foreground on --primary-fill is ${ratio.toFixed(2)}:1`);
+    // …and the fill must not have darkened out of the brand to get there.
+    if (fl < 34) throw new Error(`${t.id}: --primary-fill went to ${fl}% lightness`);
   }
   if (!THEMES.some((t) => t.id === DEFAULT_THEME)) throw new Error('DEFAULT_THEME not in catalog');
   if (contrastWithWhite(0, 0, 100) > 1.01) throw new Error('white on white should be 1:1');
