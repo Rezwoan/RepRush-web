@@ -36,16 +36,31 @@ if [ -f "$DB" ]; then
   echo "  snapshot taken"
 fi
 
+# `npm ci` on this Pi occasionally reports "added N packages" and leaves
+# node_modules/.bin incomplete, so the very next line dies with
+# "sh: 1: nest: not found". It succeeds on a plain retry every time. Rather
+# than burning a whole deploy on it, check for the binary the build needs and
+# reinstall once if it is missing.
+install_deps() {
+  local dir="$1" bin="$2"
+  cd "$dir"
+  npm ci --no-audit --no-fund
+  if [ ! -x "node_modules/.bin/$bin" ]; then
+    echo "  npm ci left node_modules/.bin/$bin missing — reinstalling once"
+    rm -rf node_modules
+    npm ci --no-audit --no-fund
+  fi
+  [ -x "node_modules/.bin/$bin" ] || { echo "install failed: $bin still missing in $dir"; exit 1; }
+}
+
 # ── 3. Backend ────────────────────────────────────────────
 echo "[3/6] Building backend..."
-cd "$APP_DIR/backend"
-npm ci --no-audit --no-fund
+install_deps "$APP_DIR/backend" nest
 npm run build
 
 # ── 4. Frontend ───────────────────────────────────────────
 echo "[4/6] Building frontend..."
-cd "$APP_DIR/frontend"
-npm ci --no-audit --no-fund
+install_deps "$APP_DIR/frontend" next
 npm run build
 
 # ── 5. Restart dev services only ──────────────────────────
