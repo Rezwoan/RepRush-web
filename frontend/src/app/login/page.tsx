@@ -27,7 +27,7 @@ function LoginContent() {
   const isActivation = Boolean(inviteToken);
 
   useEffect(() => {
-    if (!loading && user) router.replace(user.role === 'admin' ? '/admin' : '/dashboard');
+    if (!loading && user) router.replace(user.role === 'admin' ? '/admin' : '/home');
     if (inviteEmail) setEmail(decodeURIComponent(inviteEmail));
   }, [user, loading, inviteEmail, router]);
 
@@ -37,7 +37,7 @@ function LoginContent() {
     setSubmitting(true);
     try {
       const loggedInUser = await login(email, password);
-      router.replace(loggedInUser.role === 'admin' ? '/admin' : '/dashboard');
+      router.replace(loggedInUser.role === 'admin' ? '/admin' : '/home');
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Login failed. Check your credentials.');
     } finally {
@@ -54,7 +54,7 @@ function LoginContent() {
     try {
       const res = await authApi.activate(inviteToken!, newPassword);
       if (res.data.token) setToken(res.data.token);
-      router.replace('/dashboard');
+      router.replace('/home');
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Activation failed. Link may have expired.');
     } finally {

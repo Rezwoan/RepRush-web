@@ -103,7 +103,7 @@ export default function FinishPage() {
         </label>
 
         <a
-          href="/profile"
+          href="/profile?view=consumables"
           className="surface press flex items-center gap-3 p-4 font-bold"
         >
           <Pill size={20} className="text-primary" />

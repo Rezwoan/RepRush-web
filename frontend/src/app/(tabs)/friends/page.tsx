@@ -8,6 +8,7 @@
  * the Ranks pattern already exists in this codebase and works.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
   Check,
@@ -553,8 +554,14 @@ function ReferralsPanel({ data, reload }: { data: Referral | null; reload: () =>
 
 // ── page ────────────────────────────────────────────────────────────
 
+const TABS: Tab[] = ['friends', 'boards', 'referrals'];
+
 export default function FriendsPage() {
-  const [tab, setTab] = useState<Tab>('friends');
+  // `?tab=` so Home's Discover grid can land straight on the leaderboards,
+  // the same way `/ranks?tab=calc` already works.
+  const params = useSearchParams();
+  const wanted = params.get('tab') as Tab | null;
+  const [tab, setTab] = useState<Tab>(wanted && TABS.includes(wanted) ? wanted : 'friends');
   const [friends, setFriends] = useState<{ friends: Friend[]; incoming: Friend[]; outgoing: Friend[] } | null>(null);
   const [referral, setReferral] = useState<Referral | null>(null);
   const [adding, setAdding] = useState(false);

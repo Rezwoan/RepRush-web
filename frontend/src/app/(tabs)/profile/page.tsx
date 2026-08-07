@@ -23,9 +23,9 @@ import {
   ListChecks,
   Medal as MedalIcon,
   MessageSquare,
+  Pill,
   Settings,
   ShoppingBag,
-  Sparkles,
   Target,
 } from 'lucide-react';
 import { profileApi } from '@/lib/api';
@@ -42,6 +42,7 @@ import { Bodygraph, BodygraphPair } from '@/components/art/bodygraph';
 import { Mascot, type MascotPose } from '@/components/art/mascot';
 import { ProfileHeaderCard, useProfile } from './header';
 import { EditProfile } from './edit';
+import { ConsumablesPanel } from './consumables';
 import { HealthPanel } from './health';
 import { MedalsPanel, QuestsPanel } from './quests';
 import { RoutinesPanel } from './routines';
@@ -60,7 +61,9 @@ const SHORTCUTS = [
   { view: 'routines', label: 'Routines', icon: ListChecks },
   { view: 'exercises', label: 'Exercises', icon: Dumbbell },
   { view: 'statistics', label: 'Stats', icon: BarChart3 },
-  { view: 'feedback', label: 'Feedback', icon: Sparkles },
+  // `feedback` was here and opened nothing — same call P10 made about a
+  // settings row that links to a form that does not exist.
+  { view: 'consumables', label: 'Consumables', icon: Pill },
 ];
 
 // ── cards ───────────────────────────────────────────────────────────
@@ -290,6 +293,7 @@ export default function ProfilePage() {
     if (view === 'edit') return <EditProfile data={data} onBack={back} onSaved={() => reload(win)} />;
     if (view === 'settings') return <SettingsPanel data={data} onBack={back} onChanged={() => reload(win)} onView={go} />;
     if (view === 'health') return <HealthPanel onBack={back} />;
+    if (view === 'consumables') return <ConsumablesPanel onBack={back} />;
     if (view === 'routines' || view === 'exercises')
       return <RoutinesPanel tab={view} onBack={back} />;
     if (view === 'store' || view === 'inventory')
@@ -297,7 +301,9 @@ export default function ProfilePage() {
     if (view === 'statistics') return <StatisticsPanel onBack={back} />;
     if (view === 'quests') return <QuestsPanel onBack={back} />;
     if (view === 'medals') return <MedalsPanel onBack={back} />;
-    // Reactions and Feedback belong to P13's polish pass.
+    // Reactions is the last shortcut without a screen. It needs an endpoint
+    // listing what you have given and received — `post_reactions` has the rows,
+    // nothing reads them that way yet.
     return (
       <div className="pb-6 pt-4">
         <button onClick={back} className="press mb-4 text-sm font-bold text-primary">
@@ -305,11 +311,7 @@ export default function ProfilePage() {
         </button>
         <EmptyState
           title={`${view[0].toUpperCase()}${view.slice(1)} is coming`}
-          description={
-            view === 'reactions'
-              ? 'The reactions you have given and received will live here.'
-              : 'Tell us what to fix — the feedback form lands with the polish pass.'
-          }
+          description="The reactions you have given and received will live here." 
         />
       </div>
     );

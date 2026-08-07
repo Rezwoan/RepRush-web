@@ -381,9 +381,11 @@ function LogWeightSheet({
 
 /** `tab` switches this page's sub-tab; `href` navigates. One or the other. */
 const DISCOVER: { label: string; icon: typeof Trophy; tint: string; href?: string; tab?: Tab }[] = [
-  { href: '/leaderboard', label: 'Leaderboards', icon: Trophy, tint: 'text-tier-gold' },
+  // The v2 boards, not v1's `/leaderboard` — that route still renders inside
+  // v1's shell, so tapping it dropped the user out of the tab bar entirely.
+  { href: '/friends?tab=boards', label: 'Leaderboards', icon: Trophy, tint: 'text-tier-gold' },
   { tab: 'friends', label: 'Social Feeds', icon: Users, tint: 'text-primary' },
-  { href: '/progress', label: 'Streak Calendar', icon: CalendarDays, tint: 'text-tier-titan' },
+  { href: '/profile', label: 'Streak Calendar', icon: CalendarDays, tint: 'text-tier-titan' },
   { href: '/ranks?tab=calc', label: 'Rank Calculator', icon: Calculator, tint: 'text-tier-diamond' },
 ];
 
@@ -568,7 +570,7 @@ function ForYou({
             <Plus size={20} />
           </button>
           <Link
-            href="/progress"
+            href="/profile?view=health"
             aria-label="Bodyweight history"
             className="press grid h-11 w-11 shrink-0 place-items-center rounded-full bg-secondary text-muted-foreground"
           >

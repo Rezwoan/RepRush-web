@@ -216,7 +216,7 @@ export default function OnboardingPage() {
               </motion.div>
               <h2 className="text-xl font-display font-bold">You&apos;re all set! 🎉</h2>
               <p className="text-muted-foreground text-sm">Your profile is ready. Time to crush it.</p>
-              <Button size="lg" className="w-full" onClick={() => router.replace('/dashboard')}>Go to Dashboard <ChevronRight size={16} /></Button>
+              <Button size="lg" className="w-full" onClick={() => router.replace('/home')}>Go to RepRush <ChevronRight size={16} /></Button>
             </motion.div>
           )}
         </AnimatePresence>
