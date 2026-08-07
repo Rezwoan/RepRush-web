@@ -145,6 +145,10 @@ export class User {
   @Column({ nullable: true, type: 'text' })
   preferences: string;
 
+  /** JSON string[] — up to three medals shown on the public profile (P11). */
+  @Column({ nullable: true, type: 'text' })
+  equippedMedals: string;
+
   @Column({ default: false })
   isActivated: boolean;
 

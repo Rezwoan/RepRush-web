@@ -42,6 +42,10 @@ export const MEDAL_MATERIALS = {
   bronze: ['#E09A63', '#93542A'],
   silver: ['#D8DFE6', '#8F9AA6'],
   gold: ['#FBD968', '#D19A16'],
+  // P11's medal ladder is five tiers deep, so the top two materials exist for
+  // the categories that go past gold.
+  platinum: ['#DCF3FF', '#7FA8BC'],
+  mythic: ['#F3A8FF', '#7B2CBF'],
 } as const;
 
 export type MedalMaterial = keyof typeof MEDAL_MATERIALS;

@@ -42,6 +42,7 @@ import { Mascot, type MascotPose } from '@/components/art/mascot';
 import { ProfileHeaderCard, useProfile } from './header';
 import { EditProfile } from './edit';
 import { HealthPanel } from './health';
+import { MedalsPanel, QuestsPanel } from './quests';
 import { RoutinesPanel } from './routines';
 import { SettingsPanel } from './settings';
 import { StatisticsPanel } from './statistics';
@@ -292,7 +293,9 @@ export default function ProfilePage() {
     if (view === 'store' || view === 'inventory')
       return <StorePanel mode={view} onBack={back} onChanged={() => reload(win)} />;
     if (view === 'statistics') return <StatisticsPanel onBack={back} />;
-    // Quests, Medals, Reactions and Feedback are P11's and P13's.
+    if (view === 'quests') return <QuestsPanel onBack={back} />;
+    if (view === 'medals') return <MedalsPanel onBack={back} />;
+    // Reactions and Feedback belong to P13's polish pass.
     return (
       <div className="pb-6 pt-4">
         <button onClick={back} className="press mb-4 text-sm font-bold text-primary">
@@ -303,7 +306,7 @@ export default function ProfilePage() {
           description={
             view === 'reactions'
               ? 'The reactions you have given and received will live here.'
-              : 'Medals, quests and their rewards land with the gamification pass.'
+              : 'Tell us what to fix — the feedback form lands with the polish pass.'
           }
         />
       </div>

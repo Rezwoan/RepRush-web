@@ -212,6 +212,14 @@ export const profileApi = {
   buy: (id: string) => api.post('/profile/store/buy', { id }),
 };
 
+// ─── Gamification (SPEC §10) ──────────────────────────────────────────────────
+export const gameApi = {
+  /** Level, currency, streak, quests and medals — one call for every screen. */
+  me: () => api.get('/gamification/me'),
+  claim: (key: string) => api.post('/gamification/claim', { key }),
+  equipMedals: (ids: string[]) => api.post('/gamification/medals/equip', { ids }),
+};
+
 // ─── Social (SPEC §8) ─────────────────────────────────────────────────────────
 export const socialApi = {
   friends: () => api.get('/social/friends'),

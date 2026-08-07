@@ -21,6 +21,7 @@ import { RanksModule } from './ranks/ranks.module';
 import { HomeModule } from './home/home.module';
 import { SocialModule } from './social/social.module';
 import { ProfileModule } from './profile/profile.module';
+import { GamificationModule } from './gamification/gamification.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { ProfileModule } from './profile/profile.module';
     HomeModule,
     SocialModule,
     ProfileModule,
+    GamificationModule,
     SeedModule,
   ],
 })
