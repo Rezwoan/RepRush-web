@@ -20,6 +20,7 @@ import { flushOutbox, materializeSets, resolveSessionId } from '@/lib/offline';
 import { rankLabel, rankValue, type Rank } from '@/lib/ranks';
 import { spring } from '@/lib/motion';
 import { cue } from '@/lib/feedback';
+import { useUnits } from '@/lib/units';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Bar } from '@/components/ui/display';
@@ -183,6 +184,7 @@ function StepSummary({
   xp: number;
 }) {
   const headline = volume > 15000 ? 'Huge Gains!' : volume > 5000 ? 'Strong Work!' : 'Session Logged!';
+  const u = useUnits();
   return (
     <>
       <Confetti />
@@ -192,7 +194,7 @@ function StepSummary({
       </div>
       <h1 className="text-center text-4xl font-extrabold">{headline}</h1>
       <p className="nums mt-1 text-center text-muted-foreground">
-        {sets} sets · {volume.toLocaleString()} kg moved
+        {sets} sets · {u.volume(volume)} moved
       </p>
 
       <div className="mt-6 grid grid-cols-3 gap-3">

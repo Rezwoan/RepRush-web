@@ -886,6 +886,9 @@ function SignupStep({ a, onDone }: { a: Answers; onDone: () => void }) {
         trainingLocation: a.trainingLocation || undefined,
         equipment: a.equipment,
         limitations: a.limitations.filter((l) => l !== 'none'),
+        // The funnel asked for lb/ft on two screens and then threw the answer
+        // away, so an imperial user was shown kg from the moment they signed up.
+        units: a.weightUnit === 'lb' || a.heightUnit === 'ft' ? 'imperial' : 'metric',
         // Logged as a real set, so the rank the reveal promised is on the account.
         firstRank: a.firstRank
           ? { exerciseId: a.firstRank.exerciseId, weightKg: a.firstRank.weightKg, reps: a.firstRank.reps }

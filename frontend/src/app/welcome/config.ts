@@ -354,20 +354,11 @@ export const FIRST_RANK_EXERCISES = [
 ];
 
 // ── Unit helpers ────────────────────────────────────────────────────
-
-export const KG_PER_LB = 0.45359237;
-export const CM_PER_IN = 2.54;
-
-export const cmToIn = (cm: number) => cm / CM_PER_IN;
-export const inToCm = (inches: number) => inches * CM_PER_IN;
-export const kgToLb = (kg: number) => kg / KG_PER_LB;
-export const lbToKg = (lb: number) => lb * KG_PER_LB;
-
-/** 70 in → `5′ 10″`. */
-export function feetInches(totalInches: number): string {
-  const whole = Math.round(totalInches);
-  return `${Math.floor(whole / 12)}′ ${whole % 12}″`;
-}
+// They live in `lib/units.ts` now, where the rest of the app can reach them —
+// this funnel was the only thing that could convert a weight, which is why
+// every screen after signup printed kg no matter what was picked here.
+import { cmToIn, feetInches, inToCm, kgToLb, lbToKg } from '@/lib/units';
+export { KG_PER_LB, CM_PER_IN, cmToIn, inToCm, kgToLb, lbToKg, feetInches } from '@/lib/units';
 
 /**
  * Age → an ISO date the backend can store; day precision we don't have.

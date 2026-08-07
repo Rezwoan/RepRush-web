@@ -16,6 +16,7 @@ import { ranksApi } from '@/lib/api';
 import { spring } from '@/lib/motion';
 import { MUSCLE_BY_ID, type MuscleId } from '@/lib/muscles';
 import { TIERS, TIER_LABEL, rankLabel, rankValue, type Tier } from '@/lib/ranks';
+import { useUnits } from '@/lib/units';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Chip, TabBarLinks } from '@/components/ui/controls';
@@ -103,6 +104,7 @@ function PlacementHexes({ done, required }: { done: number; required: number }) 
 }
 
 function ExerciseRow({ r, onOpen }: { r: ExerciseRank; onOpen: () => void }) {
+  const u = useUnits();
   const { byId } = useCatalog();
   const ex = byId[r.exerciseId];
   return (
@@ -121,7 +123,7 @@ function ExerciseRow({ r, onOpen }: { r: ExerciseRank; onOpen: () => void }) {
           </span>
         </div>
         <p className="nums mt-0.5 text-[11px] text-muted-foreground">
-          Top {Math.max(1, Math.round(100 - r.rank.percentile))}% · {bestLabel(r.bestWeightKg, r.bestReps)}
+          Top {Math.max(1, Math.round(100 - r.rank.percentile))}% · {bestLabel(r.bestWeightKg, r.bestReps, u)}
         </p>
       </div>
       <RankBadge tier={r.rank.tier} division={r.rank.division} size="sm" animated={false} />
@@ -443,6 +445,7 @@ function GalleryPanel({ data, onExercise }: { data: Overview; onExercise: (r: Ex
 // ── exercise detail ──────────────────────────────────────────────────
 
 function ExerciseSheet({ r, onClose }: { r: ExerciseRank | null; onClose: () => void }) {
+  const u = useUnits();
   const router = useRouter();
   const { byId } = useCatalog();
   const ex = r ? byId[r.exerciseId] : undefined;
@@ -476,8 +479,8 @@ function ExerciseSheet({ r, onClose }: { r: ExerciseRank | null; onClose: () => 
           </div>
 
           <div className="flex gap-3">
-            <StatTile label="Best" value={bestLabel(r.bestWeightKg, r.bestReps)} />
-            <StatTile label="Est. 1RM" value={r.bestE1rm} unit="kg" />
+            <StatTile label="Best" value={bestLabel(r.bestWeightKg, r.bestReps, u)} />
+            <StatTile label="Est. 1RM" value={u.n(r.bestE1rm, 1)} unit={u.w} />
           </div>
 
           {r.next ? (

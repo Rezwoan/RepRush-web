@@ -33,6 +33,7 @@ import { RankBadge } from '@/components/art/rank-badge';
 import { Keypad, type Field } from '@/components/workout/keypad';
 import { RestMiniBar, hhmmss, mmss, useRestTimer } from '@/components/workout/rest-timer';
 import { cue } from '@/lib/feedback';
+import { useUnits } from '@/lib/units';
 import {
   ExercisePicker, Thumb, useCatalog, type CatalogExercise,
 } from '@/components/workout/exercise-picker';
@@ -114,6 +115,7 @@ export default function SessionPage() {
   const [clock, setClock] = useState(0);
 
   const timer = useRestTimer();
+  const u = useUnits();
   const rerender = useCallback(() => setLogged(materializeSets(sessionId)), [sessionId]);
 
   // ── hydrate ──
@@ -202,7 +204,10 @@ export default function SessionPage() {
   const commit = (ex: PlannedExercise, index: number, planned: PlannedSet) => {
     const key = slotKey(ex.exerciseId, index);
     const draft = drafts[key];
-    const weight = parseFloat(draft?.weight ?? '') || planned.weightKg || 0;
+    // The keypad types in whatever unit the column is labelled with; the set is
+    // stored in kg, because that is what the ladder and every total are in.
+    const typed = parseFloat(draft?.weight ?? '');
+    const weight = Number.isFinite(typed) && typed !== 0 ? u.wkg(typed) : planned.weightKg || 0;
     const reps = parseInt(draft?.reps ?? '', 10) || planned.targetReps || 0;
     if (!reps) return; // a set with no reps is not a set
 
@@ -411,8 +416,10 @@ export default function SessionPage() {
       <Sheet open={helpOpen} onOpenChange={setHelpOpen} title="How to log">
         <div className="space-y-3 pb-2 text-sm text-muted-foreground">
           <p>
-            <strong className="text-foreground">Log the total lifted.</strong> A 20 kg bar with 10 kg a side
-            is <strong className="text-foreground">40 kg</strong>, not 10 and not 20.
+            <strong className="text-foreground">Log the total lifted.</strong>{' '}
+            {u.imperial
+              ? 'A 45 lb bar with 25 lb a side is 95 lb, not 25 and not 45.'
+              : 'A 20 kg bar with 10 kg a side is 40 kg, not 10 and not 20.'}
           </p>
           <p>Dumbbells are logged per hand — the standards are calibrated that way.</p>
           <p>
@@ -515,6 +522,7 @@ function ExerciseCard({
   focusField: Field | null;
 }) {
   const [menu, setMenu] = useState(false);
+  const u = useUnits();
 
   // Planned rows plus any the user added mid-session. The extras inherit the
   // last planned set, which is what "one more set" means.
@@ -581,7 +589,7 @@ function ExerciseCard({
                     To next rank
                   </p>
                   <p className="nums text-lg font-extrabold" style={{ color: `hsl(var(--tier-${next.rank.tier}))` }}>
-                    {next.weightKg != null ? `${next.weightKg}×${next.reps}` : `${next.reps} reps`}
+                    {next.weightKg != null ? `${u.n(next.weightKg, 1)}×${next.reps}` : `${next.reps} reps`}
                   </p>
                 </div>
                 <Bar value={next.progress} className="mt-1.5" height={7} label="Progress to next rank" />
@@ -597,7 +605,7 @@ function ExerciseCard({
             <div className="nums grid grid-cols-[28px_60px_1fr_1fr_44px] gap-2 pb-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
               <span>Set</span>
               <span>Prev</span>
-              <span className="text-center">Kg</span>
+              <span className="text-center">{u.imperial ? 'Lb' : 'Kg'}</span>
               <span className="text-center">Reps</span>
               <span />
             </div>
@@ -618,14 +626,14 @@ function ExerciseCard({
                 //
                 // While a field is focused its raw draft wins, so backspacing
                 // to empty leaves it empty instead of the ghost springing back.
-                const ghostWeight = planned.weightKg != null ? String(planned.weightKg) : '';
+                const ghostWeight = planned.weightKg != null ? String(u.wv(planned.weightKg, 1)) : '';
                 const ghostReps = planned.targetReps ? String(planned.targetReps) : '';
                 const cell = (field: Field, ghost: string) => {
                   const raw = field === 'weight' ? draft?.weight : draft?.reps;
                   return focused && focusField === field ? (raw ?? '') : (raw || ghost);
                 };
 
-                const weight = done ? String(done.weightKg) : cell('weight', ghostWeight);
+                const weight = done ? String(u.wv(done.weightKg, 1)) : cell('weight', ghostWeight);
                 const reps = done ? String(done.actualReps) : cell('reps', ghostReps);
 
                 return (
@@ -646,7 +654,7 @@ function ExerciseCard({
                     </span>
 
                     <span className="nums truncate text-xs text-muted-foreground">
-                      {prev ? `${prev.weightKg}×${prev.reps}` : '−'}
+                      {prev ? `${u.wv(prev.weightKg, 1)}×${prev.reps}` : '−'}
                     </span>
 
                     <Cell

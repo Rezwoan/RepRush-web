@@ -6,7 +6,7 @@
  * half the screen, hides the set grid you are typing into, and puts `.` and the
  * digits in different places on every device. This pad is always the same size,
  * always in the same place, and carries the three keys that actually matter in
- * a gym: ±2.5 kg, duplicate the previous set, and a plate calculator.
+ * a gym: ±2.5 kg (±5 lb), duplicate the previous set, and a plate calculator.
  *
  * `ponytail:` no system-keyboard fallback toggle. The source app has one; the
  * pad here covers digits, a decimal point and backspace, so the only thing the
@@ -17,6 +17,7 @@ import { motion } from 'framer-motion';
 import { Delete, Copy, Calculator, ChevronRight, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { spring } from '@/lib/motion';
+import { useUnits } from '@/lib/units';
 
 export type Field = 'weight' | 'reps';
 
@@ -34,20 +35,27 @@ export interface KeypadProps {
   onHelp?: () => void;
 }
 
-/** Weight steps in 2.5 kg (the smallest pair of plates); reps step by one. */
-const STEP: Record<Field, number> = { weight: 2.5, reps: 1 };
-
-/** What a loaded bar is actually made of, heaviest first. */
-const PLATES = [25, 20, 15, 10, 5, 2.5, 1.25];
+/**
+ * What a loaded bar is actually made of, heaviest first. A gym in pounds does
+ * not stock 20 kg plates relabelled — it stocks 45s, so converting the metric
+ * set would print plate weights nobody owns.
+ */
+const PLATES_KG = [25, 20, 15, 10, 5, 2.5, 1.25];
+const PLATES_LB = [45, 35, 25, 10, 5, 2.5];
+/** The standard bar, in each vocabulary. 45 lb is 20.4 kg — close, not equal. */
+const BAR_LB = 45;
 
 const trim = (n: number) => String(Math.round(n * 100) / 100);
 
-/** Plates per side for a target total. Returns null when it cannot be loaded. */
-export function platesFor(totalKg: number, barKg: number): number[] | null {
-  let side = (totalKg - barKg) / 2;
+/**
+ * Plates per side for a target total. Returns null when it cannot be loaded.
+ * Unit-agnostic: pass the total, the bar and the plate set in the same unit.
+ */
+export function platesFor(total: number, bar: number, plates: number[] = PLATES_KG): number[] | null {
+  let side = (total - bar) / 2;
   if (side < 0) return null;
   const out: number[] = [];
-  for (const p of PLATES) {
+  for (const p of plates) {
     while (side >= p - 1e-9) {
       out.push(p);
       side -= p;
@@ -66,7 +74,11 @@ export function Keypad({
   barKg = 20,
   onHelp,
 }: KeypadProps) {
-  const step = STEP[field];
+  const u = useUnits();
+  // Everything on this pad is in the unit the field is labelled with; the
+  // session screen converts back to kg when the set is committed.
+  const bar = u.imperial ? BAR_LB : barKg;
+  const step = field === 'reps' ? 1 : u.step;
 
   const press = (key: string) => {
     if (key === '⌫') return onChange(value.slice(0, -1));
@@ -81,8 +93,11 @@ export function Keypad({
   };
 
   const plates = useMemo(
-    () => (field === 'weight' ? platesFor(parseFloat(value) || 0, barKg) : null),
-    [field, value, barKg],
+    () =>
+      field === 'weight'
+        ? platesFor(parseFloat(value) || 0, bar, u.imperial ? PLATES_LB : PLATES_KG)
+        : null,
+    [field, value, bar, u.imperial],
   );
 
   return (
@@ -117,9 +132,9 @@ export function Keypad({
       {field === 'weight' && value !== '' && (
         <p className="nums px-4 pt-2 text-xs text-muted-foreground">
           {plates?.length
-            ? `Per side: ${plates.join(' + ')} kg on a ${barKg} kg bar`
+            ? `Per side: ${plates.join(' + ')} ${u.w} on a ${bar} ${u.w} bar`
             : plates
-              ? `Just the ${barKg} kg bar`
+              ? `Just the ${bar} ${u.w} bar`
               : 'Not loadable with standard plates'}
         </p>
       )}
@@ -153,9 +168,9 @@ export function Keypad({
           ))}
 
           <button
-            onClick={() => field === 'weight' && onChange(trim(barKg))}
+            onClick={() => field === 'weight' && onChange(trim(bar))}
             disabled={field !== 'weight'}
-            aria-label={`Empty ${barKg} kg bar`}
+            aria-label={`Empty ${bar} ${u.w} bar`}
             className={cn(keyCls('accent'), 'disabled:opacity-35')}
           >
             <Calculator size={18} />
@@ -213,6 +228,10 @@ export const __selfcheck = () => {
   eq(platesFor(102.5, 20), [20, 20, 1.25], '102.5 kg needs the small plates');
   eq(platesFor(10, 20), null, 'below the bar is not loadable');
   eq(platesFor(21, 20), null, '21 kg cannot be made from standard plates');
+  // Imperial is a different plate set, not a converted one.
+  eq(platesFor(135, 45, PLATES_LB), [45], '135 lb is a 45 a side on a 45 lb bar');
+  eq(platesFor(225, 45, PLATES_LB), [45, 45], '225 lb is two 45s a side');
+  eq(platesFor(50, 45, PLATES_LB), [2.5], '50 lb is the smallest pair');
   // Greedy is optimal here because every plate divides the next one up.
   const heavy = platesFor(180, 20);
   if (!heavy || heavy[0] !== 25) throw new Error('keypad: the calculator should reach for the biggest plate first');

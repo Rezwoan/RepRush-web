@@ -11,6 +11,7 @@ import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { MUSCLE_BY_ID, type MuscleId } from '@/lib/muscles';
 import { TIERS, TIER_LABEL, rankLabel, rankValue, type Tier } from '@/lib/ranks';
+import { useUnits } from '@/lib/units';
 import { cn } from '@/lib/utils';
 import { Bar, EmptyState } from '@/components/ui/display';
 import { RankBadge } from '@/components/art/rank-badge';
@@ -72,6 +73,7 @@ function Section({ title, action, children }: { title: string; action?: React.Re
 
 export function AnalysisPanel({ data }: { data: Overview }) {
   const { byId } = useCatalog();
+  const u = useUnits();
   const [showAllCategories, setShowAllCategories] = useState(false);
   const [scope, setScope] = useState(0);
 
@@ -174,7 +176,7 @@ export function AnalysisPanel({ data }: { data: Overview }) {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold">{r.name}</p>
                     <p className="nums text-xs text-muted-foreground">
-                      Best {bestLabel(r.bestWeightKg, r.bestReps)}
+                      Best {bestLabel(r.bestWeightKg, r.bestReps, u)}
                     </p>
                   </div>
                   <RankBadge
@@ -197,7 +199,7 @@ export function AnalysisPanel({ data }: { data: Overview }) {
                     label={`Progress to ${rankLabel(n.rank)}`}
                   />
                   <span className="nums shrink-0 text-sm font-extrabold" style={{ color: tierColor(n.rank) }}>
-                    {targetLabel(n)}
+                    {targetLabel(n, u)}
                   </span>
                 </div>
               </div>

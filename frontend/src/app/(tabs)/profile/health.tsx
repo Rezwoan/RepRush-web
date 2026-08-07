@@ -13,7 +13,8 @@ import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/controls';
 import { Sheet } from '@/components/ui/sheet';
 import { EmptyState } from '@/components/ui/display';
-import { METRIC_LABEL, METRIC_UNIT } from './types';
+import { useUnits } from '@/lib/units';
+import { METRIC_LABEL, metricToDisplay, metricToStored, metricUnit } from './types';
 import { Panel } from './panel';
 
 interface Entry {
@@ -67,6 +68,7 @@ function Chart({ points }: { points: Entry[] }) {
 
 export function HealthPanel({ onBack }: { onBack: () => void }) {
   const [metric, setMetric] = useState('bodyweight');
+  const u = useUnits();
   const [rows, setRows] = useState<Entry[] | null>(null);
   const [adding, setAdding] = useState(false);
   const [value, setValue] = useState('');
@@ -88,7 +90,8 @@ export function HealthPanel({ onBack }: { onBack: () => void }) {
   }, [metric, load]);
 
   const add = async () => {
-    const v = parseFloat(value);
+    // Typed in the displayed unit; stored metric, like every other measurement.
+    const v = metricToStored(metric, parseFloat(value), u);
     if (!(v > 0)) return;
     try {
       const res = await profileApi.logHealth(metric, v, date);
@@ -101,7 +104,7 @@ export function HealthPanel({ onBack }: { onBack: () => void }) {
     }
   };
 
-  const unit = METRIC_UNIT[metric] ?? 'cm';
+  const unit = metricUnit(metric, u);
 
   return (
     <Panel
@@ -138,7 +141,7 @@ export function HealthPanel({ onBack }: { onBack: () => void }) {
           .map((r) => (
             <div key={r.id} className="surface flex items-center gap-3 p-3">
               <span className="nums flex-1 font-extrabold">
-                {r.value} {unit}
+                {Math.round(metricToDisplay(metric, r.value, u) * 10) / 10} {unit}
               </span>
               <span className="nums text-sm text-muted-foreground">{r.date}</span>
               <button

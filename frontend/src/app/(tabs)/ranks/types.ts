@@ -3,6 +3,7 @@
  * Shared by the six sub-tabs, which is the only reason this is not inline.
  */
 import type { Rank } from '@/lib/ranks';
+import { METRIC, type Units } from '@/lib/units';
 
 export interface NextTarget {
   percentile: number;
@@ -82,9 +83,9 @@ export const tierColor = (rank: Rank | null | undefined) =>
  * A pull-up is logged with weightKg 0 — that is the added weight, not the load
  * — so the obvious template renders "Best 0 kg × 8", which reads as a bug.
  */
-export const bestLabel = (weightKg: number, reps: number) =>
-  weightKg > 0 ? `${weightKg} kg × ${reps}` : `${reps} reps`;
+export const bestLabel = (weightKg: number, reps: number, u: Units = METRIC) =>
+  weightKg > 0 ? `${u.weight(weightKg)} × ${reps}` : `${reps} reps`;
 
 /** Same idea for a prescription: bodyweight lifts promote on reps. */
-export const targetLabel = (n: NextTarget) =>
-  n.weightKg === null || n.weightKg <= 0 ? `${n.reps} reps` : `${n.weightKg}×${n.reps}`;
+export const targetLabel = (n: NextTarget, u: Units = METRIC) =>
+  n.weightKg === null || n.weightKg <= 0 ? `${n.reps} reps` : `${u.n(n.weightKg, 1)}×${n.reps}`;

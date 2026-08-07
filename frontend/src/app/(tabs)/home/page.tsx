@@ -15,6 +15,7 @@ import { goalsApi, homeApi } from '@/lib/api';
 import { flushOutbox, queueBodyWeight } from '@/lib/offline';
 import { spring } from '@/lib/motion';
 import { getPrefs } from '@/lib/feedback';
+import { useUnits } from '@/lib/units';
 import { cn } from '@/lib/utils';
 import { MUSCLE_BY_ID, type MuscleId } from '@/lib/muscles';
 import { Button } from '@/components/ui/button';
@@ -234,9 +235,12 @@ function AddGoalSheet({
   const [target, setTarget] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const u = useUnits();
 
   const save = async () => {
-    const value = parseFloat(target);
+    // Goals are stored in kg like every other weight; the field is labelled in
+    // whatever the profile asked for.
+    const value = u.wkg(parseFloat(target));
     if (!value || value <= 0) {
       setError('Enter a target above zero.');
       return;
@@ -294,7 +298,7 @@ function AddGoalSheet({
 
         <label className="block">
           <span className="mb-1.5 block text-sm font-semibold text-muted-foreground">
-            Target {type === 'bodyweight' ? 'bodyweight (kg)' : 'weight (kg)'}
+            Target {type === 'bodyweight' ? 'bodyweight' : 'weight'} ({u.w})
           </span>
           <input
             inputMode="decimal"
@@ -323,9 +327,11 @@ function LogWeightSheet({
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const u = useUnits();
 
   const save = async () => {
-    const kg = parseFloat(value);
+    // Typed in whichever unit the field is labelled with; stored in kg, always.
+    const kg = u.wkg(parseFloat(value));
     if (!kg || kg <= 0) {
       setError('Enter a weight above zero.');
       return;
@@ -356,13 +362,13 @@ function LogWeightSheet({
       }
     >
       <label className="block">
-        <span className="mb-1.5 block text-sm font-semibold text-muted-foreground">Weight (kg)</span>
+        <span className="mb-1.5 block text-sm font-semibold text-muted-foreground">Weight ({u.w})</span>
         <input
           autoFocus
           inputMode="decimal"
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder="e.g. 82.5"
+          placeholder={`e.g. ${u.wv(82.5)}`}
           className="nums w-full rounded-xl border-2 border-border bg-card px-3.5 py-3 text-xl font-extrabold outline-none focus:border-primary"
         />
       </label>
@@ -394,6 +400,7 @@ function ForYou({
   const [goalOpen, setGoalOpen] = useState(false);
   const [weightOpen, setWeightOpen] = useState(false);
   const { today, recovery, goal, last14 } = data;
+  const u = useUnits();
   // Read in an effect, not during render: prefs come from localStorage, which
   // the server pass cannot see, and a mismatch re-renders the whole root.
   const [showSuggestion, setShowSuggestion] = useState(true);
@@ -483,7 +490,8 @@ function ForYou({
                 {goal.type === 'lift' ? goal.exerciseName : 'Bodyweight'}
               </p>
               <p className="nums text-sm font-extrabold">
-                {goal.current} <span className="text-muted-foreground">/ {goal.targetValue} kg</span>
+                {u.n(goal.current, 1)}{' '}
+                <span className="text-muted-foreground">/ {u.weight(goal.targetValue)}</span>
               </p>
             </div>
             <Bar value={goal.percent / 100} className="mt-3" height={10} label="Goal progress" />
@@ -513,8 +521,8 @@ function ForYou({
             <div>
               <p className="text-sm text-muted-foreground">Volume</p>
               <p className="nums text-4xl font-extrabold leading-none">
-                {Math.round(last14.volumeKg).toLocaleString()}
-                <span className="ml-1 text-lg font-bold text-muted-foreground">kg</span>
+                {u.n(last14.volumeKg)}
+                <span className="ml-1 text-lg font-bold text-muted-foreground">{u.w}</span>
               </p>
             </div>
             <div className="min-w-0 flex-1 text-primary">
@@ -542,13 +550,13 @@ function ForYou({
           <div className="min-w-0 flex-1">
             <p className="text-sm text-muted-foreground">Bodyweight</p>
             <p className="nums text-3xl font-extrabold leading-none">
-              {last14.bodyweight ? last14.bodyweight.kg : '—'}
-              <span className="ml-1 text-base font-bold text-muted-foreground">kg</span>
+              {last14.bodyweight ? u.n(last14.bodyweight.kg, 1) : '—'}
+              <span className="ml-1 text-base font-bold text-muted-foreground">{u.w}</span>
             </p>
             {last14.bodyweight?.trendKg != null && (
               <p className="mt-1 text-xs text-muted-foreground">
                 {last14.bodyweight.trendKg > 0 ? '+' : ''}
-                {last14.bodyweight.trendKg} kg in 14 days
+                {u.weight(last14.bodyweight.trendKg)} in 14 days
               </p>
             )}
           </div>

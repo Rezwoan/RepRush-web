@@ -13,6 +13,7 @@ import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { ranksApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { rankLabel, type Rank } from '@/lib/ranks';
+import { useUnits } from '@/lib/units';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Toggle } from '@/components/ui/controls';
@@ -56,6 +57,8 @@ function readHistory(): Entry[] {
 }
 
 export function CalculatorPanel({ onSaved }: { onSaved: () => void }) {
+  // `weight` stays in kg — the picker is what changes units, not the state.
+  const u = useUnits();
   const { user } = useAuth();
   const { list, byId } = useCatalog();
   const [idx, setIdx] = useState(0);
@@ -175,15 +178,15 @@ export function CalculatorPanel({ onSaved }: { onSaved: () => void }) {
       <div className="surface mt-3 space-y-4 p-4">
         <RulerPicker
           label="Weight"
-          value={weight}
+          value={u.wv(weight, 1)}
           onChange={(v) => {
-            setWeight(v);
+            setWeight(u.wkg(v));
             setResult(null);
           }}
           min={0}
-          max={300}
-          step={2.5}
-          unit="kg"
+          max={u.imperial ? 660 : 300}
+          step={u.step}
+          unit={u.w}
           major={4}
         />
         <RulerPicker
@@ -232,7 +235,8 @@ export function CalculatorPanel({ onSaved }: { onSaved: () => void }) {
             {rankLabel(result.rank)}
           </p>
           <p className="text-sm text-muted-foreground">
-            Stronger than {Math.round(result.rank.percentile)}% of lifters · est. 1RM {result.e1rm} kg
+            Stronger than {Math.round(result.rank.percentile)}% of lifters · est. 1RM{' '}
+            {u.weight(result.e1rm, 0)}
           </p>
           <Bar
             value={result.rank.lp / 100}
@@ -260,7 +264,7 @@ export function CalculatorPanel({ onSaved }: { onSaved: () => void }) {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold">{h.name}</p>
                   <p className="nums text-xs text-muted-foreground">
-                    {h.weightKg} kg × {h.reps}
+                    {u.weight(h.weightKg)} × {h.reps}
                     {h.saved && <span className="ml-1.5 font-extrabold text-success">SAVED</span>}
                   </p>
                 </div>

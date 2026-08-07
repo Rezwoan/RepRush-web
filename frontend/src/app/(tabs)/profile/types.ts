@@ -1,5 +1,6 @@
 /** Shapes mirroring `backend/src/profile/profile.service.ts`. */
 import type { Rank } from '@/lib/ranks';
+import { cmToIn, inToCm, kgToLb, lbToKg, type Units } from '@/lib/units';
 
 export interface Cosmetic {
   id: string;
@@ -90,11 +91,19 @@ export const METRIC_LABEL: Record<string, string> = {
   hip: 'Hip',
 };
 
-export const METRIC_UNIT: Record<string, string> = {
-  bodyweight: 'kg',
-  height: 'cm',
-  bodyFat: '%',
-};
+/**
+ * Health values are stored metric — kg for bodyweight, cm for everything that
+ * is a length (height and the eight circumferences). These turn one into what
+ * the profile asked to see, and back again on the way in.
+ */
+export const metricUnit = (metric: string, u: Units) =>
+  metric === 'bodyFat' ? '%' : metric === 'bodyweight' ? u.w : u.imperial ? 'in' : 'cm';
+
+export const metricToDisplay = (metric: string, v: number, u: Units) =>
+  metric === 'bodyFat' || !u.imperial ? v : metric === 'bodyweight' ? kgToLb(v) : cmToIn(v);
+
+export const metricToStored = (metric: string, v: number, u: Units) =>
+  metric === 'bodyFat' || !u.imperial ? v : metric === 'bodyweight' ? lbToKg(v) : inToCm(v);
 
 export const hhmm = (sec: number) => {
   const h = Math.floor(sec / 3600);

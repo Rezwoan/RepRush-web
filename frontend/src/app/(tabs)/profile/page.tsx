@@ -32,6 +32,7 @@ import { profileApi } from '@/lib/api';
 import { spring } from '@/lib/motion';
 import { MUSCLE_BY_ID, type MuscleId } from '@/lib/muscles';
 import { rankLabel } from '@/lib/ranks';
+import { useUnits } from '@/lib/units';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Chip, Segmented } from '@/components/ui/controls';
@@ -135,13 +136,14 @@ function TotalsCard({
   onWindow: (d: number) => void;
 }) {
   const [metric, setMetric] = useState<'duration' | 'volume' | 'reps'>('duration');
+  const u = useUnits();
   const series = data.totals.series;
   const peak = Math.max(1, ...series.map((s) => s[metric]));
   const headline =
     metric === 'duration'
       ? hhmm(data.totals.duration)
       : metric === 'volume'
-        ? `${data.totals.volume.toLocaleString('en-GB')} kg`
+        ? u.volume(data.totals.volume)
         : `${data.totals.reps.toLocaleString('en-GB')}`;
 
   return (

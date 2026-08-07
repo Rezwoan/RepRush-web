@@ -21,6 +21,7 @@ import { hhmmss } from '@/components/workout/rest-timer';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/sheet';
 import { Toggle } from '@/components/ui/controls';
+import { useUnits } from '@/lib/units';
 import { cn } from '@/lib/utils';
 
 type Privacy = 'private' | 'friends' | 'discovery';
@@ -32,6 +33,7 @@ export default function FinishPage() {
 
   const [caption, setCaption] = useState('');
   const [bodyweight, setBodyweight] = useState('');
+  const u = useUnits();
   const [tracked, setTracked] = useState(true);
   const [discovery, setDiscovery] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
@@ -54,7 +56,7 @@ export default function FinishPage() {
     if (busy) return;
     setBusy(true);
 
-    const kg = parseFloat(bodyweight);
+    const kg = u.wkg(parseFloat(bodyweight));
     // Queued like everything else here. It used to be a fire-and-forget POST,
     // which quietly dropped the entry for anyone finishing a session offline —
     // the exact user this whole screen is built for.
@@ -118,7 +120,7 @@ export default function FinishPage() {
             placeholder="—"
             className="nums w-24 rounded-xl border-2 border-border bg-card px-3 py-2 text-right text-lg font-extrabold outline-none focus:border-primary"
           />
-          <span className="text-sm font-semibold text-muted-foreground">kg</span>
+          <span className="text-sm font-semibold text-muted-foreground">{u.w}</span>
         </label>
 
         <div className="surface flex items-center gap-3 p-4">

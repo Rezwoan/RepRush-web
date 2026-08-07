@@ -35,6 +35,8 @@ export interface RegisterDto {
   limitations?: string[];
   /** The lift ranked at step 21, so the rank the reveal promised actually exists. */
   firstRank?: { exerciseId?: string; weightKg?: number; reps?: number };
+  /** Whichever of kg/lb and cm/ft they answered the funnel in. */
+  units?: string;
 }
 
 /**
@@ -143,6 +145,11 @@ export class AuthService {
     if (typeof dto.birthDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dto.birthDate))
       profile.birthDate = dto.birthDate;
     if (typeof dto.avatarId === 'string' && dto.avatarId.length <= 32) profile.avatarId = dto.avatarId;
+    // The funnel's lb/ft answer becomes the Units preference. Written as the
+    // whole blob because this is the account's first one; `PATCH /profile`
+    // merges from here on.
+    if (dto.units === 'imperial' || dto.units === 'metric')
+      profile.preferences = JSON.stringify({ units: dto.units });
 
     if (Object.keys(profile).length) await this.usersService.updateProfile(user.id, profile);
 

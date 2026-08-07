@@ -17,6 +17,7 @@ import { workoutsApi, ranksApi } from '@/lib/api';
 import { queueStartSession, flushOutbox, resolveSessionId } from '@/lib/offline';
 import { MUSCLE_BY_ID, type MuscleId } from '@/lib/muscles';
 import { spring } from '@/lib/motion';
+import { useUnits } from '@/lib/units';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/controls';
@@ -111,6 +112,7 @@ function ExerciseRow({
   last: boolean;
 }) {
   const [menu, setMenu] = useState(false);
+  const u = useUnits();
   const working = ex.sets.filter((s) => !s.isWarmup);
   const top = working[0];
   const cat = catalog[ex.exerciseId];
@@ -129,7 +131,7 @@ function ExerciseRow({
           {ex.name}
         </p>
         <p className="nums text-sm text-muted-foreground">
-          {top?.weightKg != null && top.weightKg > 0 ? `${top.weightKg} kg · ` : ''}
+          {top?.weightKg != null && top.weightKg > 0 ? `${u.weight(top.weightKg)} · ` : ''}
           {top?.targetReps ?? '—'} reps
           <span className="mx-1.5 opacity-40">|</span>
           {fmtRest(ex.restSec)} rest

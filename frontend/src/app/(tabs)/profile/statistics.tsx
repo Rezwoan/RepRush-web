@@ -2,6 +2,7 @@
 /** Statistics (SPEC §9) — Overview, Chronometry, Metrics, Exercise Counter. */
 import { useEffect, useState } from 'react';
 import { profileApi } from '@/lib/api';
+import { useUnits } from '@/lib/units';
 import { StatTile } from '@/components/ui/display';
 import { Panel } from './panel';
 import { hhmm } from './types';
@@ -37,6 +38,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export function StatisticsPanel({ onBack }: { onBack: () => void }) {
   const [stats, setStats] = useState<Stats | null>(null);
+  const u = useUnits();
 
   useEffect(() => {
     profileApi
@@ -79,8 +81,8 @@ export function StatisticsPanel({ onBack }: { onBack: () => void }) {
 
       <Section title="Metrics">
         <div className="grid grid-cols-2 gap-2">
-          <StatTile label="Total volume" value={`${n(stats.metrics.totalVolume)} kg`} />
-          <StatTile label="Per workout" value={`${n(stats.metrics.averageVolume)} kg`} />
+          <StatTile label="Total volume" value={u.volume(stats.metrics.totalVolume)} />
+          <StatTile label="Per workout" value={u.volume(stats.metrics.averageVolume)} />
           <StatTile label="Total reps" value={n(stats.metrics.totalReps)} />
           <StatTile label="Total sets" value={n(stats.metrics.totalSets)} />
         </div>
