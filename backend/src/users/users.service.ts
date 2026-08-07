@@ -198,14 +198,23 @@ export class UsersService {
     );
     const names = tables.map((t) => t.name);
 
+    const columns = new Map<string, string[]>();
+    for (const name of names) {
+      const cols: { name: string }[] = await db.query(`PRAGMA table_info(${name})`);
+      columns.set(name, cols.map((c) => c.name));
+    }
+
+    // Users first, then the rows that hang off a session — in that order, so a
+    // session orphaned in this pass takes its sets with it in the same pass
+    // rather than on the next boot.
     for (const name of names) {
       if (name === 'users') continue;
-      const cols: { name: string }[] = await db.query(`PRAGMA table_info(${name})`);
-      if (cols.some((c) => c.name === 'userId')) {
+      if (columns.get(name).includes('userId')) {
         await sweep(name, 'userId NOT IN (SELECT id FROM users)');
       }
-      // Rows that hang off a session rather than off the user directly.
-      if (cols.some((c) => c.name === 'sessionId')) {
+    }
+    for (const name of names) {
+      if (columns.get(name).includes('sessionId')) {
         await sweep(name, 'sessionId NOT IN (SELECT id FROM gym_sessions)');
       }
     }
