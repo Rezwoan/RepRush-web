@@ -1,8 +1,8 @@
 {
   "name": "RepRush",
   "short_name": "RepRush",
-  "description": "Track your gym sessions, progress, and compete with your crew.",
-  "start_url": "/dashboard",
+  "description": "Every set you log gets ranked. Train, track, and climb the ladder.",
+  "start_url": "/home",
   "display": "standalone",
   "background_color": "#0b0f17",
   "theme_color": "#0462b2",
@@ -21,6 +21,33 @@
       "purpose": "any maskable"
     }
   ],
-  "categories": ["health", "fitness"],
-  "screenshots": []
+  "categories": [
+    "health",
+    "fitness"
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Start a workout",
+      "short_name": "Workout",
+      "url": "/workout",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Your ranks",
+      "short_name": "Ranks",
+      "url": "/ranks",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
 }

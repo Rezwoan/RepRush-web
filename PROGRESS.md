@@ -20,7 +20,7 @@ https://dev-reprush.rezwoan.codes, and its exit check below is verified in the b
 | P9 | Friends & social | **DONE** |
 | P10 | Profile & settings | **DONE** |
 | P11 | Gamification glue | **DONE** |
-| P12 | Offline & PWA hardening | TODO |
+| P12 | Offline & PWA hardening | **IN PROGRESS** |
 | P13 | Polish pass | TODO |
 | P14 | Cutover to production | TODO |
 
@@ -596,16 +596,43 @@ Deliberately not built here, and why:
 
 ---
 
-## P12 — Offline & PWA hardening · `TODO`
+## P12 — Offline & PWA hardening · `IN PROGRESS`
 
-- [ ] Extend `lib/offline.ts` to cover reactions, quest claims, bodyweight
-- [ ] Optimistic rank/XP preview client-side, reconciled with the server on sync
-- [ ] Idempotency keys on every queued write
-- [ ] Service worker: precache the shell, stale-while-revalidate for catalog/art, offline fallback page
-- [ ] Install prompt + updated manifest/icons/splash
-- [ ] Background sync where supported
-- [ ] **Exit check:** airplane mode → full session + meal logged → reconnect → everything syncs once,
-      with no duplicates and no lost sets
+- [x] **Idempotency keys on every queued write.** A request that reached the server, wrote its
+      row and then lost the response looks exactly like one that never arrived — so the outbox's
+      retry could log a set twice. Every queued write now sends `X-Idempotency-Key` (the op's own
+      id) and a **global** `IdempotencyInterceptor` refuses to run the handler again for the same
+      `(userId, key)`. One guard at the boundary, not a rule per endpoint, because the next write
+      path added would forget to add one. Keys are swept after 30 days, lazily, with no cron.
+- [x] Outbox extended to **reactions, quest claims and bodyweight**. The finish flow's bodyweight
+      was a fire-and-forget POST that silently dropped the entry for anyone finishing offline —
+      the exact user that screen exists for.
+- [x] Reactions collapse in the queue (only the newest one per post matters) and claims dedupe
+      before they are even sent.
+- [x] Service worker fallback fixed: it pointed at v1's `/dashboard`, which no longer exists as
+      the app's shell. Manifest `start_url` moved to `/home`, plus app shortcuts for Workout and
+      Ranks.
+- [x] Install prompt — `beforeinstallprompt` is caught and offered as a settings row. It has to
+      be captured when the browser fires it; there is no way to ask for it later.
+- [x] **Exit check (idempotency), verified on dev:**
+      - The same `logSet` sent three times with one key → **1 set**. A second key → 2. No key at
+        all → 3, so nothing else broke.
+      - The same bodyweight write twice with one key → **one entry**.
+      - Another account reusing the identical key → **their write went through**, so keys are
+        scoped per user.
+      - Session completion replayed with one key left the Spark award at 21.
+
+**Remaining in this phase (resume here):**
+- [ ] Optimistic rank/XP preview client-side, reconciled with the server on sync. The session's
+      rank strip already predicts the *next* rank from server data; what is missing is showing an
+      estimated rank for a set logged while offline.
+- [ ] Precache the app shell explicitly (next-pwa precaches build assets, but the tab routes are
+      only cached once visited) and add a real `/offline` page instead of falling back to `/home`.
+- [ ] Background Sync API where supported — the 30s retry plus `online` and `visibilitychange`
+      already covers the practical cases, so this is a refinement, not a gap.
+- [ ] **Exit check still to run:** airplane mode → full session logged → reconnect → everything
+      syncs once, no duplicates, no lost sets. P6 verified this for sets; it needs re-running now
+      that reactions, claims and bodyweight share the queue.
 
 ---
 
@@ -1050,4 +1077,22 @@ carry its freezes into the next one.
 reactions, quest claims and bodyweight, plus idempotency keys, a real service worker precache and
 an install prompt. Note that quest claims are *already* idempotent server-side, so the outbox only
 has to not lose them.
+**Blockers:** none.
+
+### 2026-08-07 — P12 in progress: idempotency landed, the rest is noted
+The half of P12 that was a *correctness* problem is done; the half that is polish is not, and is
+listed under the phase above as the resume point.
+
+The correctness problem: the outbox retries anything it did not get a response to, and a write
+that succeeded before the connection dropped is indistinguishable from one that never arrived. It
+could log the same set twice. Every queued write now carries its op id as `X-Idempotency-Key` and
+a global interceptor drops the second attempt. Verified the way it has to be verified — the same
+request three times, then a different key, then no key at all, to prove nothing else broke.
+
+Queuing reactions, claims and bodyweight found one live bug on the way: the finish flow's
+bodyweight entry was a fire-and-forget POST with a `.catch(() => {})`, so for anyone finishing a
+session with no signal it vanished silently. That is the single most likely moment in the whole
+app to be offline.
+
+**Next session:** finish P12's remaining four items (listed above), then P13 — the polish pass.
 **Blockers:** none.

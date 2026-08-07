@@ -292,6 +292,9 @@ Notable v1 rules that must survive into v2:
   paying twice is impossible.
 - **2026-08-07** The streak-at-risk notification is the **existing** 5pm reminder with better
   copy, not a second cron. Why: two pushes on the same evening for the same reason.
+- **2026-08-07** Idempotency is **one global interceptor keyed on `(userId, X-Idempotency-Key)`**,
+  not a dedupe rule per endpoint. Why: a per-endpoint rule is a thing the next write path forgets.
+  The key is the outbox op's own id, so it already exists and is already unique.
 
 ---
 
@@ -677,3 +680,14 @@ Two rules that fall out of it:
   unknown emblem falls back to the default rather than failing.
 - Quest rotation is `hash(userId:period)` into the pool. Deterministic, so it needs no rota table
   and no cron, and two reads a second apart cannot disagree about what today's quest is.
+
+**P12 · 2026-08-07**
+
+- **The outbox could log a set twice, and always could have.** It retries anything it did not see
+  a response to, and a write that succeeded before the connection dropped looks identical to one
+  that never arrived. The fix is `X-Idempotency-Key` on every queued write plus a global
+  interceptor; the check that matters is sending the *same* request three times and counting rows.
+- Test the negative too: a different key must still write, and **no key at all must still write**,
+  or the guard has quietly broken every non-outbox caller.
+- v1's manifest `start_url` and the service worker's document fallback both pointed at
+  `/dashboard`. Anything naming a v1 route is suspect now that the tab shell owns the app.
