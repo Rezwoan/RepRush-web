@@ -206,6 +206,26 @@ Notable v1 rules that must survive into v2:
   But the shipped app disagrees with the owner's reference on both points, and P7 builds the screen
   that makes it visible. Changing division direction touches `rankValue()`, `rankFromPercentile()`
   and P3's exit-check table; adding Champion additionally re-spaces every `TIER_FLOOR`.
+- **2026-08-07** The generated plan is stored as a **JSON blob** on `gym_sessions.plan`, not as
+  rows. Why: it is written once at session start, read whole, and never queried by any of its
+  fields; sql.js rewrites the entire database file on flush, so a `plan_exercises` table would tax
+  every unrelated write forever. The *logged sets* remain the durable record — the plan is only the
+  prescription the user was working from, kept so a resumed session knows what was left to do.
+- **2026-08-07** New `gym_sessions` columns are **nullable, including `tracked`** (null means
+  true). Why: a NOT NULL column added to an existing table is the change that can make SQLite
+  rebuild the table under `synchronize`, and that table holds every session anyone has logged.
+- **2026-08-07** A reported limitation drops **free-weight compounds and expert-level movements on
+  the affected region**, and keeps machine, cable and isolation work. Why: the catalog carries no
+  joint data, so anything joint-specific would be a guess dressed up as medicine — and excluding a
+  region outright would silently delete legs from the app for anyone with a knee complaint. Every
+  muscle stays trainable.
+- **2026-08-07** The generator programs `strength` and `powerlifting` first, keeps `plyometrics` /
+  `strongman` / `olympic weightlifting` as fallbacks, and excludes `stretching` and `cardio`
+  outright. Why: only three of the catalog's seven categories are resistance training, and neither
+  a stretch nor a treadmill ranks.
+- **2026-08-07** No `Create Exercise` in the picker and no routine selector in the builder. Both
+  need user-owned tables (SPEC §12.3) and belong with P10's Routines and Exercises cards. Likewise
+  no `Add Media` / `Tag Friends` in the finish flow — those need P9's posts.
 - **2026-08-07** `User.username` is unique via `@Index({ unique: true })`, not `@Column({ unique: true })`.
   Why: a unique *column* makes SQLite rebuild the whole `users` table (create/copy/drop/rename) on
   the next `synchronize`, which is exactly the operation that can lose live accounts. A separate
@@ -271,7 +291,19 @@ programmatically in ways a fixed asset can't be.
 - **Badge and medal bodies** (the crest, the heptagon, the ribbon, the ray halo) — geometry that
   has to be tinted per tier and animated per state. The *emblems* inside them are game-icons
   artwork; only the frame is ours.
-- **Equipment glyphs** — small, composable, already done.
+- **The dumbbell equipment glyph, and only that one.** game-icons has no dumbbell anywhere in its
+  4,239-icon index, so it is drawn in `equipment-icon.tsx` in the same filled 512-unit box as the
+  vendored glyphs. The other seven are game-icons artwork (2026-08-07 — the hand-drawn stroke set
+  was replaced after the owner called it out).
+
+### Picking an icon: judge it at the size it renders
+
+Equipment glyphs render at ~17px inside a boxed list row. `lorc/lever` and `delapouite/spring` both
+read beautifully at 64px and dissolved into hairlines at list size, which is how the first
+replacement pass still shipped two unreadable icons. **Render every candidate at its real size
+before choosing** — the throwaway contact-sheet trick (fetch the raw SVGs, lay them out at 64 / 28 /
+17px, serve on localhost, screenshot) takes two minutes and settles it. Filled artwork holds a
+silhouette all the way down; 2px strokes do not.
 
 ### Animation approach (decided 2026-08-07)
 
@@ -469,3 +501,34 @@ Two rules that fall out of it:
 - Do **not** hand-edit the dev DB file while the backend is running: sql.js holds the whole database
   in memory and rewrites the file on flush, so anything written underneath it is lost. Go through
   the API.
+
+**P6 · 2026-08-07**
+
+- **The dev deploy's intermittent `npm ci` corruption was two deploys racing.** Symptoms were
+  `npm ci` reporting "added 485 packages" and then `sh: 1: nest: not found`, and
+  `ENOTEMPTY: directory not empty, rmdir 'node_modules/<pkg>'`. Cause: the CI run triggered by a
+  push and a manual `ssh … deploy-dev.sh` executing `npm ci` in the same directory simultaneously —
+  GitHub's push-event lag means the CI run lands *after* you have already deployed by hand.
+  `deploy-dev.sh` now takes `flock /tmp/reprush-dev-deploy.lock` before anything else, stops both
+  dev services around the install-and-build phase, and traps EXIT to start them again so a failed
+  build cannot leave dev down. Check `gh run list --workflow deploy-dev.yml` before deploying
+  manually.
+- **`deploy-dev.sh` replaces itself in step 1**, so any change to it takes effect on the *next*
+  run, not the one you are watching. Budget two runs when changing the deploy script.
+- **Run new maths over the real catalog and the real history, not just the fixture.** P3 learned
+  this with machine isolation paying out Legend; P6 learned it again when the generator prescribed
+  *Alternate Leg Diagonal Bound* and a treadmill for a strength session. Both self-checks passed.
+  The fixture only contains what you thought to put in it.
+- **`nextDivisionPercentile` returns the boundary exactly, and `rankFromPercentile` floors.** Score
+  a hair past it (`+1e-6`) whenever you need the rank *reached* by crossing a boundary, or
+  floating-point lands on 1.9999999 and hands back the division the user already holds.
+- The rest timer stores the **instant rest ends** and derives the remainder from `Date.now()`.
+  Never decrement a counter for anything that must survive a locked screen — browsers throttle
+  background `setInterval` to once a minute or stop it entirely.
+- Anything mounted only inside `app/(tabs)/layout.tsx` does **not** run on `/workout/session/*`,
+  `/workout/finish/*` or `/workout/summary/*` — those are deliberately outside the tab shell. That
+  is how the outbox auto-sync came to be missing from the one screen that logs offline. App-wide
+  behaviour belongs in `app/layout.tsx`.
+- Test accounts can be cleaned up entirely from the Pi in one command — see the P4 note; the same
+  `sudo grep ADMIN /var/www/reprush-dev/backend/.env` → login → `DELETE /api/admin/users/:id` loop
+  works, and deleting a user takes their sessions and sets with them.

@@ -15,7 +15,7 @@ https://dev-reprush.rezwoan.codes, and its exit check below is verified in the b
 | P3 | Rank engine | **DONE** |
 | P4 | Onboarding funnel | **DONE** |
 | P5 | Home tab | **DONE** |
-| P6 | Workout tab | TODO |
+| P6 | Workout tab | **DONE** |
 | P7 | Ranks tab | TODO |
 | P9 | Friends & social | TODO |
 | P10 | Profile & settings | TODO |
@@ -267,21 +267,95 @@ Three real bugs, all caught before they shipped:
 
 ---
 
-## P6 — Workout tab · `TODO`
+## P6 — Workout tab · `DONE` (2026-08-07)
 
-- [ ] Builder: routine selector, filter chips (duration/difficulty/equipment/rest/split)
-- [ ] Generator: recovered + lowest-ranked muscles, equipment- and limitation-aware, duration-fitted
-- [ ] Target Muscles cards with per-muscle share
-- [ ] Exercise list rows + overflow (swap/remove/reorder/rest)
-- [ ] Exercise picker sheet (search, filter by muscle/equipment, recent, favourites)
-- [ ] Active session: sticky rest timer, notes, per-exercise card, rank progress strip, set grid with
-      PREV lookup, warm-up sets, green completed rows, add set, add exercise
-- [ ] Rest timer: background-safe, audio + haptic on finish, skip, per-exercise override
-- [ ] All writes go through the extended offline outbox — never call the API directly from a component
-- [ ] Finish flow (media, caption, consumables, tag friends, bodyweight, tracker, privacy) → post
-- [ ] Post-session celebration chain: summary → rank-ups (+LP) → streak → progression (XP/currency/level) → medals
-- [ ] **Exit check:** a full session can be logged start-to-finish with the network off, and syncs
-      correctly on reconnect
+- [x] **The generator** (`backend/src/workouts/generator.ts`) — the one piece of real new logic.
+      Recovered + lowest-ranked muscles, round-robin so a short session still touches everything the
+      Target Muscles cards promised, equipment- and limitation-aware, fitted to the requested
+      duration. Pure maths with a boot self-check beside e1rm/standards/recovery.
+- [x] Recovery moved from `HomeService` to `RanksService`. The Recovery Zone card and the generator
+      disagreeing about which muscles are fresh would read as a bug in both.
+- [x] `standards.ts` gains the **inverse** of the population curve (Acklam's normal inverse) and
+      `nextDivisionPercentile`, which is what the rank strip needs to name the exact set that
+      promotes you.
+- [x] Builder: duration / difficulty / regenerate chips, Target Muscles cards (mini Bodygraph with
+      the muscle lit + its share), exercise rows with swap / remove / reorder / rest, floating
+      `Start Workout`. ~~Routine selector, split and equipment chips~~ — routines are SPEC §12.3 and
+      belong with P10's Routines card; the equipment filter is a profile setting the generator
+      already reads, so a chip that duplicates it is a second place to be wrong.
+- [x] Exercise picker sheet over the cached 873-exercise catalog: search, sort chips
+      (Alphabetical / By Rank / Performed / Muscle), muscle-group and equipment filters, tier badge
+      and set count on lifts the user has ranked. ~~Create Exercise~~ — user-authored exercises need
+      their own table; deferred to P10 with the rest of the profile-owned data.
+- [x] Active session: sticky header (elapsed → blue `REST mm:ss`), notes, per-exercise card with
+      collapse and overflow, **rank progress strip** (`TO NEXT RANK 102.5×7` + progress bar), set
+      grid `SET | PREV | KG | REPS | ✓`, PREV as a lookup of last session, warm-up rows marked `W`,
+      whole-row green on completion, add set, add exercise, Tracker Settings sheet, How-to-Log sheet.
+- [x] **Custom keypad**, not the OS keyboard: ±2.5 / ±1 steps, digits, `.`, backspace, duplicate
+      previous set, plate calculator ("Per side: 25 + 15 kg on a 20 kg bar"), `NEXT`, and the blue
+      "log the total weight" banner. Self-checked plate maths.
+- [x] Rest timer: **background-safe by construction** — it stores the instant the rest ends and
+      derives the remaining seconds from `Date.now()`, so a locked phone cannot drift it. Persisted
+      to localStorage, synthesised WebAudio chime + vibration on finish, docked mini-bar with +30s
+      and skip that survives leaving the session screen.
+- [x] Every write goes through the extended outbox, now carrying `exerciseId`, `rpe`, the plan and
+      the finish payload. `completeSession` is idempotent — a replayed completion cannot stretch the
+      recorded duration.
+- [x] Finish flow: caption, consumables link, bodyweight, Tracker toggle, Post in Discovery,
+      privacy accordion, confirm dialog. ~~Add Media, Tag Friends~~ — both need P9's posts, and a
+      control that opens nothing is worse than one that is not there yet.
+- [x] Post-session chain: Summary (confetti, duration / records / XP) → Ranking (per-exercise badge
+      + LP bar) → Streak → Your Progression (seven-flame week, itemised XP breakdown per SPEC §10).
+      Medals and Level Up are P11's — it owns the medal engine and the XP ledger, so the chain is a
+      list of steps they drop into. XP is computed and shown, never *awarded*, and the copy says so.
+- [x] **Exit check — verified on dev, in the browser:**
+      - Boot self-checks green: `e1rm ok, standards ok, recovery ok, generator ok`.
+      - Builder → tracker → keypad → green row → rest timer → finish → four-step chain, end to end.
+      - The rank strip's prescription **actually promotes**: bench at Diamond II p86.5 was told to
+        beat 102.5×5; `POST /ranks/calculate` on exactly that set returns Diamond I p88.1.
+      - Generator respects equipment (`?equipment=bodyweight` returned only bodyweight movements),
+        duration (30 min → 2 exercises / 28 min; 60 min → 4), difficulty (2 vs 4 sets per exercise),
+        and stopped offering quads once they had been trained.
+      - **Offline:** with XHR and fetch blocked, a session started (temp id `-1786093663020`), three
+        sets logged and rendered green, outbox held `startSession + 3 × logSet`. On reconnect the
+        queue drained to 0, the temp id mapped to real id **69**, and the server had the session
+        with its stored plan and exactly three sets — no duplicates, nothing lost.
+      - Prod 200 and untouched throughout. Test accounts deleted; dev is back to its 2 real users.
+
+Four real bugs, all found by running it rather than by reading it:
+- **The generator prescribed box jumps and a treadmill.** The catalog is 873 exercises across seven
+  categories and only three are resistance training; nothing filtered on that, so a 60-minute
+  strength session came back as *Alternate Leg Diagonal Bound*, *Backward Drag* and *Box Jump* —
+  all legitimate quad exercises, none loadable, so every weight field was blank and the rank engine
+  had nothing to score. The synthetic fixture could not catch it because it had no categories; it
+  has them now, named so the wrong answers sort first alphabetically.
+- **The rank strip named the division you were already in.** `nextDivisionPercentile` returns the
+  boundary exactly and `rankFromPercentile` floors, so at 87.333 the multiply-by-three landed on
+  1.9999999. The self-check's ladder walk missed it because it compared `rankValue`, which rises
+  inside a division too.
+- **A session logged offline never synced on reconnect.** `startAutoSync` was only ever called by
+  `OfflineBanner`, which lives inside the tab shell — and the active session screen is deliberately
+  outside it. The one screen where offline logging actually happens was the one with no reconnect
+  listener. Now mounted in the root layout, plus a 30s retry, because `online` does not fire when
+  gym wifi stays associated but stops routing.
+- **Typing a weight blanked the reps ghost.** Focusing the kg column creates a draft whose `reps` is
+  `''`, read with `??`; a row about to log 7 reps displayed `100 / —`. The value logged was always
+  right, which is worse — the row lied about it.
+
+---
+
+## P6 addendum — equipment icons (owner-prompted, 2026-08-07)
+
+Owner: *"fix the equipment icons, these looks shit."* Correct, and the same instinct as the P1 and
+badge corrections: **search before drawing.** The originals were hand-drawn 2px strokes in a 32-unit
+box that went spindly and characterless at the ~17px they actually render at inside a list row.
+
+Replaced with filled game-icons.net artwork (CC BY 3.0, already vendored), chosen by rendering every
+candidate at 64 / 28 / 17px and picking on silhouette rather than on how it looked large —
+`lorc/lever` and `delapouite/spring` both read beautifully at 64px and dissolved into hairlines at
+list size, so machine is `lorc/gears` and band is `delapouite/bouncing-spring`. game-icons has no
+dumbbell anywhere in its 4,239-icon index, so that one stays hand-authored, redrawn as filled shapes
+in the same 512-unit box. A self-check asserts every equipment type resolves to a real glyph.
 
 ---
 
@@ -651,4 +725,38 @@ vision on both, and P7 builds the screen that shows it.
 CI was also diagnosed properly this session and is healthy again; see the entry above.
 
 **Next:** P6 — the Workout tab. SPEC §5 is now specific enough to build from directly.
+**Blockers:** none.
+
+### 2026-08-07 — P6 complete, and the dev deploy finally diagnosed
+The Workout tab is live: builder → tracker → finish → the four-step post-session chain, with every
+write through the outbox. Full detail in the P6 section above.
+
+The generator is the only real new logic — *train what is recovered and lowest-ranked, with the
+equipment you can reach, in the time you have* — and the interesting part is what running it against
+the real catalog found that a synthetic fixture could not: it was prescribing box jumps, sled drags
+and a treadmill, because only three of the catalog's seven categories are resistance training and
+nothing filtered on that. Same lesson as P3's machine-isolation bug. **Run new maths over the real
+data, every time.**
+
+Recovery moved out of `HomeService` into `RanksService`. Two implementations of "which muscles are
+fresh" is a drift bug waiting to happen, and here the two consumers sit one tap apart.
+
+`standards.ts` now inverts: percentile → required bodyweight multiple → required e1RM → the load at
+the reps you train at. That is what makes the rank strip say `TO NEXT RANK 102.5×7` instead of
+something vague, and it is verified the only way that means anything — feeding the prescription back
+into `POST /ranks/calculate` and checking it lands in the next division.
+
+**⚠️ The dev deploy has been flaky for two sessions and the cause was not what it looked like.**
+`npm ci` reporting success and leaving `node_modules/.bin` half-populated ("sh: 1: nest: not found",
+`ENOTEMPTY` on rmdir) was **CI and a manual `deploy-dev.sh` running `npm ci` in the same directory
+at the same time**. GitHub's push-event delivery for this repo lags, so a run triggered by the push
+routinely landed while the manual deploy that followed it was mid-install. CI's concurrency group
+only serialises CI against itself. `deploy-dev.sh` now takes an `flock` before doing anything, stops
+the dev services for the install-and-build phase, and has an EXIT trap so a failed build cannot
+leave dev down. **Do not push and then immediately deploy by hand — the lock will make one wait for
+the other, which is the point, but check `gh run list` first anyway.**
+
+**Next:** P7 — the Ranks tab. Two decisions are waiting there and are recorded in `MEMORY.md`: the
+reference ladder has eight tiers to our seven, and numbers divisions the other way round. P7 builds
+the screen that makes both visible.
 **Blockers:** none.
