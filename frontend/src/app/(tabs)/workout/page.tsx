@@ -342,7 +342,7 @@ export default function WorkoutBuilderPage() {
             transition={spring.soft}
             className="mt-4"
           >
-            <h1 className="text-[26px] font-extrabold leading-tight">{plan.title}</h1>
+            <h2 className="text-[26px] font-extrabold leading-tight">{plan.title}</h2>
             <p className="nums mt-0.5 text-sm text-muted-foreground">
               {plan.exercises.length} exercises · {totalSets} sets · about{' '}
               {Math.max(1, Math.round(plan.estimatedSec / 60))} min

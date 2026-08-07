@@ -64,7 +64,7 @@ export function ImageCropper({ src, onCancel, onConfirm, size = 512, busy }: Pro
           >
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
               <h3 className="font-display font-semibold text-sm">Adjust your photo</h3>
-              <button onClick={onCancel} className="text-muted-foreground hover:text-foreground transition-colors"><X size={18} /></button>
+              <button onClick={onCancel} aria-label="Close" className="text-muted-foreground hover:text-foreground transition-colors"><X size={18} /></button>
             </div>
 
             <div className="relative w-full h-72 bg-black">

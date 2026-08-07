@@ -658,12 +658,14 @@ function ExerciseCard({
                     </span>
 
                     <Cell
+                      label={`${u.w}, set ${i + 1}`}
                       value={weight}
                       done={!!done}
                       active={focusKey === key && focusField === 'weight'}
                       onClick={() => !done && onFocus(key, 'weight')}
                     />
                     <Cell
+                      label={`Reps, set ${i + 1}`}
                       value={reps}
                       done={!!done}
                       active={focusKey === key && focusField === 'reps'}
@@ -723,17 +725,20 @@ function ExerciseCard({
 }
 
 function Cell({
-  value, done, active, onClick,
+  value, done, active, onClick, label,
 }: {
   value: string;
   done: boolean;
   active: boolean;
   onClick: () => void;
+  /** What this cell is. Its text is a bare number, or "—" when empty. */
+  label: string;
 }) {
   return (
     <button
       onClick={onClick}
       disabled={done}
+      aria-label={value ? `${label}, ${value}` : `${label}, empty`}
       className={cn(
         'nums h-9 rounded-xl border-2 text-center text-base font-extrabold transition-colors',
         done

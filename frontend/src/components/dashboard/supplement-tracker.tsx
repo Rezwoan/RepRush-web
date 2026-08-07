@@ -220,8 +220,8 @@ export default function SupplementTracker({ onChange, date }: { onChange?: () =>
                             {editLog?.id === l.id ? (
                               <div className="flex items-center gap-2 w-full">
                                 <input autoFocus type="number" value={editLog.amount} onChange={(e) => setEditLog({ id: l.id, amount: e.target.value })} className="field !py-1 flex-1" />
-                                <button onClick={saveLogEdit} className="text-success"><Check size={15} /></button>
-                                <button onClick={() => setEditLog(null)} className="text-muted-foreground"><X size={15} /></button>
+                                <button onClick={saveLogEdit} aria-label="Save amount" className="text-success"><Check size={15} /></button>
+                                <button onClick={() => setEditLog(null)} aria-label="Cancel edit" className="text-muted-foreground"><X size={15} /></button>
                               </div>
                             ) : (
                               <>

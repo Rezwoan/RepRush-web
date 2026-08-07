@@ -7,7 +7,7 @@
  * `app/workout` and `app/profile` until P6 and P10 replace them.
  */
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { homeApi } from '@/lib/api';
 import { BrandLoader } from '@/components/ui/motion-primitives';
@@ -16,9 +16,23 @@ import { TopBar } from '@/components/layout/top-bar';
 import OfflineBanner from '@/components/layout/offline-banner';
 import { Mascot, type MascotPose } from '@/components/art/mascot';
 
+/**
+ * Every tab is a stack of `<h2>` sections with no `<h1>` above them, so a
+ * screen reader had nothing naming the page. One heading here beats five —
+ * and it is visually hidden because the tab bar is already the visible label.
+ */
+const TAB_TITLE: Record<string, string> = {
+  '/home': 'Home',
+  '/workout': 'Workout',
+  '/ranks': 'Ranks',
+  '/friends': 'Friends',
+  '/profile': 'Profile',
+};
+
 export default function TabsLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const [streak, setStreak] = useState(0);
 
   useEffect(() => {
@@ -45,7 +59,8 @@ export default function TabsLayout({ children }: { children: React.ReactNode }) 
         avatar={<Mascot pose={((user as any).avatarId as MascotPose) || 'idle'} size={30} />}
         onAction={() => router.push('/profile')}
       />
-      <main className="mx-auto max-w-2xl px-4 py-4">
+      <main id="main" className="mx-auto max-w-2xl px-4 py-4">
+        <h1 className="sr-only">{TAB_TITLE[pathname ?? ''] ?? 'RepRush'}</h1>
         <OfflineBanner />
         {children}
       </main>

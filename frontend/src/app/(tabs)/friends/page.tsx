@@ -588,7 +588,7 @@ export default function FriendsPage() {
   return (
     <div className="pb-6">
       <header className="flex items-center gap-3 pt-4">
-        <h1 className="flex-1 text-3xl font-extrabold">Friends</h1>
+        <h2 className="flex-1 text-3xl font-extrabold">Friends</h2>
         <button
           onClick={() => setTab('boards')}
           aria-label="Leaderboards"
