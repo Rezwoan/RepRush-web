@@ -121,6 +121,9 @@ export class SeedService implements OnModuleInit {
     const userId = await this.seedUser();
     await this.seedWorkoutPlans(adminId, userId);
     await this.backfillExerciseIds();
+
+    const orphans = await this.usersService.sweepOrphanedOnboarding();
+    if (orphans) this.logger.log(`Removed ${orphans} orphaned onboarding row(s)`);
   }
 
   /**

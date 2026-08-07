@@ -120,8 +120,71 @@ export class UsersService {
     return Math.round((completed / steps.length) * 100);
   }
 
+  /**
+   * Delete an account and everything keyed to it.
+   *
+   * This used to be `userRepo.delete(userId)` alone, which left every dependent
+   * row behind — and SQLite hands the freed id straight to the next account, so
+   * the orphaned `onboarding_progress` row (unique on `userId`) made the next
+   * signup fail with a 500. P9 found it, but it has been true since v1.
+   *
+   * The sweep is driven by `sqlite_master` rather than a hand-written list of
+   * repositories, because a hand-written list is exactly what went stale: every
+   * new table that keys off `userId` would have to remember to add itself here.
+   * It cannot outrun the schema.
+   */
   async deleteUser(userId: number) {
+    const db = this.userRepo.manager;
+    // Sets hang off the session, not the user, so they go first.
+    await db.query(
+      'DELETE FROM workout_sets WHERE sessionId IN (SELECT id FROM gym_sessions WHERE userId = ?)',
+      [userId],
+    );
+    // …as do post reactions and comments, which key off the session too.
+    for (const table of ['post_reactions', 'post_comments']) {
+      await db.query(
+        `DELETE FROM ${table} WHERE userId = ? OR sessionId IN (SELECT id FROM gym_sessions WHERE userId = ?)`,
+        [userId, userId],
+      );
+    }
+    await db.query('DELETE FROM friendships WHERE requesterId = ? OR addresseeId = ?', [
+      userId,
+      userId,
+    ]);
+    // Whoever they referred keeps their account; they just lose the referrer.
+    await db.query('UPDATE users SET referredByUserId = NULL WHERE referredByUserId = ?', [userId]);
+
+    const tables: { name: string }[] = await db.query(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+    );
+    for (const { name } of tables) {
+      if (name === 'users') continue;
+      const cols: { name: string }[] = await db.query(`PRAGMA table_info(${name})`);
+      if (cols.some((c) => c.name === 'userId')) {
+        await db.query(`DELETE FROM ${name} WHERE userId = ?`, [userId]);
+      }
+    }
+
     await this.userRepo.delete(userId);
+  }
+
+  /**
+   * One-off sweep for rows already orphaned by the old delete (above).
+   *
+   * Only `onboarding_progress` is swept: it is the one with a unique index on
+   * `userId`, so it is the one that actively breaks the next signup. Other
+   * orphans are unreachable rather than harmful, and a blanket delete over a
+   * production database is not a thing to do casually.
+   */
+  async sweepOrphanedOnboarding(): Promise<number> {
+    const db = this.userRepo.manager;
+    const [{ n }] = await db.query(
+      'SELECT COUNT(*) AS n FROM onboarding_progress WHERE userId NOT IN (SELECT id FROM users)',
+    );
+    if (n > 0) {
+      await db.query('DELETE FROM onboarding_progress WHERE userId NOT IN (SELECT id FROM users)');
+    }
+    return Number(n) || 0;
   }
 
   async adminResetPassword(userId: number, newPassword: string) {
