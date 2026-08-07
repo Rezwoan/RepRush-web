@@ -268,6 +268,21 @@ Notable v1 rules that must survive into v2:
   ledgers are P11's, and this is the same line P6 drew with post-session XP. A CLAIM button that
   credits nothing is worse than one that says it is coming.
 
+- **2026-08-07** Cosmetics carry their **own paint** in the backend catalog
+  (`backend/src/profile/cosmetics.ts`), rather than ids on the server and colours in the client.
+  Why: two files that have to agree eventually don't, and adding a cosmetic should be one line.
+- **2026-08-07** The Health Log is one `health_logs` table with a `metric` column — **except
+  bodyweight, which keeps `body_weight_logs`**. Why: Home, the finish flow and the rank engine's
+  bodyweight ratio all read it there, and it is the one number the entire ladder is scaled
+  against. `ProfileService` hides the seam so the screen sees one shape.
+- **2026-08-07** Profile preferences, the card order and owned cosmetics are **JSON blobs on
+  `users`**, not columns or tables. Why: each is read whole, written whole, never queried by any
+  of its fields — and a NOT NULL column added to `users` is the change that can rebuild the table
+  that holds every account.
+- **2026-08-07** Themes stay **free** even though `Theme.price` exists and SPEC §9 shows prices.
+  Why: currency is not awarded until P11, so pricing 34 themes would only take something away.
+  Revisit when the ledger is on.
+
 ---
 
 ## 7. Open risks
@@ -627,3 +642,18 @@ Two rules that fall out of it:
 - **Before placements, a Bodyrank averages only what has been trained**, so an account with one
   heavy bench outranks a year of training on the Bodyrank leaderboard. True, and useless as a
   ranking: predicted rows now sort below every placed one and are labelled.
+
+**P10 · 2026-08-07**
+
+- **A Next.js page file may export only the default.** Exporting a component or a hook from
+  `app/**/page.tsx` fails the build with *"does not satisfy the constraint `{ [x: string]: never }`"*,
+  which names a type rather than the rule. Anything shared goes in a sibling file.
+- **Two `page.tsx` files cannot resolve to one URL.** Building the v2 Profile under `(tabs)/`
+  required deleting v1's `app/profile/` — the same step P6 took for `/workout`. Check for a v1
+  route of the same name *before* starting a tab.
+- The v1 pieces worth keeping were all reusable as-is: `ImageCropper`, `NotificationSettings`,
+  `authApi.changePassword` and `ArtAttribution` all moved into settings untouched.
+- `EquipmentIcon` takes `equipment`, not `type`, and its `Equipment` union is exported from
+  `components/art/equipment-icon.tsx` — not from `lib/muscles.ts`, where you would look first.
+- **`UID` is readonly in bash.** A check script that captures a user id into `$UID` silently gets
+  the shell's own uid, and the cleanup then deletes nothing. It cost one leftover test account.

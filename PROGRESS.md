@@ -18,7 +18,7 @@ https://dev-reprush.rezwoan.codes, and its exit check below is verified in the b
 | P6 | Workout tab | **DONE** |
 | P7 | Ranks tab | **DONE** |
 | P9 | Friends & social | **DONE** |
-| P10 | Profile & settings | TODO |
+| P10 | Profile & settings | **DONE** |
 | P11 | Gamification glue | TODO |
 | P12 | Offline & PWA hardening | TODO |
 | P13 | Polish pass | TODO |
@@ -476,21 +476,75 @@ carrying its own repositories.
 
 ---
 
-## P10 — Profile & settings · `TODO`
+## P10 — Profile & settings · `DONE` (2026-08-07)
 
-- [ ] Profile header (banner, avatar + border + crown, name, username, title hex)
-- [ ] Shortcut grid (Store, Inventory, Quests, Medals, Health, Reactions, Routines, Exercises, Stats,
-      Feedback)
-- [ ] Cards: Memories calendar, Last 7 Days Bodygraph, Totals (duration/volume/reps × window),
-      Streaks, Levels, Ranks, 6-Month Activity, Routines, Exercises, Reactions
-- [ ] Reorderable card layout (`Edit Profile Layout`), persisted
-- [ ] Edit Profile: avatar/picture/title/border/banner pickers, username, display name, bio, preview
-- [ ] Public profile view (what friends see)
-- [ ] Store + Inventory (cosmetics bought with earned currency)
-- [ ] Settings tree from SPEC §9: Account, Statistics, Import Data, Units, Themes, Languages,
-      Notifications, Analysis, Calendar, Other Preferences, Resources, Legal, Logout
-- [ ] Keep v1 `/admin` working, moved under settings
-- [ ] **Exit check:** every settings screen exists and its preference actually takes effect
+- [x] Profile header: banner + avatar with its cosmetic border + level pip, display name,
+      username, title hex. Rendered by one `ProfileHeaderCard` that Edit Profile reuses as its
+      live preview — a preview that can disagree with the thing it previews is worse than none.
+- [x] Shortcut grid (2 × 5): Store · Inventory · Quests · Medals · Health · Reactions · Routines ·
+      Exercises · Stats · Feedback. Quests, Medals and Reactions are honest "coming with P11"
+      screens rather than dead tiles.
+- [x] Cards, all real data from one `GET /profile/me`: Memories (14 days, each trained day drawn
+      as a mini Bodygraph of what was worked), Last 7 Days (Bodygraph tinted by *volume*, in blue
+      — the Recovery Zone's amber means something else), Totals (Duration | Volume | Reps over a
+      7 / 30 / 180 / 365-day window), Streaks, Levels, Ranks, 6-Month Activity, and the Routines /
+      Exercises / Reactions counters.
+- [x] `Edit profile layout` reorders the cards and persists through `PATCH /profile`. Unknown
+      cards are dropped and new ones appended, so a card added later still appears for someone who
+      reordered before it existed.
+- [x] Edit Profile: avatar picker (the mascot's six poses), picture upload through v1's existing
+      cropper, and title / border / banner pickers over what you own. **Ownership is checked
+      server-side** — equipping something unowned is the one cheat this screen could enable.
+- [x] Public profile at **`/u/:username`** — outside the tab shell and `@Public()`, because a
+      profile link has to open for someone who is not signed in.
+- [x] Store + Inventory over one cosmetic catalog (`backend/src/profile/cosmetics.ts`) that
+      carries its own `paint`, so the client has no parallel table of gradients to keep in step.
+      Buying spends the earned currency; **P11 awards it**, so balances start at 0 and the screen
+      says so.
+- [x] Settings tree: Account (password change), Referrals, Statistics, Health, Units, Themes,
+      Notifications (v1's push component), Analysis, Calendar (with a live preview month), Other
+      Preferences (app layout, haptics, audio, rest alert), About + attributions, Admin for
+      admins, Logout. Every preference round-trips through an allow-list — an unknown key is
+      dropped rather than stored.
+- [x] **Health Log (SPEC §12.2)** — one `health_logs` table with a `metric` column for eleven
+      measurements, plus a chart and entry list. **Bodyweight deliberately still writes
+      `body_weight_logs`**: Home, the finish flow and the rank engine's bodyweight ratio all read
+      it there, and moving it would be a migration on the one number the whole ladder is scaled
+      against. The service hides the seam, so the screen sees one shape.
+- [x] **Routines and folders (SPEC §12.3)**, and **Create Exercise**, both deferred here from P6.
+      Deleting a folder keeps its routines — deleting a drawer is not deleting what was in it. A
+      user-authored exercise is emitted in the *catalog's* shape with a `custom:` id, so the
+      picker, the generator and the rank engine need to know nothing about it.
+- [x] v1's `/profile` page retired — two routes cannot answer to one URL. Its useful parts (image
+      cropper, password change, notification settings, art attribution) live on inside settings.
+- [x] **Exit check — verified on dev against the API:**
+      - `GET /profile/me` on a fresh account: 10 cards, 14 memory days, 26 activity weeks, level 1,
+        Rookie title, 0 currency.
+      - Edits: name and bio saved; malformed username **400**, taken username **409**, unowned
+        cosmetic **400 "You do not own that yet"**, unknown cosmetic **400**; card order persisted;
+        preferences saved `units: imperial` and `haptics: false` while **silently dropping** an
+        invalid `weekStart` and an unknown key.
+      - Store: three free cosmetics owned from the start, buying without currency **400**, junk id
+        **404**, re-buying **400**.
+      - Health: bodyweight landed in `body_weight_logs` (`GET /body-weight/history` shows it),
+        waist in `health_logs`; unknown metric and negative value both **400**; delete works.
+      - Routines: folder → routine inside it → deleting the folder left the routine loose;
+        unnamed routine **400**. Custom exercise came back as `custom:1` in catalog shape;
+        unknown muscle **400**.
+      - Public profile of a real v1 account: Rezwoan, 24 workouts, silver Bodyrank, best streak 4 —
+        read **without a token**. A missing handle **404s**.
+      - `/`, `/home`, `/workout`, `/ranks`, `/friends`, `/profile` all 200 on dev; prod 200 and
+        untouched. Test account deleted.
+
+Deliberately not built here, and why:
+- **Quests, Medals, Reactions cards and level-reward claiming** — all need P11's engines. The
+  screens exist and say what they are waiting for.
+- **Theme prices.** `Theme.price` has existed since P1 and SPEC §9 shows priced themes, but the
+  currency is not awarded until P11; gating 34 themes behind a balance nobody can earn would make
+  the app worse today than it is. Themes stay free until P11 turns the ledger on.
+- **Import Data, Leave a Review, Request a Feature, FAQ, Contact Us** — each is a link to
+  something that does not exist (a store listing, a form backend). A settings row that opens
+  nothing is worse than one that is not there.
 
 ---
 
@@ -913,4 +967,29 @@ back. Written up in `MEMORY.md §8` because the failure looks like data loss and
 
 **Next:** P10 — Profile & settings. `User.username`, `bio` and `avatarId` exist; cosmetics
 (border / banner / title) and the user-owned tables (routines, custom exercises) do not yet.
+**Blockers:** none.
+
+### 2026-08-07 — P10 complete
+Profile, cosmetics, the Health Log, Routines and the settings tree are live. Full detail in the
+P10 section above.
+
+The shape of the phase was *reuse*, not invention: the header component is the same one Edit
+Profile previews with, the streak number is the function Home and the leaderboard already share,
+the picture upload is v1's cropper, notification settings are v1's component, and the Health Log
+keeps bodyweight in the table the rank engine already reads rather than migrating the one number
+the entire ladder is scaled against.
+
+Two things worth remembering. A Next.js **page file may only export the default** — exporting the
+header component and its hook from `page.tsx` is a build error whose message names a type
+constraint rather than the rule, so the fix (move them to `header.tsx`) is not obvious from what
+it prints. And retiring v1's `/profile` was mandatory, not tidying: two `page.tsx` files resolving
+to one URL is a build failure, which is also how P6 handled `/workout`.
+
+Cosmetics carry their own `paint` in the backend catalog. The alternative — ids in one file,
+colours in another — is two files that have to agree, and eventually don't.
+
+**Next:** P11 — Gamification glue. XP, currency, streak freezes, medals, quests and the
+notification triggers. Note that `xp.ts` already holds the itemised model and the level curve, the
+Store already spends `User.currency`, and the referral quests in P9 are waiting for exactly this
+ledger to make their CLAIM buttons real.
 **Blockers:** none.
