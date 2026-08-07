@@ -295,6 +295,27 @@ Notable v1 rules that must survive into v2:
 - **2026-08-07** Idempotency is **one global interceptor keyed on `(userId, X-Idempotency-Key)`**,
   not a dedupe rule per endpoint. Why: a per-endpoint rule is a thing the next write path forgets.
   The key is the outbox op's own id, so it already exists and is already unique.
+- **2026-08-08** **Preferences are read from the cached profile blob, in one file.**
+  `lib/feedback.ts` parses `preferences` off the `reprush_user_v1` cache that `auth-context`
+  already writes, and `cachePref` patches it when a screen changes one. Why: the blob already
+  rides along on `/auth/me`, so no request, no context, no provider — and it is there offline,
+  which is when the gym screens run. Anything that needs a preference imports `getPrefs()`; nothing
+  else parses that column.
+- **2026-08-08** **The stored weight is always metric.** Imperial is applied on the way to a screen
+  and undone on the way back from a keypad, in `lib/units.ts`, and nowhere else. Why: kg is what
+  the ladder is scaled against and what every total and every API field means, so converting any
+  deeper would put two units in one column. Imperial input rounds to 10 g, because 135 lb is
+  61.23496995 kg and that is not a number to store.
+- **2026-08-08** **Imperial gets its own plate set and its own bar, not converted ones.**
+  `PLATES_LB = [45, 35, 25, 10, 5, 2.5]` on a 45 lb bar, and a ±5 lb step. Why: a gym in pounds
+  does not stock relabelled 20 kg plates, and ±2.5 kg is ±5.5 lb, which is not a plate anyone owns.
+- **2026-08-08** **No i18n scaffold**, though P13 listed one. Why: a translation layer with one
+  language, no translators and no second locale on the roadmap is a wrapper around every string in
+  the app that changes nothing about what renders. Revisit when there is a second locale to fill in.
+- **2026-08-08** v1's `/dashboard` is **deleted and kept as a redirect to `/home`**. Why: it is the
+  URL every existing account has bookmarked and the one v1's own sidebar still points at, but the
+  screen itself is now the Profile cards plus `6-Month Activity`. Its creatine and supplement
+  trackers — the only part with no v2 equivalent — moved to Profile → Consumables.
 - **2026-08-07** No client-side rank estimator for offline sets, and no Background Sync API.
   Why: the first duplicates `standards.ts` in the browser and would let the app show one rank while
   storing another; the second only helps when the app is fully closed, is absent on Safari, and
@@ -710,3 +731,31 @@ Two rules that fall out of it:
   `offline`; drive the real UI; read `localStorage.reprush_outbox_v1`; then restore all three and
   dispatch `online`. Set a fresh account's token straight into `localStorage.reprush_token` rather
   than typing a password into the browser.
+
+**P13 · 2026-08-08**
+
+- **A setting that stores fine and is read by nothing is a bug, not a gap.** Six of them shipped
+  between P10 and P12 — Haptics, Audio & SFX, Rest alert, Suggested workouts, Bigger discovery
+  posts, Units — all validated server-side, all round-tripping through `PATCH /profile`, none
+  consumed by any screen. Grep for every preference key from the *reader's* side before calling a
+  settings screen done: `DEFAULT_PREFERENCES` in `profile.service.ts` is the list to walk.
+- **`biggerDiscoveryPosts` is the shape to watch for**: the feed had its own layout toggle writing
+  a private localStorage key while Settings carried a switch for the same thing that changed
+  nothing. Two controls for one preference, and the visible one was the broken one.
+- **A self-check on a route nobody visits is not a test.** `platesFor(100, 20)` returns `[25, 15]`;
+  the assertion said `[20, 20]` and had been red since P6, because the frontend self-checks only
+  run when someone opens `/kitchen-sink`. Open it at the start of a browser session — it is eleven
+  checks and one page load.
+- **`user-scalable=no` was in the viewport since v1.** `touch-action: manipulation` on controls
+  kills the double-tap zoom delay without blocking pinch zoom. Turning it off also meant turning on
+  `viewport-fit=cover`, which is what makes the `safe-top` / `safe-bottom` classes — present since
+  P1 — actually resolve to something on a notched phone.
+- **Preferences must be read in an effect, never during render.** They come from localStorage,
+  which the server pass cannot see, so reading during render makes the first client pass disagree
+  and React discards the tree (the same rule as `use-idle-motion.ts`). `useUnits()` returns metric
+  until mounted; every screen that shows a weight fetches it first, so nothing visibly flips.
+- **`Celebration` is the single hook for reward feedback.** Every rank-up, medal, streak and level
+  opens one, so one `useEffect` on `open` covers the whole reward system. Anything new that
+  celebrates should open a `Celebration` rather than paint its own overlay.
+- `toLocaleString` without an explicit locale renders `6.460` in a German browser and would fail a
+  formatting self-check for a reason unrelated to weight. `lib/units.ts` pins `en-US`.

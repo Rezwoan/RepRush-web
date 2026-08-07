@@ -21,7 +21,7 @@ https://dev-reprush.rezwoan.codes, and its exit check below is verified in the b
 | P10 | Profile & settings | **DONE** |
 | P11 | Gamification glue | **DONE** |
 | P12 | Offline & PWA hardening | **DONE** |
-| P13 | Polish pass | TODO |
+| P13 | Polish pass | **IN PROGRESS** (P13a + P13b done) |
 | P14 | Cutover to production | TODO |
 
 **P8 was the Nutrition tab and has been removed** — the owner cut nutrition from the product
@@ -654,18 +654,111 @@ Deliberately not built here, and why:
       - `/offline` returns 200; the generated `sw.js` precache manifest contains `/home`,
         `/workout`, `/ranks`, `/friends`, `/profile` and `/offline`.
 
-## P13 — Polish pass · `TODO`
+## P13 — Polish pass · `IN PROGRESS`
 
-- [ ] Animation and haptics pass over every interactive element
-- [ ] Sound design: set complete, rest done, rank up, medal (respect the Audio & SFX settings)
-- [ ] Empty states everywhere, with the mascot
-- [ ] Loading skeletons; no layout shift
-- [ ] Accessibility: focus rings, labels, contrast in every theme, reduced motion, screen-reader pass
-      on the main flows
-- [ ] Performance on the Pi: bundle audit, image/SVG optimisation, `.next/cache` reuse in CI if the
-      deploy is slow
-- [ ] Error boundaries + a real offline banner
-- [ ] i18n scaffold with English filled in
+Split into two, because the first half turned out to be **correctness, not polish**: six settings
+that stored fine and were read by nothing, a feature with no door, and four links pointing into v1.
+
+### P13a — the settings and links that lied · `DONE` (2026-08-08)
+
+- [x] **Haptics, Audio & SFX and Rest alert are real.** All three shipped in P10, round-tripped
+      through `PATCH /profile` and were read by no screen. `frontend/src/lib/feedback.ts` is now the
+      one place that reads them and the one place that buzzes or makes a noise: four synthesised
+      cues over a single shared `AudioContext`, preferences pulled out of the profile blob
+      `/auth/me` already returns and `auth-context` already caches — so honouring them costs no
+      request and works offline. `cachePref` keeps that copy in step when Settings writes, or a
+      flipped switch would only take effect on the next session.
+- [x] Wired at the four moments that earn one: a logged set, the rest ending (gated on Rest alert),
+      **any `Celebration` opening** — which is every rank-up, medal, streak and level, so one
+      `useEffect` covers all of them — and the post-session chain, once rather than per step.
+- [x] `biggerDiscoveryPosts` was a Settings switch for the same thing the feed's own toggle kept in
+      a private localStorage key. Two controls, one of them lying; one preference now.
+- [x] `suggestedWorkouts` hides Today's Workout — **except a session already in progress**, which is
+      not a suggestion and would otherwise be stranded with no way back to it.
+- [x] **Units is real.** See P13b below — it was big enough to be its own commit.
+- [x] `app/error.tsx` — there was no error boundary at all, so a render error anywhere blanked the
+      screen, which mid-session reads as "the app ate my sets". It says the opposite, and it is
+      true: `OutboxSync` lives in the root layout, *outside* this boundary, and is still draining.
+      ~~`global-error.tsx`~~ — the root layout is twenty lines of providers; a boundary above it
+      would duplicate the styling to cover a case where the bundle itself is broken.
+- [x] `TabSkeleton` — Home, Ranks and Profile rendered `null` until their first response, so the app
+      opened blank and then jumped. The `.skeleton` class has existed since P1 and nothing used it.
+- [x] Keyboard focus is one zero-specificity `:focus-visible` rule in `globals.css` rather than 73
+      call sites that mostly had none.
+- [x] **Dropped `user-scalable=no`.** `touch-action: manipulation` on controls kills the double-tap
+      zoom delay without blocking pinch zoom, which is WCAG 1.4.4 and is exactly the person who
+      most needs it. `viewport-fit=cover` turned on with it — the `safe-top`/`safe-bottom` classes
+      have been in the tab bar, top bar, sheets and keypad since P1 and were resolving to zero.
+- [x] **A real offline banner** — already shipped in P5 (`components/layout/offline-banner.tsx`).
+- [x] **Empty states with the mascot** — already everywhere; `EmptyState` renders `Mascot` and is
+      used by twelve screens.
+- [x] **`.next/cache` reuse** — nothing to do: `deploy-dev.sh` builds in place and never removes
+      `.next`, so the cache already survives every deploy.
+- [x] **Bundle audit, first pass.** v1's `/dashboard` is deleted and the URL kept as a redirect —
+      it is what every existing account has bookmarked and what v1's own sidebar points at. Its
+      heatmap went with it (Profile's `6-Month Activity` is the same picture). 284 kB → 134 kB.
+- [x] **Four links pointed at v1.** Signing in sent you to `/dashboard` — outside the tab bar, with
+      v1's own bottom nav — and so did finishing v1's onboarding. Home's Discover grid sent
+      `Leaderboards` to v1's `/leaderboard` when the v2 boards are a Friends sub-tab, and
+      `Bodyweight history` to `/progress` when the chart is Profile → Health. `/friends` reads
+      `?tab=` now, the way `/ranks` already did.
+- [x] **Creatine and supplements were unreachable.** Kept deliberately (they are not nutrition,
+      which was cut), and the only door was `/dashboard`; the finish flow's `Consumables` row
+      pointed at `/profile`, which has never had any. They are **Profile → Consumables** now,
+      mounted as v1's own components rather than rewritten. The slot came from `Feedback`, a tile
+      that opened a "coming soon" for a form with no backend.
+- [x] **`platesFor(100, 20)` has been failing its own self-check since P6** — it returns `[25, 15]`,
+      two plates and exactly 100 kg, and the assertion said `[20, 20]`. Nothing noticed because the
+      check only runs when someone opens `/kitchen-sink`.
+
+### P13b — units · `DONE` (2026-08-08)
+
+The Units setting has existed since P10 and the funnel has asked for lb/ft since P4. Both answers
+went nowhere: every screen printed kg, and signing up in pounds silently made you a metric account.
+
+- [x] `frontend/src/lib/units.ts` — **the stored number is always metric.** kg and cm are what the
+      database holds, what the ladder is scaled against and what the API speaks; imperial exists at
+      the edges, on the way to a screen and on the way back from a keypad. The arithmetic is the
+      funnel's, which has self-checked its round-trips since P4; it moved here and
+      `welcome/config.ts` re-exports it, so there is still one copy.
+- [x] Converted: Home (volume, bodyweight, goal, both log sheets), the session grid, its PREV column
+      and rank strip, the finish flow, the summary, the Calculator and its history, the Ranks list,
+      sheet and Analysis, Profile totals, Statistics and the Health Log (bodyweight → lb, every
+      circumference → in).
+- [x] **The keypad could not be a formatter.** A gym in pounds does not stock relabelled 20s — it
+      stocks 45s — so imperial gets its own plate set and its own 45 lb bar, and the step is ±5 lb
+      rather than a converted ±2.5 kg, which is not a plate anyone owns. `platesFor` takes the plate
+      set; the self-check asserts both ladders.
+- [x] `POST /auth/register` carries the funnel's answer through as the preference, allow-listed like
+      every other field, so the account starts in the units it was created in.
+- [x] **Exit check — verified on dev, at the API and in a browser:**
+      - Signup with `units: imperial` stored `{"units":"imperial"}`; `metric` stored metric; junk
+        (`stones`) was **dropped entirely**, leaving no preferences blob at all.
+      - `PATCH /profile` still **merges** — flipping `haptics` left `units: imperial` in place.
+      - Home on an imperial account: volume **1,102 lb** (500 kg), bodyweight **180.8 lb** (82 kg).
+      - Ranks: `220.5 lb × 5` for the 100 kg bench, `TO NEXT RANK 132.3×7`, column header `LB`.
+      - Keypad: **−5 / +5**, and typing 135 printed *"Per side: 45 lb on a 45 lb bar"*.
+      - Ticking that set stored **`weightKg = 61.23`** — 135 lb, rounded to 10 g so the column does
+        not carry a nine-decimal float.
+      - `/kitchen-sink` self-checks: 11 green, including the new `feedback` and `units`.
+      - `?tab=boards`, Profile → Consumables and the `/dashboard` redirect all verified.
+      - Prod 200 and untouched. The three test accounts were deleted; dev is back to its 2 real users.
+
+### P13c — what is left · `TODO`
+
+- [ ] **Reactions** is the last shortcut tile without a screen. `post_reactions` has the rows;
+      nothing reads them as "given" and "received" yet, so it needs one endpoint and a small panel.
+- [ ] Three preferences are still read by nothing: `weekStart` (Profile's activity grid and
+      Analysis's Su–Sa row are both hardcoded Sunday), `analysisWindow` (rolling vs calendar) and
+      `routineUpdateAlert` (there are no routine-update notifications to alert about). Each is a
+      small feature, not a formatter — implement or drop the row, do not leave them.
+- [ ] Sound design beyond the four cues; animation pass over the remaining interactive elements
+- [ ] Accessibility: labels, contrast in every theme, screen-reader pass on the main flows
+- [ ] Image/SVG optimisation; the rest of the bundle audit (`/achievements` and `/progress` still
+      render inside v1's shell)
+- [ ] ~~i18n scaffold with English filled in~~ — **deliberately not built**, see `MEMORY.md`
+      Decisions. A translation layer with one language, no translators and no second locale on the
+      roadmap is a wrapper around every string in the app that changes nothing about what renders.
 - [ ] **Exit check:** Lighthouse PWA + a11y ≥ 90 on mobile against the dev URL
 
 ---
@@ -1157,4 +1250,42 @@ framer's exit animation is waiting on a paint that a non-painting tab never deli
 
 **Next:** P13 — the polish pass. Animation and haptics, sound design, empty states, loading
 skeletons, accessibility, bundle/Lighthouse work, error boundaries, i18n scaffold.
+**Blockers:** none.
+
+### 2026-08-08 — P13a + P13b complete
+The polish pass opened by finding that most of the first half was not polish. Six settings had
+been stored, validated and round-tripped since P10 and were read by **no screen**: Haptics, Audio
+& SFX, Rest alert, Suggested workouts, Bigger discovery posts and Units. A toggle that changes
+nothing is worse than a missing one — it tells the user something about the app that is false —
+so four of the six are wired up and the remaining three are listed in P13c with the same rule
+attached: implement or drop the row.
+
+The shape of the fix was the one this project keeps arriving at: **one place that reads it**.
+`lib/feedback.ts` is the only file that touches the preference blob and the only file that buzzes
+or makes a noise, and because the blob already rides along on `/auth/me` and is already cached by
+`auth-context`, honouring it costs no request and works in a basement. Sound is four synthesised
+cues over one shared `AudioContext` — the rest timer's chime generalised, not a second copy of it —
+and the *whole* reward system announces itself from a single `useEffect` in `Celebration`, because
+every rank-up, medal, streak and level already opens one.
+
+Units was big enough to be its own commit and its own rule: **the stored number is always metric.**
+Imperial exists at the two edges — on the way to a screen, and on the way back from a keypad —
+because anything deeper puts two units in one column. The keypad is the part that could not be a
+formatter: a gym in pounds stocks 45s, not relabelled 20s, so imperial has its own plate set, its
+own bar and a ±5 lb step rather than a converted ±2.5 kg, which is not a plate anyone owns.
+
+Three things were found only by clicking, which is now the fourth phase in a row that has been
+true. **Signing in landed on `/dashboard`** — v1's shell, outside the tab bar, with v1's own bottom
+nav. **Creatine and supplement logging had no door**: kept deliberately, reachable only from that
+dashboard, and the finish flow's `Consumables` row pointed at `/profile`, which has never had any.
+And `/kitchen-sink` showed **the plate calculator's self-check red since P6** — the assertion was
+wrong, not the code, and nothing caught it because that check only runs when someone opens the
+page. Worth remembering: a self-check that lives on a route nobody visits is not a test.
+
+One deliberate non-build, recorded in `MEMORY.md` → Decisions: **no i18n scaffold.** A translation
+layer with one language, no translators and no second locale on the roadmap is a wrapper around
+every string in the app that changes nothing about what renders.
+
+**Next:** P13c — the Reactions screen, the three remaining dead preferences, the accessibility and
+image passes, and the Lighthouse exit check.
 **Blockers:** none.
