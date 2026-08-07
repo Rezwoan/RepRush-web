@@ -350,6 +350,9 @@ export function subscribe(l: Listener): () => void {
 
 let autoSyncStarted = false;
 
+/** How often to retry a non-empty queue when no event has prompted us. */
+const RETRY_MS = 30_000;
+
 /** Flush whenever the browser regains connectivity, and once on load. */
 export function startAutoSync() {
   if (typeof window === 'undefined' || autoSyncStarted) return;
@@ -358,5 +361,11 @@ export function startAutoSync() {
   window.addEventListener('online', run);
   // Coming back to the app after a spell offline is also a good moment to try.
   document.addEventListener('visibilitychange', () => { if (!document.hidden) run(); });
+  // ...and a plain timer, because `online` is not reliable enough to be the only
+  // trigger: gym wifi that stays associated but stops routing never fires it, so
+  // a session finished on a dead connection would sit in localStorage until the
+  // app was next backgrounded and reopened. Idle cost is one `getQueue()` read
+  // every 30s, and nothing at all once the queue is empty.
+  window.setInterval(() => { if (getQueue().length) run(); }, RETRY_MS);
   run();
 }
