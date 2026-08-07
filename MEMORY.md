@@ -793,3 +793,28 @@ Two rules that fall out of it:
   written with a literal 🔥 in a bash script comes back `400 Unknown reaction`. Write the script with
   the Write tool (UTF-8) and send `\U0001F525`-style escapes, and print `hex(ord(...))` rather than
   the emoji, because the Windows console encoder throws on it too.
+
+**P14 · 2026-08-08**
+
+- **Pre-cutover pins:** last v1 commit on `main` is `82f2a1317921c8d6a3c872b0c7ad409cad9e19c5`;
+  prod DB backup `reezz@blackbox.local:~/reprush-prod-backup-20260808.db` (942,080 bytes, md5
+  `a490d373b806c7fc9014e2c18b35c72a`), holding 3 users / 51 sessions / 827 sets / 31 PRs.
+  `docs/v2/ROLLBACK.md` is the procedure.
+- **The v2 schema is purely additive over v1's** — 9 new tables, new columns, **nothing dropped or
+  renamed** (measured, not assumed). So a v1 build reads a v2-migrated database and ignores what it
+  does not know, which is why a rollback can be code-only and keep everything logged since cutover.
+  Restoring the DB is a separate, lossier operation.
+- **Dry-run a migration with production's own `.env`, not dev's.** `seedAdmin` and `seedUser`
+  branch on configured emails, so a dev `.env` makes the boot take a different path than cutover
+  will and the rehearsal stops being one. Recipe: `cp -a /var/www/reprush-dev/backend` to a
+  throwaway dir (node_modules and `dist` come with it — no Pi build), swap in a copy of the prod DB,
+  copy prod's `.env` and override only `PORT`.
+- **`POST /admin/users/:id/reset-password` takes no password — it generates one and emails it.**
+  A verification call therefore sends real mail via the Resend key in whatever `.env` is loaded.
+  To sign in as a user against a throwaway database, **mint a JWT from that database's own
+  `JWT_SECRET`** (`{sub, email, role}`, HS256) instead: no writes, no mail.
+- The login response field is **`token`**, not `access_token`, and `/profile/u/:username` nests
+  under `header`. Two verification scripts reported a dead API before this was noticed.
+- Running `node -e` with nested quotes over ssh is fragile and gets blocked; write the script with
+  the Write tool, pipe it in with `ssh … 'cat > /tmp/x.js && …'`, and set
+  `NODE_PATH=<checkout>/node_modules` or the require resolves from `/tmp` and fails.

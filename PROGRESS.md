@@ -817,17 +817,64 @@ went nowhere: every screen printed kg, and signing up in pounds silently made yo
 
 ---
 
-## P14 — Cutover to production · `TODO`
+## P14 — Cutover to production · `IN PROGRESS`
 
-Only start when P0–P13 are all `DONE`.
+Only start when P0–P13 are all `DONE`. They are.
 
-- [ ] Full prod DB backup: `cp /var/www/reprush/backend/database/reprush.db ~/reprush-prod-backup-YYYYMMDD.db`
-- [ ] Dry-run the v1→v2 migration against a copy of the prod DB; verify no history is lost
-- [ ] Merge `v2` → `main`
+- [x] **Full prod DB backup** — `reezz@blackbox.local:~/reprush-prod-backup-20260808.db`,
+      942,080 bytes, md5 `a490d373b806c7fc9014e2c18b35c72a`, verified identical to the live file.
+      Production at that moment: 3 users, 51 sessions, 827 sets, 31 PRs, 14 tables.
+- [x] **Dry-run the v1→v2 migration against a copy of the prod DB — passed, no history lost.**
+      A throwaway backend at `/var/www/reprush-dryrun` on port 3130, running the v2 build against a
+      *copy* of the production database and **production's own `.env`**, so `seedAdmin` / `seedUser`
+      took the same branch they will take at cutover. Production itself was never touched: its DB
+      stayed byte-identical to the backup and its services kept their 2026-08-06 uptime throughout.
+
+      | | before | after |
+      |---|---|---|
+      | tables | 14 | 23 (**+9**, 0 dropped) |
+      | columns dropped from carried-over tables | — | **none** |
+      | users / sessions / sets / PRs | 3 / 51 / 827 / 31 | 3 / 51 / 827 / 31 |
+      | user 5 | 26 sessions, 433 sets, 16 PRs | **identical** |
+      | user 6 | 25 sessions, 394 sets, 15 PRs | **identical** |
+      | `onboarding_progress` | 6 | 3 |
+      | `user_plans` | 27 | 12 |
+
+      The two that shrank are the **P9 orphan-sweep fix doing its job**: every removed row belonged
+      to userId 2, 3 or 4 — accounts deleted long ago whose rows v1 left behind. Live users 1, 5
+      and 6 lost nothing. That is the bug being carried across, not a side effect of it.
+
+      Boot was clean — `e1rm ok, standards ok, recovery ok, generator ok`, `cosmetics ok, xp ok,
+      calendar windows ok`, `streaks ok, medals ok, quests ok`, catalog 873 exercises, **zero ERROR
+      lines**. `821/827` sets mapped to catalog ids; the 6 misses are `Core Exercise (User Choice)`,
+      which has no catalog equivalent by design. Handles backfilled for all 3 accounts.
+
+      Then the v2 API was exercised over that real history (token minted from the dry-run's own
+      `JWT_SECRET` — no password changes, no mail):
+      - `/auth/me` — v1 columns survived exactly (`heightCm` 169, `weightKg` 82, `isActivated`,
+        `createdAt` 2026-06-09), v2 fields backfilled (`username` `rezwoan`, `referralCode` `9YX2CV`)
+      - `/ranks/me` — **27 ranked exercises** across `{champion 1, diamond 1, platinum 7, gold 6,
+        silver 7, bronze 5}`, 74 rank-ups, placements complete, `predicted` false. The same shape P3
+        and P7 measured on the older copy of this history, moved by the 49 sets prod has logged since.
+      - `/home/summary` — readiness 0.657 `recovering`, real v1 goal card (bodyweight 83.4 → 80,
+        91%), 14-day history
+      - `/workouts/sessions` — all 26 sessions, sets attached
+      - `/profile/me` — 14 memories, 26 activity weeks, real 7-day totals (21,253 kg / 617 reps)
+      - `/gamification/me` — level 8, 8,706 XP, streak 5 (best 5), 650 Spark, 5 quests, 5 medals
+      - `/social/leaderboard` — 2 rows on every metric
+      - `/profile/u/rezwoan` (no token) — **Silver II, 32nd percentile**
+- [x] **Write `docs/v2/ROLLBACK.md`** — pins the pre-cutover commit
+      (`82f2a1317921c8d6a3c872b0c7ad409cad9e19c5`), the DB backup and the vhost backup, and splits
+      the rollback in two: a **code-only** revert that keeps everything logged since cutover
+      (which works because the v2 schema is purely additive — a v1 build reads a v2 database and
+      ignores the columns it does not know), and a full restore that does not. Plus what a rollback
+      does *not* undo, and why restoring the nginx change would be a mistake.
+- [ ] **Carry P1's document-cache fix to the prod vhost** — production still serves
+      `s-maxage=31536000, stale-while-revalidate` on documents. Script written and ready
+      (backs the vhost up, inserts the three lines, `nginx -t`, reload). **Blocked: needs approval.**
+- [ ] Merge `v2` → `main` — **blocked: needs approval** (triggers the production deploy)
 - [ ] Watch the prod deploy; verify login, an existing user's history, and a full session
 - [ ] Keep the dev stack alive as the ongoing staging environment
-- [ ] Write `docs/v2/ROLLBACK.md`: one command to reset `main` to the pre-cutover commit, restore the
-      DB backup and restart the services
 - [ ] **Exit check:** reprush.rezwoan.codes runs v2, every existing account still works with its full
       history, and rollback is documented and tested
 
@@ -1378,3 +1425,45 @@ And `seo` is 66 purely because the dev vhost sends `X-Robots-Tag: noindex` on pu
 `UsersService.deleteUser` still orphans rows on prod (P9), prod still serves `s-maxage=31536000` on
 documents (P1), and the prod DB needs a full backup before the merge.
 **Blockers:** none.
+
+### 2026-08-08 — P14 in progress: backup taken, migration dry-run passed, rollback documented
+The half of the cutover that can be done without touching production is done, and it is the half
+that decides whether the rest is safe.
+
+**The dry run is the piece worth describing.** Verifying a migration by reading the entities is not
+verifying it — the question is what `synchronize: true` does to *this* file, with 827 real sets in
+it. So: a throwaway backend at `/var/www/reprush-dryrun` on a free port, running the v2 build
+against a **copy** of the production database and **production's own `.env`**, because `seedAdmin`
+and `seedUser` branch on configured emails and a dev `.env` would have taken a different path than
+cutover will. Production's own database stayed byte-identical to the backup throughout and its
+services never restarted.
+
+It passed: 14 tables → 23, **nothing dropped**, no column lost from any carried-over table, and
+both real accounts' history identical set-for-set. Then the API was driven over that migrated data
+rather than trusted — ranks came back with 27 ranked exercises in the same spread P7 measured,
+level 8 and a 5-day streak fell out of the v1 sessions, and the public profile rendered Silver II
+without a token.
+
+**Two tables came back smaller, and that is the fix rather than a fault.** `onboarding_progress`
+6 → 3 and `user_plans` 27 → 12, every removed row owned by userId 2, 3 or 4 — accounts deleted long
+ago that v1's `deleteUser` left rows behind for. That is the P9 bug being carried across, and it
+matters on production specifically because SQLite reuses a deleted account's id, so those orphans
+were waiting to be *adopted* by the next person to sign up.
+
+`docs/v2/ROLLBACK.md` splits the rollback in two, which turned out to be the useful insight: the v2
+schema is purely additive, so a v1 build reads a v2-migrated database and ignores what it does not
+recognise. A broken screen therefore needs only a code revert, and everything logged since the
+cutover survives it. Restoring the database is a separate, lossier operation reserved for the case
+where the *data* is wrong.
+
+**Two things were also found while doing this, both worth recording.** The admin reset-password
+endpoint takes no password — it generates one and emails it — so a verification call sent a real
+mail to the owner's address. It changed a password inside the throwaway copy only; the password in
+that mail opens nothing. The remaining API checks used a JWT minted from the dry-run's own secret
+instead, which touches nothing. And prod still serves `s-maxage=31536000` on documents; the fix is
+written and ready to apply.
+
+**Next:** the two production-mutating steps — apply the vhost cache fix, then merge `v2` → `main`
+and watch the deploy. Both are prepared and both are waiting on approval.
+**Blockers:** the permission layer declined the two prod-touching commands; they need the owner's
+go-ahead rather than a workaround.
