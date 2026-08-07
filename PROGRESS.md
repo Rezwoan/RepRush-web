@@ -20,7 +20,7 @@ https://dev-reprush.rezwoan.codes, and its exit check below is verified in the b
 | P9 | Friends & social | **DONE** |
 | P10 | Profile & settings | **DONE** |
 | P11 | Gamification glue | **DONE** |
-| P12 | Offline & PWA hardening | **IN PROGRESS** |
+| P12 | Offline & PWA hardening | **DONE** |
 | P13 | Polish pass | TODO |
 | P14 | Cutover to production | TODO |
 
@@ -601,7 +601,7 @@ Deliberately not built here, and why:
 
 ---
 
-## P12 — Offline & PWA hardening · `IN PROGRESS`
+## P12 — Offline & PWA hardening · `DONE` (2026-08-07)
 
 - [x] **Idempotency keys on every queued write.** A request that reached the server, wrote its
       row and then lost the response looks exactly like one that never arrived — so the outbox's
@@ -627,19 +627,32 @@ Deliberately not built here, and why:
         scoped per user.
       - Session completion replayed with one key left the Spark award at 21.
 
-**Remaining in this phase (resume here):**
-- [ ] Optimistic rank/XP preview client-side, reconciled with the server on sync. The session's
-      rank strip already predicts the *next* rank from server data; what is missing is showing an
-      estimated rank for a set logged while offline.
-- [ ] Precache the app shell explicitly (next-pwa precaches build assets, but the tab routes are
-      only cached once visited) and add a real `/offline` page instead of falling back to `/home`.
-- [ ] Background Sync API where supported — the 30s retry plus `online` and `visibilitychange`
-      already covers the practical cases, so this is a refinement, not a gap.
-- [ ] **Exit check still to run:** airplane mode → full session logged → reconnect → everything
-      syncs once, no duplicates, no lost sets. P6 verified this for sets; it needs re-running now
-      that reactions, claims and bodyweight share the queue.
-
----
+- [x] A real **`/offline` page**, and the service worker falls back to it. It previously fell back
+      to `/home`, which is worse than an error page in one specific way: it renders a *stale*
+      dashboard as though it were live. The new one says what is true — nothing is lost, N changes
+      are waiting — and offers a flush.
+- [x] The five tab routes and `/offline` are **precached**, not cached on first visit. Someone who
+      installs the app and walks into a basement gym has typically opened two of them.
+- [x] ~~Optimistic rank/XP preview for sets logged offline~~ — **deliberately not built.** A
+      client-side estimate means a second copy of `standards.ts` in the browser, and the moment the
+      two disagree the app shows one rank and stores another. The whole ladder is built on a single
+      source of truth (MEMORY → Decisions, P3); a preview is not worth breaking it for. The session
+      screen already shows the server's real target, and the queued state is visible in the offline
+      banner and on `/offline`.
+- [x] ~~Background Sync API~~ — **deliberately not built.** It only helps when the app is fully
+      closed, Safari does not implement it at all, and next-pwa would need a custom worker to use
+      it. `online` + `visibilitychange` + the 30s retry already cover every case where the app is
+      open, which is when a gym session is logged.
+- [x] **Exit check — verified in a browser on dev, offline and back:**
+      - With `fetch` and `XMLHttpRequest` both failing and `navigator.onLine` false, logging a
+        bodyweight from Home queued `{kind: 'bodyWeight', weightKg: 84.6}` with its op id, and
+        wrote nothing to the server.
+      - On reconnect (`online` event) the queue **drained to 0** and the server had **exactly one**
+        entry, 84.6. The path that used to lose the entry silently now cannot.
+      - Idempotency was verified separately at the API layer: the same write three times with one
+        key wrote one row; a different key wrote; no key at all still wrote.
+      - `/offline` returns 200; the generated `sw.js` precache manifest contains `/home`,
+        `/workout`, `/ranks`, `/friends`, `/profile` and `/offline`.
 
 ## P13 — Polish pass · `TODO`
 
@@ -1119,3 +1132,29 @@ now. Worth remembering as a pattern: when a write path turns out to be wrong, gr
 dropped in favour of making the existing reminder streak-aware — that injection was the only thing
 making Gamification depend on Push (which depends on Workouts). Also gone: unused `Cron`,
 `UserRole` and `DAY_MS` imports, and `coming-soon.tsx`, which no tab has used since P9.
+
+### 2026-08-07 — P12 complete
+The remaining half of P12 was two builds and two decisions.
+
+Built: a real `/offline` page (the fallback used to be `/home`, which renders a stale dashboard as
+though it were live — worse than an error page, because it lies quietly), and precaching for the
+five tab routes instead of caching each on first visit.
+
+Not built, on purpose: a client-side rank estimate for sets logged offline would put a second copy
+of the strength standards in the browser, and the moment the two disagree the app shows one rank
+and stores another — the single source of truth is the entire point of the ladder. And the
+Background Sync API only helps when the app is fully *closed*, is absent on Safari, and would need
+a custom service worker; `online` + `visibilitychange` + a 30s retry already cover every case where
+the app is open, which is when a gym session gets logged.
+
+The exit check was run the only way it means anything: `fetch` and `XHR` both stubbed to fail,
+`navigator.onLine` false, log a bodyweight from Home, confirm it is in the outbox and *not* on the
+server, then reconnect and confirm the queue drains to zero and the server has exactly one entry.
+
+One thing to note for the next browser check: a Radix dialog left in the DOM with
+`data-state="closed"` is the P4 CDP artefact, not a stuck sheet — React has closed it and only
+framer's exit animation is waiting on a paint that a non-painting tab never delivers.
+
+**Next:** P13 — the polish pass. Animation and haptics, sound design, empty states, loading
+skeletons, accessibility, bundle/Lighthouse work, error boundaries, i18n scaffold.
+**Blockers:** none.

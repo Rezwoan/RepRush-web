@@ -295,6 +295,10 @@ Notable v1 rules that must survive into v2:
 - **2026-08-07** Idempotency is **one global interceptor keyed on `(userId, X-Idempotency-Key)`**,
   not a dedupe rule per endpoint. Why: a per-endpoint rule is a thing the next write path forgets.
   The key is the outbox op's own id, so it already exists and is already unique.
+- **2026-08-07** No client-side rank estimator for offline sets, and no Background Sync API.
+  Why: the first duplicates `standards.ts` in the browser and would let the app show one rank while
+  storing another; the second only helps when the app is fully closed, is absent on Safari, and
+  needs a custom service worker. `online` + `visibilitychange` + a 30s retry cover the real cases.
 
 ---
 
@@ -698,3 +702,11 @@ Two rules that fall out of it:
 - **When one write path turns out to be wrong, grep for its siblings.** The finish flow's
   fire-and-forget bodyweight POST had an exact twin in Home's log-bodyweight sheet. Same bug, same
   fix, found only by looking.
+- **A Radix dialog with `data-state="closed"` still in the DOM is the CDP artefact, not a bug.**
+  React has closed it; framer's exit animation is waiting on a paint a non-painting tab never
+  delivers (same root cause as the P4 note). Check `data-state` before chasing a "stuck" sheet.
+- The offline verification recipe, which works: stub `window.fetch` to reject, stub
+  `XMLHttpRequest.prototype.send` to fire `error`, redefine `navigator.onLine` as false, dispatch
+  `offline`; drive the real UI; read `localStorage.reprush_outbox_v1`; then restore all three and
+  dispatch `online`. Set a fresh account's token straight into `localStorage.reprush_token` rather
+  than typing a password into the browser.
