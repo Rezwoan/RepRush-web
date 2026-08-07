@@ -38,6 +38,42 @@ const round = (n: number, dp = 0) => {
   return Math.round(n * f) / f;
 };
 
+/**
+ * A day counts if a workout was completed on it (SPEC §10).
+ *
+ * Today not being trained yet does not break the streak — it only breaks once a
+ * whole day has been missed, so the count doesn't read as 0 every morning.
+ * Freezes are P11's; this is the plain rule underneath them.
+ *
+ * Exported because P9's streak leaderboard needs the same number the Home card
+ * shows. Two implementations of "how long is your streak" is a bug the user
+ * sees before we do.
+ */
+export function streaks(completedAt: Date[], now: Date) {
+  const days = Array.from(new Set(completedAt.map(dayKey))).sort();
+  if (!days.length) return { current: 0, best: 0 };
+
+  let best = 1;
+  let run = 1;
+  for (let i = 1; i < days.length; i++) {
+    const gap = (Date.parse(days[i]) - Date.parse(days[i - 1])) / DAY_MS;
+    run = gap === 1 ? run + 1 : 1;
+    if (run > best) best = run;
+  }
+
+  const today = dayKey(now);
+  const yesterday = dayKey(new Date(now.getTime() - DAY_MS));
+  const last = days[days.length - 1];
+  if (last !== today && last !== yesterday) return { current: 0, best };
+
+  let current = 1;
+  for (let i = days.length - 1; i > 0; i--) {
+    if ((Date.parse(days[i]) - Date.parse(days[i - 1])) / DAY_MS !== 1) break;
+    current++;
+  }
+  return { current, best };
+}
+
 export interface HomeSummary {
   user: { name: string; avatarId: string | null; streak: number; bestStreak: number };
   today: {
@@ -114,36 +150,8 @@ export class HomeService {
 
   // ── streaks ───────────────────────────────────────────────────────
 
-  /**
-   * A day counts if a tracked workout was completed on it (SPEC §10).
-   *
-   * Today not being trained yet does not break the streak — it only breaks once
-   * a whole day has been missed, so the count doesn't read as 0 every morning.
-   * Freezes are P11's; this is the plain rule underneath them.
-   */
   private streaks(completed: GymSession[], now: Date) {
-    const days = Array.from(new Set(completed.map((s) => dayKey(new Date(s.completedAt))))).sort();
-    if (!days.length) return { current: 0, best: 0 };
-
-    let best = 1;
-    let run = 1;
-    for (let i = 1; i < days.length; i++) {
-      const gap = (Date.parse(days[i]) - Date.parse(days[i - 1])) / DAY_MS;
-      run = gap === 1 ? run + 1 : 1;
-      if (run > best) best = run;
-    }
-
-    const today = dayKey(now);
-    const yesterday = dayKey(new Date(now.getTime() - DAY_MS));
-    const last = days[days.length - 1];
-    if (last !== today && last !== yesterday) return { current: 0, best };
-
-    let current = 1;
-    for (let i = days.length - 1; i > 0; i--) {
-      if ((Date.parse(days[i]) - Date.parse(days[i - 1])) / DAY_MS !== 1) break;
-      current++;
-    }
-    return { current, best };
+    return streaks(completed.map((s) => new Date(s.completedAt)), now);
   }
 
   // ── recovery ──────────────────────────────────────────────────────

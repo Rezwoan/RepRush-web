@@ -68,6 +68,20 @@ export class User {
   @Column({ nullable: true, type: 'text' })
   bio: string;
 
+  /**
+   * Referral code (SPEC §8). Backfilled for every account at boot by
+   * `SocialService.onModuleInit`, so there is no migration and no nag screen.
+   * Unique index for the same reason `username` uses one — a unique *column*
+   * rebuilds the whole users table under `synchronize`.
+   */
+  @Index({ unique: true })
+  @Column({ nullable: true })
+  referralCode: string;
+
+  /** Whose code this account claimed. Set once, never changed. */
+  @Column({ nullable: true })
+  referredByUserId: number;
+
   /** 'male' | 'female' — drives the strength standards table, nothing else. */
   @Column({ nullable: true })
   sex: string;

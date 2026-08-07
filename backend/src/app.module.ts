@@ -19,6 +19,7 @@ import { PushModule } from './push/push.module';
 import { SeedModule } from './seed/seed.module';
 import { RanksModule } from './ranks/ranks.module';
 import { HomeModule } from './home/home.module';
+import { SocialModule } from './social/social.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { HomeModule } from './home/home.module';
     PushModule,
     RanksModule,
     HomeModule,
+    SocialModule,
     SeedModule,
   ],
 })

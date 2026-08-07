@@ -416,10 +416,40 @@ export function saveProgress(step: number, answers: Answers) {
   }
 }
 
+/**
+ * The referral code from an invite link (`/welcome?ref=CODE`), remembered for
+ * the length of the funnel.
+ *
+ * It has to be stored: the code arrives on the URL at step 1 and is not needed
+ * until signup at step 26, and a reload in between would otherwise lose the
+ * credit for whoever did the inviting.
+ */
+const REF_KEY = 'reprush_referral_code';
+
+export function captureReferralCode() {
+  if (typeof window === 'undefined') return;
+  try {
+    const code = new URLSearchParams(window.location.search).get('ref');
+    if (code) window.localStorage.setItem(REF_KEY, code.trim().toUpperCase().slice(0, 12));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function readReferralCode(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(REF_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export function clearProgress() {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.removeItem(KEY);
+    window.localStorage.removeItem(REF_KEY);
   } catch {
     /* ignore */
   }

@@ -3,6 +3,7 @@ import {
   Logger,
   UnauthorizedException,
   BadRequestException,
+  ConflictException,
   NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -11,12 +12,17 @@ import * as bcrypt from 'bcryptjs';
 import { UsersService } from '../users/users.service';
 import { User, UserRole } from '../users/user.entity';
 import { RanksService } from '../ranks/ranks.service';
+import { SocialService, USERNAME_RE, slugifyUsername } from '../social/social.service';
 
 /** The whole onboarding funnel, submitted in one shot at step 26 (SPEC §3.3). */
 export interface RegisterDto {
   email: string;
   password: string;
   name: string;
+  /** Claimed at signup (SPEC §8). Derived from the name when the field is left blank. */
+  username?: string;
+  /** A friend's referral code, if they arrived through an invite link. */
+  referralCode?: string;
   sex?: string;
   birthDate?: string;
   heightCm?: number;
@@ -65,6 +71,8 @@ export class AuthService {
     private jwtService: JwtService,
     private config: ConfigService,
     private ranks: RanksService,
+    // Usernames and referral codes are P9's rules; signup is just another caller.
+    private social: SocialService,
   ) {}
 
   async validateUser(email: string, password: string): Promise<User | null> {
@@ -102,10 +110,23 @@ export class AuthService {
       throw new BadRequestException(`Password must be at least ${MIN_PASSWORD} characters`);
     if (!name) throw new BadRequestException('Name is required');
 
+    // Resolve the handle *before* creating the account: a taken username must
+    // 409 with nothing written, not leave a half-made user behind.
+    const wanted = String(dto?.username ?? '').trim().toLowerCase();
+    if (wanted && !USERNAME_RE.test(wanted)) {
+      throw new BadRequestException('Username must be 3–20 characters: a–z, 0–9 or _');
+    }
+    if (wanted && (await this.usersService.findByUsername(wanted))) {
+      throw new ConflictException('That username is taken');
+    }
+
     // createUser throws ConflictException if the email is taken.
     const { user } = await this.usersService.createUser(email, name, password, UserRole.USER, true);
 
-    const profile: Partial<User> = {};
+    const profile: Partial<User> = {
+      username: wanted || (await this.social.freeUsername(slugifyUsername(name))),
+      referralCode: await this.social.freeReferralCode(),
+    };
     for (const [field, allowed] of Object.entries(ENUMS)) {
       const v = (dto as any)[field];
       if (typeof v === 'string' && allowed.includes(v)) (profile as any)[field] = v;
@@ -134,6 +155,14 @@ export class AuthService {
     });
 
     await this.recordFirstLift(user.id, dto.firstRank);
+
+    // Best-effort: an unknown or malformed code is not a reason to fail a signup
+    // the user has already answered twenty questions for.
+    if (dto.referralCode) {
+      await this.social
+        .claimReferral(user.id, String(dto.referralCode))
+        .catch((err) => this.logger.warn(`referral not claimed: ${err?.message ?? err}`));
+    }
 
     const fresh = await this.usersService.findById(user.id);
     const payload = { sub: fresh.id, email: fresh.email, role: fresh.role };

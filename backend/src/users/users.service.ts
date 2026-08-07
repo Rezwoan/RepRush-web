@@ -25,6 +25,10 @@ export class UsersService {
     return this.userRepo.findOne({ where: { email } });
   }
 
+  async findByUsername(username: string): Promise<User> {
+    return this.userRepo.findOne({ where: { username } });
+  }
+
   async findByInviteToken(token: string): Promise<User> {
     return this.userRepo.findOne({ where: { inviteToken: token } });
   }

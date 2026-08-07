@@ -21,6 +21,7 @@ import { Bar, EmptyState, StatTile } from '@/components/ui/display';
 import { Sheet } from '@/components/ui/sheet';
 import { BodygraphPair } from '@/components/art/bodygraph';
 import { Mascot } from '@/components/art/mascot';
+import { Feed } from '@/components/social/feed';
 
 // ── types (mirrors backend/src/home/home.service.ts) ─────────────────
 
@@ -636,11 +637,11 @@ export default function HomePage() {
         ))}
 
       {tab === 'friends' && (
-        <EmptyState
-          pose="idle"
-          title="No friend activity yet"
-          description="When you add friends, their sessions show up here — with the muscles they trained and what they hit."
-          action={
+        <Feed
+          scope="friends"
+          emptyTitle="No friend activity yet"
+          emptyDescription="When you add friends, their sessions show up here — with the muscles they trained and what they hit."
+          emptyAction={
             <Link href="/friends">
               <Button variant="chunky" size="cta">
                 Find friends
@@ -651,11 +652,11 @@ export default function HomePage() {
       )}
 
       {tab === 'discovery' && (
-        <EmptyState
-          pose="idle"
-          title="Nothing in Discovery yet"
-          description="Public sessions from lifters across RepRush will land here."
-          action={
+        <Feed
+          scope="discovery"
+          emptyTitle="Nothing in Discovery yet"
+          emptyDescription="Sessions posted to Discovery land here. Turn on “Post in Discovery” when you finish a workout."
+          emptyAction={
             <Button variant="chunkyOutline" size="cta" onClick={() => setTab('you')}>
               Back to For You
             </Button>

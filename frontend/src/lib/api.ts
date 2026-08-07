@@ -185,6 +185,33 @@ export const ranksApi = {
   }) => api.post('/ranks/calculate', body),
 };
 
+// ─── Social (SPEC §8) ─────────────────────────────────────────────────────────
+export const socialApi = {
+  friends: () => api.get('/social/friends'),
+  search: (q: string) => api.get('/social/search', { params: { q } }),
+  addFriend: (id: number) => api.post(`/social/friends/${id}`),
+  accept: (id: number) => api.post(`/social/friends/${id}/accept`),
+  decline: (id: number) => api.post(`/social/friends/${id}/decline`),
+  removeFriend: (id: number) => api.delete(`/social/friends/${id}`),
+
+  referral: () => api.get('/social/referral'),
+  claimReferral: (code: string) => api.post('/social/referral/claim', { code }),
+
+  /** A post is a completed session with a `friends` / `discovery` privacy. */
+  feed: (scope: 'friends' | 'discovery', before?: string) =>
+    api.get('/social/feed', { params: { scope, before } }),
+  post: (sessionId: number) => api.get(`/social/posts/${sessionId}`),
+  react: (sessionId: number, emoji: string | null) =>
+    api.post(`/social/posts/${sessionId}/react`, { emoji }),
+  comments: (sessionId: number) => api.get(`/social/posts/${sessionId}/comments`),
+  comment: (sessionId: number, text: string) =>
+    api.post(`/social/posts/${sessionId}/comments`, { text }),
+  deleteComment: (id: number) => api.delete(`/social/comments/${id}`),
+
+  leaderboard: (scope: 'friends' | 'global', metric: string) =>
+    api.get('/social/leaderboard', { params: { scope, metric } }),
+};
+
 // ─── Leaderboard ──────────────────────────────────────────────────────────────
 export const leaderboardApi = {
   getRelativeStrength: () => api.get('/leaderboard/relative-strength'),

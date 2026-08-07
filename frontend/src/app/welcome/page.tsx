@@ -55,6 +55,8 @@ import {
   kgToLb,
   lbToKg,
   loadProgress,
+  captureReferralCode,
+  readReferralCode,
   saveProgress,
 } from './config';
 
@@ -843,15 +845,22 @@ function StreakStep({ onDone }: { onDone: () => void }) {
   );
 }
 
+/** Same rule the backend enforces (`USERNAME_RE` in social.service.ts). */
+const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
+
 function SignupStep({ a, onDone }: { a: Answers; onDone: () => void }) {
   const { refresh } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [username, setUsername] = useState(() =>
+    (a.name || '').toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 20),
+  );
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && password.length >= 8;
+  const handleOk = !username || USERNAME_RE.test(username);
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && password.length >= 8 && handleOk;
 
   const submit = async () => {
     if (!valid || busy) return;
@@ -862,6 +871,11 @@ function SignupStep({ a, onDone }: { a: Answers; onDone: () => void }) {
         email: email.trim(),
         password,
         name: a.name.trim() || 'Athlete',
+        // Blank is fine — the backend derives one from the name. Friends search
+        // by username, so nobody may leave without a handle.
+        username: username || undefined,
+        // Set when they arrived on an invite link (`/welcome?ref=CODE`).
+        referralCode: readReferralCode() || undefined,
         sex: a.sex || undefined,
         birthDate: birthDateFromAge(a.age),
         heightCm: a.heightCm,
@@ -900,6 +914,24 @@ function SignupStep({ a, onDone }: { a: Answers; onDone: () => void }) {
         placeholder="Email"
         className="w-full rounded-2xl border-2 border-border bg-card px-4 py-4 font-semibold outline-none transition-colors focus:border-primary"
       />
+      <div>
+        <div className="flex items-center rounded-2xl border-2 border-border bg-card px-4 focus-within:border-primary">
+          <span className="font-bold text-muted-foreground">@</span>
+          <input
+            autoComplete="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+            placeholder="username"
+            maxLength={20}
+            className="w-full bg-transparent py-4 pl-1 font-semibold outline-none"
+          />
+        </div>
+        {!handleOk && (
+          <p className="mt-1 text-xs font-semibold text-muted-foreground">
+            3–20 characters: letters, numbers or _
+          </p>
+        )}
+      </div>
       <div className="relative">
         <input
           type={show ? 'text' : 'password'}
@@ -1023,6 +1055,8 @@ export default function WelcomePage() {
   // Resume where the funnel was left. Read in an effect, not during render, so
   // the server and the first client pass agree.
   useEffect(() => {
+    // Grab  before anything can navigate away from it.
+    captureReferralCode();
     const saved = loadProgress();
     if (saved) {
       setIdx(saved.step);
