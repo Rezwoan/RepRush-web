@@ -38,22 +38,18 @@ Palette (RepRush's own blue+gold identity, not the inspiration's):
 - Gold `#F5B841` (streaks, medals, celebration).
 - Success `#3DD68C`, danger `#FF5C5C`, warm `#FF8A3D` (fatigue/recovery).
 - Rank tier colors: Bronze `#C8794A`, Silver `#B8C2CC`, Gold `#F2C438`, Platinum `#3FD6B0`,
-  Diamond `#8B8CF7`, Titan `#E33B3B`, Legend `#5AC8FA` + animated sheen.
+  Diamond `#8B8CF7`, Champion `#EE5CC4`, Titan `#E33B3B`, Olympian `#96E3FA` + animated sheen.
 
-**⚠️ Two ladder differences from the source, both unresolved — decide in P7 (see MEMORY → Decisions):**
+**The ladder (settled in P7, matching the owner's reference):**
 
-1. **The source ladder has eight tiers, ours has seven.** Theirs, lowest to highest:
-   Bronze → Silver → Gold → Platinum → Diamond → **Champion** (magenta/pink, winged) → Titan (red,
-   winged) → **Olympian** (a single apex tier with no divisions, cyan/white winged). Ours has no
-   Champion, and calls the apex Legend.
-2. **Divisions run the other way.** The source ascends `I → II → III` (Titan III is the *best*
-   Titan); our `lib/ranks.ts` uses the LoL convention `III → II → I` (Gold I is the best Gold) and
-   its self-check asserts that ordering.
+Bronze → Silver → Gold → Platinum → Diamond → **Champion** (magenta, crowned) → Titan (red) →
+**Olympian** (a single apex band with no divisions). Eight tiers.
 
-Neither is a bug today — the engine is internally consistent and P3's documented ladder was verified
-against it. Both are places where the shipped app disagrees with the owner's reference, so P7 owns
-the call. Changing division direction touches `rankValue()`, `rankFromPercentile()` and the P3 exit
-check; adding Champion additionally re-spaces every `TIER_FLOOR`.
+**Divisions ascend `I → II → III`** — I is the entry to a tier, III its top, so Titan III is the
+best Titan. Olympian has no divisions and its label is just `Olympian`.
+
+`TIER_FLOOR` percentiles: Bronze 0, Silver 25, Gold 45, Platinum 65, Diamond 79, Champion 88,
+Titan 94, Olympian 98.5. The median gym-goer is Gold I.
 
 Type: one geometric sans, heavy weights for numbers. Screen titles 28–32px/800. Section headers
 22px/700. Body 16px. Big stat numbers 44–72px/800 with tabular figures.

@@ -170,6 +170,10 @@ export const ranksApi = {
   exercises: () => api.get('/ranks/exercises'),
   bodygraph: () => api.get('/ranks/bodygraph'),
   exercise: (id: string) => api.get(`/ranks/exercise/${encodeURIComponent(id)}`),
+  leagues: () => api.get('/ranks/leagues'),
+  /** Calculator's `Save Rank` — logs the lift, because ranks derive from sets. */
+  record: (body: { exerciseId: string; weightKg: number; reps: number }) =>
+    api.post('/ranks/record', body),
   /** Public — onboarding ranks a lift before the account exists. */
   calculate: (body: {
     exerciseId: string;

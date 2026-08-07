@@ -33,6 +33,17 @@ interface User {
   weightKg?: number;
   profileImage?: string;
   isActivated: boolean;
+  // Written by the onboarding funnel (P4). `/auth/me` has always returned the
+  // whole entity; these were just missing from the type. `sex` and `birthDate`
+  // pick the strength-standards column, so the Calculator needs them.
+  username?: string;
+  bio?: string;
+  sex?: 'male' | 'female';
+  birthDate?: string;
+  avatarId?: string;
+  experience?: string;
+  goal?: string;
+  trainingLocation?: string;
 }
 
 interface AuthContextType {

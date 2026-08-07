@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CatalogService, CatalogExercise } from '../exercises/catalog.service';
 import { User } from '../users/user.entity';
+import { GymSession } from '../workouts/gym-session.entity';
 import { WorkoutSet } from '../workouts/workout-set.entity';
 import { e1rm, effectiveLoad, __selfcheck as e1rmSelfCheck } from './e1rm';
 import { __selfcheck as generatorSelfCheck } from '../workouts/generator';
@@ -49,6 +50,27 @@ const LP_CLAMP_PER_SET = 150;
 /** Beyond this a set has decayed to nothing, so there is no point loading it. */
 const RECOVERY_LOOKBACK_DAYS = 14;
 
+/** League division shape (SPEC §6): ~30 rivals, top promote, bottom demote. */
+const LEAGUE_SIZE = 30;
+const LEAGUE_PROMOTE = 5;
+const LEAGUE_DEMOTE = 5;
+
+/** Monday 00:00 UTC after the given instant — when the league resets. */
+function nextWeekStart(now: Date): Date {
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  d.setUTCDate(d.getUTCDate() + ((8 - (d.getUTCDay() || 7)) % 7 || 7));
+  return d;
+}
+
+/** ISO-8601 week label, e.g. `2026-W32`. The season id, since a season is a week. */
+function isoWeek(now: Date): string {
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7)); // to that week's Thursday
+  const jan1 = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((d.getTime() - jan1.getTime()) / 86400000 + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
 export interface ExerciseRank {
   exerciseId: string;
   name: string;
@@ -60,6 +82,16 @@ export interface ExerciseRank {
   bestReps: number;
   lastTrainedAt: string;
   sets: number;
+  /** The set that promotes you. Null at the top of the ladder. */
+  next: NextTarget | null;
+}
+
+export interface NextTarget {
+  percentile: number;
+  rank: Rank;
+  weightKg: number | null;
+  reps: number;
+  progress: number;
 }
 
 export interface MuscleRank {
@@ -84,6 +116,16 @@ export interface Bodyrank {
   weeklyLp: number;
 }
 
+/** One rung of the weekly ladder (SPEC §6 → Leagues). */
+export interface LeagueRow {
+  userId: number;
+  name: string;
+  avatarId: string | null;
+  weeklyLp: number;
+  rank: Rank;
+  you: boolean;
+}
+
 /**
  * The rank engine.
  *
@@ -103,6 +145,7 @@ export class RanksService implements OnModuleInit {
   constructor(
     private catalog: CatalogService,
     @InjectRepository(WorkoutSet) private sets: Repository<WorkoutSet>,
+    @InjectRepository(GymSession) private sessions: Repository<GymSession>,
     @InjectRepository(User) private users: Repository<User>,
   ) {}
 
@@ -197,9 +240,11 @@ export class RanksService implements OnModuleInit {
 
     const best = new Map<
       string,
-      { weightKg: number; reps: number; e1rm: number; value: number; count: number; lastAt: Date }
+      { weightKg: number; reps: number; e1rm: number; rank: Rank; count: number; lastAt: Date }
     >();
     let weeklyLp = 0;
+    /** ISO timestamps at which a band was crossed — SPEC §6's "Number of Rank Ups". */
+    const rankUps: string[] = [];
 
     for (const s of rows) {
       const ex = this.catalog.find(s.exerciseId);
@@ -214,16 +259,22 @@ export class RanksService implements OnModuleInit {
         continue;
       }
 
-      const value = rankValue(this.score(ex, s.weightKg, s.actualReps, bw, user.sex, age).rank);
+      const rank = this.score(ex, s.weightKg, s.actualReps, bw, user.sex, age).rank;
+      const value = rankValue(rank);
       // A new personal best. The clamp is on league LP only — never on the rank
       // itself, or one honest heavy first session would peg the user low for
       // months (SPEC §6 asks for the clamp; it belongs here, not on the ladder).
-      if (at.getTime() >= since) weeklyLp += Math.min(LP_CLAMP_PER_SET, value - (prev?.value ?? 0));
+      if (at.getTime() >= since) weeklyLp += Math.min(LP_CLAMP_PER_SET, value - rankValue(prev?.rank));
+      // A heavier PB inside the same division is progress, not a rank-up. First
+      // time an exercise ranks at all counts: it came from nothing.
+      if (!prev || prev.rank.tier !== rank.tier || prev.rank.division !== rank.division) {
+        rankUps.push(at.toISOString());
+      }
       best.set(s.exerciseId, {
         weightKg: s.weightKg,
         reps: s.actualReps,
         e1rm: estimated,
-        value,
+        rank,
         count: (prev?.count ?? 0) + 1,
         lastAt: at,
       });
@@ -237,17 +288,18 @@ export class RanksService implements OnModuleInit {
           name: ex.name,
           primaryMuscle: ex.primary[0],
           equipment: ex.equipment,
-          rank: this.score(ex, b.weightKg, b.reps, bw, user.sex, age).rank,
+          rank: b.rank,
           bestE1rm: Math.round(b.e1rm * 10) / 10,
           bestWeightKg: b.weightKg,
           bestReps: b.reps,
           lastTrainedAt: b.lastAt.toISOString(),
           sets: b.count,
+          next: this.nextRankTarget(exerciseId, b.rank.percentile, bw, user.sex, age, b.reps),
         };
       })
       .sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
 
-    return { user, bw, age, rows, exercises, weeklyLp: Math.round(weeklyLp) };
+    return { user, bw, age, rows, exercises, rankUps, weeklyLp: Math.round(weeklyLp) };
   }
 
   async exerciseRanks(userId: number): Promise<ExerciseRank[]> {
@@ -323,7 +375,13 @@ export class RanksService implements OnModuleInit {
   }
 
   /** Everything the Ranks tab needs, from a single pass over the sets. */
-  async overview(userId: number): Promise<{ bodyrank: Bodyrank; muscles: MuscleRank[]; exercises: ExerciseRank[] }> {
+  async overview(userId: number): Promise<{
+    bodyrank: Bodyrank;
+    muscles: MuscleRank[];
+    exercises: ExerciseRank[];
+    rankUps: string[];
+    categories: { category: string; rank: Rank; count: number }[];
+  }> {
     const snap = await this.snapshot(userId);
     const muscles = this.computeMuscles(snap.exercises);
     const trained = muscles.filter((m) => m.exercises > 0);
@@ -344,7 +402,122 @@ export class RanksService implements OnModuleInit {
       },
       muscles,
       exercises: snap.exercises,
+      rankUps: snap.rankUps,
+      categories: this.averageByCategory(snap.exercises),
     };
+  }
+
+  /**
+   * Analysis → Average Ranks (SPEC §6): one rank per catalog category.
+   *
+   * Done here rather than on the client for the same reason muscle ranks are:
+   * the average has to happen in percentile space and then meet the ladder
+   * once, and the ladder lives in `standards.ts`. A second copy of TIER_FLOOR
+   * in the frontend is a copy that can drift.
+   */
+  private averageByCategory(exercises: ExerciseRank[]): { category: string; rank: Rank; count: number }[] {
+    const by = new Map<string, number[]>();
+    for (const r of exercises) {
+      const category = this.catalog.find(r.exerciseId)?.category ?? 'other';
+      const list = by.get(category);
+      if (list) list.push(r.rank.percentile);
+      else by.set(category, [r.rank.percentile]);
+    }
+    return Array.from(by.entries())
+      .map(([category, ps]) => ({
+        category,
+        rank: rankFromPercentile(ps.reduce((n, p) => n + p, 0) / ps.length),
+        count: ps.length,
+      }))
+      .sort((a, b) => b.count - a.count || rankValue(b.rank) - rankValue(a.rank));
+  }
+
+  // ── leagues ─────────────────────────────────────────────────────
+
+  /**
+   * The weekly ladder (SPEC §6).
+   *
+   * `ponytail:` no `season` / `division` tables and no reset job. A season *is*
+   * the ISO week, a division *is* your slice of everyone sorted by the LP they
+   * earned in it, and both fall out of the same weekly-LP number the Bodyrank
+   * card already shows. A stored ladder would need a cron to roll it over and
+   * could disagree with the sets, which is the exact trap ranks avoided in P3.
+   * Ceiling: this snapshots every user on every request. Past a few hundred
+   * accounts, cache the per-user weekly LP for the length of the week — the
+   * division maths below does not change.
+   */
+  async leagues(userId: number): Promise<{
+    season: { week: string; endsAt: string };
+    division: { index: number; size: number };
+    promoteTop: number;
+    demoteBottom: number;
+    rows: LeagueRow[];
+  }> {
+    const users = await this.users.find();
+    const scored = await Promise.all(
+      users.map(async (u) => {
+        const snap = await this.snapshot(u.id);
+        return {
+          userId: u.id,
+          name: u.name ?? u.email,
+          avatarId: u.avatarId ?? null,
+          weeklyLp: snap.weeklyLp,
+          rank: rankFromPercentile(
+            snap.exercises.length
+              ? snap.exercises.reduce((n, e) => n + e.rank.percentile, 0) / snap.exercises.length
+              : 0,
+          ),
+          you: u.id === userId,
+        };
+      }),
+    );
+
+    scored.sort((a, b) => b.weeklyLp - a.weeklyLp || a.name.localeCompare(b.name));
+    const mine = Math.max(0, scored.findIndex((r) => r.you));
+    const index = Math.floor(mine / LEAGUE_SIZE);
+    const rows = scored.slice(index * LEAGUE_SIZE, (index + 1) * LEAGUE_SIZE);
+
+    return {
+      season: { week: isoWeek(new Date()), endsAt: nextWeekStart(new Date()).toISOString() },
+      division: { index, size: rows.length },
+      promoteTop: LEAGUE_PROMOTE,
+      demoteBottom: LEAGUE_DEMOTE,
+      rows,
+    };
+  }
+
+  // ── recording a lift outside a workout ──────────────────────────
+
+  /**
+   * Log one lift as a real set, with a one-set session to hang it off.
+   *
+   * Both callers want the same thing for the same reason: ranks are a pure
+   * function of `workout_sets`, so a rank the app *shows* but never *stores a
+   * set for* evaporates the moment the screen closes. Onboarding's first lift
+   * and the Calculator's `Save Rank` toggle are the same operation.
+   */
+  async recordLift(
+    userId: number,
+    exerciseId: string,
+    weightKg: number,
+    reps: number,
+    note: string,
+  ): Promise<void> {
+    const exercise = this.catalog.get(exerciseId); // throws on a junk id
+    const session = await this.sessions.save(
+      this.sessions.create({ userId, workoutType: note, completedAt: new Date(), notes: note }),
+    );
+    await this.sets.save(
+      this.sets.create({
+        sessionId: session.id,
+        exerciseName: exercise.name,
+        exerciseId: exercise.id,
+        setNumber: 1,
+        actualReps: Math.round(reps),
+        weightKg,
+        isWarmup: false,
+      }),
+    );
   }
 
   async exerciseDetail(userId: number, exerciseId: string) {
@@ -388,7 +561,7 @@ export class RanksService implements OnModuleInit {
     sex: string | null,
     age: number | null,
     atReps?: number,
-  ): { percentile: number; rank: Rank; weightKg: number | null; reps: number; progress: number } | null {
+  ): NextTarget | null {
     const ex = this.catalog.find(exerciseId);
     if (!ex) return null;
     const target = nextDivisionPercentile(percentile);

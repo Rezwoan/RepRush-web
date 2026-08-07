@@ -376,7 +376,7 @@ const DISCOVER: { label: string; icon: typeof Trophy; tint: string; href?: strin
   { href: '/leaderboard', label: 'Leaderboards', icon: Trophy, tint: 'text-tier-gold' },
   { tab: 'friends', label: 'Social Feeds', icon: Users, tint: 'text-primary' },
   { href: '/progress', label: 'Streak Calendar', icon: CalendarDays, tint: 'text-tier-titan' },
-  { href: '/ranks', label: 'Rank Calculator', icon: Calculator, tint: 'text-tier-diamond' },
+  { href: '/ranks?tab=calc', label: 'Rank Calculator', icon: Calculator, tint: 'text-tier-diamond' },
 ];
 
 function ForYou({

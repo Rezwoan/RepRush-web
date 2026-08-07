@@ -13,20 +13,26 @@ export const TIERS = [
   'gold',
   'platinum',
   'diamond',
+  'champion',
   'titan',
-  'legend',
+  'olympian',
 ] as const;
 
 export type Tier = (typeof TIERS)[number];
 
-/** Divisions run III → II → I, i.e. I is the *best* within a tier (LoL convention). */
+/** Divisions ascend I → II → III, i.e. III is the *best* within a tier. */
 export type Division = 1 | 2 | 3;
+
+/** Olympian is the apex and has no divisions; it is always reported as I. */
+export const divisionsIn = (tier: Tier) => (tier === 'olympian' ? 1 : 3);
 
 export interface Rank {
   tier: Tier;
   division: Division;
   /** 0–100 within the current division. */
   lp: number;
+  /** 0–100 population percentile the tier was derived from. Always sent by the API. */
+  percentile: number;
 }
 
 export const TIER_LABEL: Record<Tier, string> = {
@@ -36,8 +42,9 @@ export const TIER_LABEL: Record<Tier, string> = {
   gold: 'Gold',
   platinum: 'Platinum',
   diamond: 'Diamond',
+  champion: 'Champion',
   titan: 'Titan',
-  legend: 'Legend',
+  olympian: 'Olympian',
 };
 
 /** Matches the --tier-* variables in globals.css. */
@@ -53,15 +60,17 @@ export const TIER_GRADIENT: Record<Tier, [string, string]> = {
   gold: ['#FBD968', '#D19A16'],
   platinum: ['#7FEBD0', '#25A98A'],
   diamond: ['#B9BAFB', '#6E70E0'],
+  champion: ['#F79BE0', '#C2379B'],
   titan: ['#F4756F', '#B31E1E'],
-  legend: ['#9BE3FF', '#2F9BD6'],
+  olympian: ['#DFF6FF', '#4FB6E8'],
 };
 
 export const ROMAN: Record<Division, string> = { 1: 'I', 2: 'II', 3: 'III' };
 
-/** "Gold II" — or just "Unranked", which has no divisions. */
+/** "Gold II" — or just "Olympian" / "Unranked", which have no divisions. */
 export function rankLabel(r: Rank | null | undefined): string {
   if (!r || r.tier === 'unranked') return TIER_LABEL.unranked;
+  if (divisionsIn(r.tier) === 1) return TIER_LABEL[r.tier];
   return `${TIER_LABEL[r.tier]} ${ROMAN[r.division]}`;
 }
 
@@ -77,12 +86,12 @@ const LP_MAX = 100;
 const DIVISION_SPAN = LP_MAX + 1;
 const TIER_SPAN = DIVISION_SPAN * 3;
 
-export function rankValue(r: Rank | null | undefined): number {
+export function rankValue(r: { tier: Tier; division: Division; lp: number } | null | undefined): number {
   if (!r) return 0;
   const t = TIERS.indexOf(r.tier);
   if (t <= 0) return 0; // unranked (and anything unrecognised) is the floor
-  // Division 3 is the entry point of a tier, division 1 the top of it.
-  return t * TIER_SPAN + (3 - r.division) * DIVISION_SPAN + Math.max(0, Math.min(LP_MAX, r.lp));
+  // Division I is the entry point of a tier, division III the top of it.
+  return t * TIER_SPAN + (r.division - 1) * DIVISION_SPAN + Math.max(0, Math.min(LP_MAX, r.lp));
 }
 
 export const isPromotion = (from: Rank | null, to: Rank | null) => rankValue(to) > rankValue(from);
@@ -93,28 +102,36 @@ export const isTierUp = (from: Rank | null, to: Rank | null) =>
 
 // ── self-check ────────────────────────────────────────────────────
 export const __selfcheck = () => {
-  const r = (tier: Tier, division: Division, lp = 0): Rank => ({ tier, division, lp });
+  const r = (tier: Tier, division: Division, lp = 0): Rank => ({ tier, division, lp, percentile: 0 });
 
-  // Ordering within a tier: III < II < I
-  if (!(rankValue(r('gold', 3)) < rankValue(r('gold', 2)))) throw new Error('III should rank below II');
-  if (!(rankValue(r('gold', 2)) < rankValue(r('gold', 1)))) throw new Error('II should rank below I');
+  // Ordering within a tier: I < II < III
+  if (!(rankValue(r('gold', 1)) < rankValue(r('gold', 2)))) throw new Error('I should rank below II');
+  if (!(rankValue(r('gold', 2)) < rankValue(r('gold', 3)))) throw new Error('II should rank below III');
   // Top of one band must sit strictly below the bottom of the next — both at
   // the division boundary and at the tier boundary. This is the case that was
   // actually wrong: a full-LP promotion compared as "no change".
-  if (!(rankValue(r('gold', 2, 100)) < rankValue(r('gold', 1, 0))))
+  if (!(rankValue(r('gold', 2, 100)) < rankValue(r('gold', 3, 0))))
     throw new Error('division boundary is not monotonic');
-  if (!(rankValue(r('gold', 1, 100)) < rankValue(r('platinum', 3, 0))))
+  if (!(rankValue(r('gold', 3, 100)) < rankValue(r('platinum', 1, 0))))
     throw new Error('tier boundary is not monotonic');
-  if (!isPromotion(r('gold', 1, 100), r('platinum', 3, 0)))
-    throw new Error('gold I full LP → platinum III must read as a promotion');
+  if (!isPromotion(r('gold', 3, 100), r('platinum', 1, 0)))
+    throw new Error('gold III full LP → platinum I must read as a promotion');
+  // The apex is one band and must out-score every Titan.
+  if (!(rankValue(r('titan', 3, 100)) < rankValue(r('olympian', 1, 0))))
+    throw new Error('Olympian must sit above Titan III');
   // Unranked is the floor.
-  if (rankValue(r('unranked', 3)) !== 0) throw new Error('unranked should score 0');
+  if (rankValue(r('unranked', 1)) !== 0) throw new Error('unranked should score 0');
 
-  if (!isTierUp(r('silver', 1, 99), r('gold', 3, 0))) throw new Error('silver I → gold III is a tier up');
-  if (isTierUp(r('gold', 3), r('gold', 1))) throw new Error('same tier is not a tier up');
-  if (!isPromotion(r('gold', 3), r('gold', 1))) throw new Error('gold III → I is a promotion');
+  if (!isTierUp(r('silver', 3, 99), r('gold', 1, 0))) throw new Error('silver III → gold I is a tier up');
+  if (isTierUp(r('gold', 1), r('gold', 3))) throw new Error('same tier is not a tier up');
+  if (!isPromotion(r('gold', 1), r('gold', 3))) throw new Error('gold I → III is a promotion');
 
   if (rankLabel(r('unranked', 1)) !== 'Unranked') throw new Error('unranked has no division');
+  if (rankLabel(r('olympian', 1)) !== 'Olympian') throw new Error('the apex has no division');
   if (rankLabel(r('platinum', 2)) !== 'Platinum II') throw new Error('bad label');
+  // Every tier needs a colour pair and a label, or a rank-up renders blank.
+  for (const t of TIERS) {
+    if (!TIER_GRADIENT[t] || !TIER_LABEL[t]) throw new Error(`${t} has no gradient or label`);
+  }
   return 'ranks ok';
 };

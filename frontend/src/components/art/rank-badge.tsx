@@ -6,7 +6,7 @@
  *
  * The emblems are real artwork (game-icons.net, CC BY 3.0 — see `game-icons.ts`)
  * rather than hand-drawn glyphs, and each tier gets its own so the escalation
- * reads at a glance: you lift → you flex → you're crowned → you're a legend.
+ * reads at a glance: you lift → you flex → you're crowned → you're an Olympian.
  *
  * All motion is SMIL inside the SVG, not CSS. The badge is drawn in user units
  * and rendered at anything from 24px to 120px; CSS percentage transforms
@@ -27,6 +27,7 @@ import {
   TIERS,
   TIER_GRADIENT,
   TIER_LABEL,
+  divisionsIn,
   rankLabel,
   type Division,
   type Rank,
@@ -56,8 +57,9 @@ const TIER_GLYPH: Record<Tier, GlyphId> = {
   gold: 'laurels',
   platinum: 'crystal',
   diamond: 'cutDiamond',
+  champion: 'crown',
   titan: 'thorFist',
-  legend: 'wingedEmblem',
+  olympian: 'wingedEmblem',
 };
 
 /** Tiers from Diamond up get wings; it should be obvious when someone is high. */
@@ -103,7 +105,9 @@ export function RankBadge({
   const px = SIZES[size];
   const [light, dark] = locked ? ['#4b5261', '#2a2f3a'] : TIER_GRADIENT[tier];
   const rank = TIERS.indexOf(tier);
-  const label = division ? `${TIER_LABEL[tier]} ${ROMAN[division]}` : TIER_LABEL[tier];
+  // Olympian is a single band — printing a division on it would invent a rank.
+  const divided = showDivision && !!division && divisionsIn(tier) > 1 && tier !== 'unranked';
+  const label = divided ? `${TIER_LABEL[tier]} ${ROMAN[division!]}` : TIER_LABEL[tier];
 
   const moves = useIdleMotion(animated && !locked);
   // Ornaments cost paint and stop reading below ~64px, where the badge is a
@@ -265,7 +269,7 @@ export function RankBadge({
         </g>
       )}
 
-      {showDivision && division && tier !== 'unranked' && px >= SIZES.md && (
+      {divided && px >= SIZES.md && (
         <g>
           {/* Two fills: the tier's dark metal, then black, because III over a
               pale tier (silver, legend) is otherwise unreadable at 48px. */}
@@ -288,7 +292,7 @@ export function RankBadge({
             fill="#fff"
             fillOpacity={locked ? 0.45 : 1}
           >
-            {ROMAN[division]}
+            {ROMAN[division!]}
           </text>
         </g>
       )}

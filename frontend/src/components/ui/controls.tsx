@@ -68,8 +68,18 @@ export function TabBarLinks<T extends string>({
   className?: string;
 }) {
   const uid = useId();
+  // Past four, equal thirds stop fitting a phone: scroll instead of shrinking
+  // the type until it is unreadable. The Ranks tab has six.
+  const scroll = options.length > 4;
   return (
-    <div role="tablist" className={cn('flex border-b border-border', className)}>
+    <div
+      role="tablist"
+      className={cn(
+        'flex border-b border-border',
+        scroll && 'no-scrollbar -mx-4 gap-1 overflow-x-auto px-4',
+        className,
+      )}
+    >
       {options.map((o) => {
         const active = o.value === value;
         return (
@@ -79,7 +89,8 @@ export function TabBarLinks<T extends string>({
             aria-selected={active}
             onClick={() => onChange(o.value)}
             className={cn(
-              'relative flex-1 pb-3 pt-2 text-lg font-bold transition-colors',
+              'relative pb-3 pt-2 font-bold transition-colors',
+              scroll ? 'shrink-0 px-2.5 text-base' : 'flex-1 text-lg',
               active ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
             )}
           >

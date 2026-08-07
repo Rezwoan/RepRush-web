@@ -170,7 +170,7 @@ function CarouselArt({ art }: { art: (typeof CAROUSEL)[number]['art'] }) {
   if (art === 'ladder')
     return (
       <div className="flex items-end justify-center gap-1">
-        {(['bronze', 'silver', 'gold', 'platinum', 'diamond', 'titan', 'legend'] as Tier[]).map((t, i) => (
+        {(['bronze', 'silver', 'gold', 'platinum', 'diamond', 'champion', 'titan', 'olympian'] as Tier[]).map((t, i) => (
           <motion.div
             key={t}
             initial={{ opacity: 0, y: 20 }}
@@ -1213,11 +1213,11 @@ export default function WelcomePage() {
                 art={
                   <div className="flex items-end gap-3">
                     <Glyph id="mountain" color="rgba(255,255,255,.9)" size={96} />
-                    <RankBadge tier="legend" size="md" animated={false} showDivision={false} />
+                    <RankBadge tier="olympian" size="md" animated={false} showDivision={false} />
                   </div>
                 }
                 eyebrow="The path"
-                title="Bronze to Legend, one set at a time."
+                title="Bronze to Olympian, one set at a time."
                 body="Nobody starts at the top. But every logged set moves a real number, and the number never lies to you."
               />
             );

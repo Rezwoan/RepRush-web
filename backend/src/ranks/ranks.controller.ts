@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser, Public } from '../auth/decorators';
 import { User } from '../users/user.entity';
@@ -12,6 +12,13 @@ interface CalculateDto {
   bodyweightKg: number;
   sex?: string;
   age?: number;
+}
+
+/** The Calculator's `Save Rank` toggle — record a lift done before the app existed. */
+interface RecordDto {
+  exerciseId: string;
+  weightKg: number;
+  reps: number;
 }
 
 @UseGuards(JwtAuthGuard)
@@ -41,6 +48,27 @@ export class RanksController {
   @Get('exercise/:id')
   exercise(@CurrentUser() user: User, @Param('id') id: string) {
     return this.ranks.exerciseDetail(user.id, id);
+  }
+
+  @Get('leagues')
+  leagues(@CurrentUser() user: User) {
+    return this.ranks.leagues(user.id);
+  }
+
+  /**
+   * Record a lift the user did outside the app, so the rank the Calculator just
+   * showed them survives closing the screen. Ranks derive from `workout_sets`
+   * and nothing else, so "saving a rank" can only mean logging the set.
+   */
+  @Post('record')
+  async record(@CurrentUser() user: User, @Body() body: RecordDto) {
+    const weightKg = Number(body.weightKg);
+    const reps = Math.round(Number(body.reps));
+    if (!(weightKg >= 0 && weightKg <= 1000) || !(reps >= 1 && reps <= 100)) {
+      throw new BadRequestException('weightKg must be 0–1000 and reps 1–100');
+    }
+    await this.ranks.recordLift(user.id, body.exerciseId, weightKg, reps, 'Rank Calculator');
+    return this.ranks.exerciseDetail(user.id, body.exerciseId);
   }
 
   /**

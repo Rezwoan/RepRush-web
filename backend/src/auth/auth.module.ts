@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -7,17 +6,15 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { UsersModule } from '../users/users.module';
-import { ExercisesModule } from '../exercises/exercises.module';
-import { GymSession } from '../workouts/gym-session.entity';
-import { WorkoutSet } from '../workouts/workout-set.entity';
+import { RanksModule } from '../ranks/ranks.module';
 
 @Module({
   imports: [
     UsersModule,
     // Signup logs the onboarding lift as a real set, so a new account's rank is
-    // there the moment the funnel promised it.
-    ExercisesModule,
-    TypeOrmModule.forFeature([GymSession, WorkoutSet]),
+    // there the moment the funnel promised it. Same operation as the
+    // Calculator's Save Rank, so it lives once, in RanksService.
+    RanksModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

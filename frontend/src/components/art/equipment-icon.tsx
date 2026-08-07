@@ -63,7 +63,7 @@ const GROUP_TINT: Record<MuscleGroup, string> = {
   back: 'hsl(var(--tier-platinum))',
   shoulders: 'hsl(var(--tier-gold))',
   arms: 'hsl(var(--tier-diamond))',
-  core: 'hsl(var(--tier-legend))',
+  core: 'hsl(var(--tier-olympian))',
   legs: 'hsl(var(--tier-titan))',
 };
 

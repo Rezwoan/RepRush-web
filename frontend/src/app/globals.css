@@ -65,8 +65,9 @@
     --tier-gold:     45 88% 58%;
     --tier-platinum: 166 62% 54%;
     --tier-diamond:  241 82% 76%;
+    --tier-champion: 318 78% 62%;
     --tier-titan:    0 74% 56%;
-    --tier-legend:   199 92% 67%;
+    --tier-olympian: 196 90% 78%;
   }
 
   /* Light mode adjusts the defaults above so an un-hydrated first paint is

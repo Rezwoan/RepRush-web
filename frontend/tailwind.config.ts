@@ -65,8 +65,9 @@ const config: Config = {
           gold: 'hsl(var(--tier-gold))',
           platinum: 'hsl(var(--tier-platinum))',
           diamond: 'hsl(var(--tier-diamond))',
+          champion: 'hsl(var(--tier-champion))',
           titan: 'hsl(var(--tier-titan))',
-          legend: 'hsl(var(--tier-legend))',
+          olympian: 'hsl(var(--tier-olympian))',
         },
       },
       borderRadius: {

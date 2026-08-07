@@ -335,7 +335,7 @@ function ArtSection() {
         <div className="surface flex flex-wrap items-center gap-4 p-4">
           <RankBadge tier="gold" division={1} size="xl" />
           <RankBadge tier="diamond" division={3} size="md" locked />
-          <RankChip rank={{ tier: 'platinum', division: 2, lp: 40 }} />
+          <RankChip rank={{ tier: 'platinum', division: 2, lp: 40, percentile: 71 }} />
           <RankChip rank={null} />
         </div>
       </Section>

@@ -28,12 +28,20 @@ export const TIERS = [
   'gold',
   'platinum',
   'diamond',
+  'champion',
   'titan',
-  'legend',
+  'olympian',
 ] as const;
 
 export type Tier = (typeof TIERS)[number];
 export type Division = 1 | 2 | 3;
+
+/**
+ * Divisions ascend: I is the *entry* to a tier and III its top, so Titan III is
+ * the best Titan. Olympian is the apex and has no divisions at all — it is one
+ * band, always reported as division I so consumers need no special case.
+ */
+export const divisionsIn = (tier: Tier) => (tier === 'olympian' ? 1 : 3);
 
 export interface Rank {
   tier: Tier;
@@ -52,24 +60,25 @@ export function rankValue(r: { tier: Tier; division: Division; lp: number } | nu
   if (!r) return 0;
   const t = TIERS.indexOf(r.tier);
   if (t <= 0) return 0;
-  return t * TIER_SPAN + (3 - r.division) * DIVISION_SPAN + Math.max(0, Math.min(LP_MAX, r.lp));
+  return t * TIER_SPAN + (r.division - 1) * DIVISION_SPAN + Math.max(0, Math.min(LP_MAX, r.lp));
 }
 
-export const UNRANKED: Rank = { tier: 'unranked', division: 3, lp: 0, percentile: 0 };
+export const UNRANKED: Rank = { tier: 'unranked', division: 1, lp: 0, percentile: 0 };
 
 /**
  * Percentile at which each tier begins. Deliberately not linear: strength is
  * clustered, so most people should see Bronze–Gold and the top tiers should be
- * rare enough to mean something. Gold III is the median gym-goer.
+ * rare enough to mean something. Gold I is the median gym-goer.
  */
 const TIER_FLOOR: [Tier, number][] = [
   ['bronze', 0],
   ['silver', 25],
   ['gold', 45],
   ['platinum', 65],
-  ['diamond', 80],
-  ['titan', 91],
-  ['legend', 97.5],
+  ['diamond', 79],
+  ['champion', 88],
+  ['titan', 94],
+  ['olympian', 98.5],
 ];
 
 export function rankFromPercentile(percentile: number): Rank {
@@ -78,14 +87,15 @@ export function rankFromPercentile(percentile: number): Rank {
   while (i > 0 && p < TIER_FLOOR[i][1]) i--;
   const [tier, lo] = TIER_FLOOR[i];
   const hi = i + 1 < TIER_FLOOR.length ? TIER_FLOOR[i + 1][1] : 100;
+  const n = divisionsIn(tier);
 
-  // Position within the tier, split into three divisions. III is the entry.
+  // Position within the tier, split into its divisions. I is the entry.
   const t = hi > lo ? (p - lo) / (hi - lo) : 0;
-  const step = Math.min(2, Math.floor(t * 3));
+  const step = Math.min(n - 1, Math.floor(t * n));
   return {
     tier,
-    division: (3 - step) as Division,
-    lp: Math.round(Math.max(0, Math.min(LP_MAX, (t * 3 - step) * 100))),
+    division: (step + 1) as Division,
+    lp: Math.round(Math.max(0, Math.min(LP_MAX, (t * n - step) * 100))),
     percentile: Math.round(p * 10) / 10,
   };
 }
@@ -174,10 +184,12 @@ export function nextDivisionPercentile(percentile: number): number | null {
   const top = i + 1 >= TIER_FLOOR.length;
   const lo = TIER_FLOOR[i][1];
   const hi = top ? 100 : TIER_FLOOR[i + 1][1];
-  // The third edge *is* the next tier's floor — a real boundary everywhere
-  // except the top tier, where it is just the end of the scale.
-  for (const step of top ? [1, 2] : [1, 2, 3]) {
-    const edge = lo + ((hi - lo) * step) / 3;
+  const n = divisionsIn(TIER_FLOOR[i][0]);
+  // The last edge *is* the next tier's floor — a real boundary everywhere
+  // except the top tier, where it is just the end of the scale and so is not a
+  // promotion at all. Olympian has one division, so at the top there is nothing.
+  for (let step = 1; step <= (top ? n - 1 : n); step++) {
+    const edge = lo + ((hi - lo) * step) / n;
     if (edge > p + 1e-9) return Math.min(edge, 100);
   }
   return null; // already in the top division of the top tier
@@ -393,9 +405,12 @@ export const __selfcheck = () => {
   // The ladder must stay strictly ordered across every boundary — this is the
   // bug that already bit once on the frontend.
   const rv = (tier: Tier, division: Division, lp: number) => rankValue({ tier, division, lp });
-  if (!(rv('gold', 3, 100) < rv('gold', 2, 0))) fail('division boundary is not monotonic');
-  if (!(rv('gold', 1, 100) < rv('platinum', 3, 0))) fail('tier boundary is not monotonic');
-  if (rv('unranked', 3, 0) !== 0) fail('unranked should score 0');
+  if (!(rv('gold', 1, 100) < rv('gold', 2, 0))) fail('division boundary is not monotonic');
+  if (!(rv('gold', 3, 100) < rv('platinum', 1, 0))) fail('tier boundary is not monotonic');
+  if (rv('unranked', 1, 0) !== 0) fail('unranked should score 0');
+  // Olympian is one band, so its LP has to span the whole tier and never be
+  // out-scored by a Titan — the apex must stay the apex.
+  if (!(rv('titan', 3, 100) < rv('olympian', 1, 0))) fail('Olympian must sit above Titan III');
 
   // percentile → rank must be monotonic across its whole range, and land in the
   // documented tiers at the documented percentiles.
@@ -406,10 +421,16 @@ export const __selfcheck = () => {
     prev = v;
   }
   if (rankFromPercentile(0).tier !== 'bronze') fail('the floor is Bronze, not Unranked');
-  if (rankFromPercentile(0).division !== 3) fail('the floor is division III');
+  if (rankFromPercentile(0).division !== 1) fail('the floor is division I');
   if (rankFromPercentile(50).tier !== 'gold') fail('the median lifter should be Gold');
-  if (rankFromPercentile(99).tier !== 'legend') fail('99th percentile should be Legend');
-  if (rankFromPercentile(100).division !== 1) fail('the top of the ladder is division I');
+  if (rankFromPercentile(99).tier !== 'olympian') fail('99th percentile should be Olympian');
+  const belowApex = rankFromPercentile(98.4);
+  if (belowApex.tier !== 'titan' || belowApex.division !== 3) fail('the top of a divisioned tier is III');
+  // Olympian has no divisions: every percentile inside it reports I, or the UI
+  // would print "Olympian II" against a reference that has no such thing.
+  for (const p of [98.5, 99, 99.9, 100]) {
+    if (rankFromPercentile(p).division !== 1) fail(`Olympian must have no divisions (p=${p})`);
+  }
 
   // The curve: median in, 50th out; symmetric; monotonic.
   if (Math.abs(percentileFor(1, 1) - 50) > 0.1) fail('median ratio must be the 50th percentile');
@@ -450,7 +471,7 @@ export const __selfcheck = () => {
   const p8weighted = percentileFor(bwRatio(pullup, 8, 20), medianRatio(pullup, 'male', 'back'));
   if (!(p1 < p8 && p8 < p8weighted)) fail('pull-ups must reward reps, then added weight');
   if (!(p8 > 55 && p8 < 85)) fail(`8 strict pull-ups scored the ${p8.toFixed(0)}th percentile`);
-  if (rankFromPercentile(p8).tier === 'legend') fail('8 pull-ups is not Legend');
+  if (rankFromPercentile(p8).tier === 'olympian') fail('8 pull-ups is not Olympian');
 
   // Machine and cable isolation. A 60 kg × 8 pec deck is an ordinary set in an
   // ordinary gym; the first pass through real training history had it, and
@@ -506,8 +527,9 @@ export const __selfcheck = () => {
     cursor = next;
     if (++steps > 100) fail('nextDivisionPercentile does not terminate');
   }
-  // 7 tiers x 3 divisions = 21 bands, so 20 boundaries from the very bottom.
-  if (steps !== 20) fail(`expected 20 division boundaries, walked ${steps}`);
+  // 7 divisioned tiers x 3 + Olympian's single band = 22 bands, so 21 boundaries.
+  const bands = TIER_FLOOR.reduce((n, [t]) => n + divisionsIn(t), 0);
+  if (steps !== bands - 1) fail(`expected ${bands - 1} division boundaries, walked ${steps}`);
   if (nextDivisionPercentile(100) !== null) fail('the top of the ladder has nothing above it');
 
   // Age: monotonic upward past the prime, flat through it, never below 1.
