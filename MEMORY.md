@@ -247,6 +247,27 @@ Notable v1 rules that must survive into v2:
   the next `synchronize`, which is exactly the operation that can lose live accounts. A separate
   unique index is a plain `CREATE UNIQUE INDEX`.
 
+- **2026-08-07** **A post is a completed session, not a row.** `gym_sessions.privacy`
+  (`friends` / `discovery`) is the only thing that makes one, and the finish flow has written it
+  since P6. Why: the same reason ranks and leagues are derived — duration, volume, muscles and
+  caption all already live on the session and its sets, so a `posts` table could only ever drift
+  from them. Reactions and comments *do* get tables (`post_reactions`, `post_comments`, both keyed
+  by `sessionId`) because that data exists nowhere else. If a post ever gains a body of its own —
+  a photo, something that is not a workout — that is when it earns a table.
+- **2026-08-07** No photos on posts. Why: `profileImage` is base64 text in the database, and sql.js
+  holds the whole database in memory and rewrites the file on every flush. One 500 KB photo per
+  post would make every unrelated write slower forever. Add it when there is object storage to
+  put it in, not before.
+- **2026-08-07** No `country` scope on leaderboards, though SPEC §8 lists one. Why: nothing in the
+  schema knows where anyone is. A filter over a field we do not collect is a menu item that lies.
+- **2026-08-07** Usernames and referral codes are **backfilled for every account at boot**
+  (`SocialService.onModuleInit`) rather than claimed by a prompt. Why: every existing account
+  predates both, a lazy per-request write turns `/auth/me` into a write, and a "pick a username"
+  wall between an existing user and the app they already had is the worst of the three.
+- **2026-08-07** Referral quest *rewards* are shown, never granted. Why: the XP and currency
+  ledgers are P11's, and this is the same line P6 drew with post-session XP. A CLAIM button that
+  credits nothing is worse than one that says it is coming.
+
 ---
 
 ## 7. Open risks
@@ -572,3 +593,37 @@ Two rules that fall out of it:
   P4 note is still the answer: read `document.body.innerText` to know where the machine is, and
   drive a **`scroll`** action rather than a bare `screenshot` — the scroll returns its own image and
   forces the paint, so it works where two consecutive screenshots do not.
+
+**P9 · 2026-08-07**
+
+- **`UsersService.deleteUser` was `userRepo.delete(userId)` and nothing else — since v1.** Every
+  dependent row survived the account, and **SQLite hands the freed id to the next signup**, so the
+  orphans get *adopted*: a brand-new dev account turned up holding a deleted tester's sessions,
+  PRs and Wilks score. The loud symptom was a 500 on registration (`onboarding_progress` is unique
+  on `userId`); the quiet one was a stranger inheriting your training history. `deleteUser` now
+  sweeps every table with a `userId` column, driven by `sqlite_master` rather than a hand-written
+  repository list — a list is exactly what went stale — plus the rows that key off the session.
+  `SeedService` clears the already-orphaned rows at boot (dev had 36, plus 21 sets).
+  **⚠️ Production has the same bug. P14 must carry this fix across.**
+- **A truncated dev database is recoverable, and looks exactly like data loss.** sql.js rewrites
+  the *entire* file on every flush, so stopping the service mid-write leaves a short file and the
+  next boot seeds an empty database — admin re-created, ids restarting at 1. `deploy-dev.sh`
+  snapshots before every deploy, so the fix is:
+  ```bash
+  sudo systemctl stop reprush-dev-backend
+  cp backend/database/reprush.db.bak-<newest> backend/database/reprush.db
+  sudo systemctl start reprush-dev-backend
+  ```
+  Check the *size* first — a healthy dev DB is ~1.2 MB, a freshly seeded one ~127 KB. Do not run a
+  batch of writes (a test script) at the same time as a deploy.
+- **Do not push and then run a deploy in the same breath.** The `flock` serialises them correctly,
+  but the queued CI run stops the services the moment your manual deploy finishes, so anything you
+  do in the next two minutes hits a dead backend and reads as a bug in your code. Either push and
+  wait for CI, or deploy manually *without* pushing — but note `deploy-dev.sh` resets to
+  `origin/v2`, so an unpushed commit will not ship.
+- A verification script must use **unique emails per run**. Rerunning one that registers
+  `alpha@test.local` gets a 409, every token comes back empty, and every later assertion prints
+  blank — which looks like a broken API and is not. `S=$(date +%H%M%S)` in the address.
+- **Before placements, a Bodyrank averages only what has been trained**, so an account with one
+  heavy bench outranks a year of training on the Bodyrank leaderboard. True, and useless as a
+  ranking: predicted rows now sort below every placed one and are labelled.

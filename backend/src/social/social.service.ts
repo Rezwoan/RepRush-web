@@ -663,6 +663,11 @@ export class SocialService implements OnModuleInit {
                 value: br.rank.percentile,
                 display: `${Math.round(br.rank.percentile)}%`,
                 rank: br.rank,
+                // Before placements a Bodyrank averages only what has been
+                // trained, so one heavy bench outranks a whole year of
+                // training. True, and useless as a ranking — predicted rows
+                // sort below every placed one.
+                predicted: br.predicted,
               };
         }
 
@@ -695,11 +700,16 @@ export class SocialService implements OnModuleInit {
   }
 
   private rankRows(
-    rows: { user: PublicUser; value: number; display: string; rank?: Rank }[],
+    rows: { user: PublicUser; value: number; display: string; rank?: Rank; predicted?: boolean }[],
     userId: number,
   ) {
     return rows
-      .sort((a, b) => b.value - a.value || a.user.name.localeCompare(b.user.name))
+      .sort(
+        (a, b) =>
+          Number(!!a.predicted) - Number(!!b.predicted) ||
+          b.value - a.value ||
+          a.user.name.localeCompare(b.user.name),
+      )
       .map((r, i) => ({ ...r, position: i + 1, you: r.user.id === userId }));
   }
 }

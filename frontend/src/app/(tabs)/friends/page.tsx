@@ -411,7 +411,14 @@ function BoardsPanel() {
                 {r.you && <span className="ml-2 text-xs font-extrabold text-primary">YOU</span>}
               </p>
               {r.rank ? (
-                <RankChip rank={r.rank} size="sm" className="mt-0.5" />
+                <span className="mt-0.5 flex items-center gap-2">
+                  <RankChip rank={r.rank} size="sm" />
+                  {r.predicted && (
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      predicted
+                    </span>
+                  )}
+                </span>
               ) : (
                 r.user.username && (
                   <p className="truncate text-xs text-muted-foreground">@{r.user.username}</p>

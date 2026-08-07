@@ -17,7 +17,7 @@ https://dev-reprush.rezwoan.codes, and its exit check below is verified in the b
 | P5 | Home tab | **DONE** |
 | P6 | Workout tab | **DONE** |
 | P7 | Ranks tab | **DONE** |
-| P9 | Friends & social | TODO |
+| P9 | Friends & social | **DONE** |
 | P10 | Profile & settings | TODO |
 | P11 | Gamification glue | TODO |
 | P12 | Offline & PWA hardening | TODO |
@@ -426,19 +426,53 @@ carrying its own repositories.
 ---
 
 
-## P9 — Friends & social · `TODO`
+## P9 — Friends & social · `DONE` (2026-08-07)
 
-- [ ] Usernames (unique, claimed at signup), user search
-- [ ] Friendships: request / accept / decline / remove, friend list
-- [ ] Referral codes, `CLAIM REFERRAL`, referral quests with rewards
-- [ ] Invite share link (Web Share API)
-- [ ] Posts: created from the finish flow, privacy scopes (private / friends / discovery)
-- [ ] Reactions (emoji set) + comments
-- [ ] Friends feed + Discovery feed (two layouts)
-- [ ] Leaderboards: scope (friends/global) × metric (Bodyrank, weekly LP, volume, streak, workouts),
-      folding in v1's relative-strength / Wilks / progress-rate
-- [ ] **Exit check:** two dev accounts can befriend each other, see each other's posts, react, and
-      appear on a shared leaderboard
+- [x] **A post is a completed session, not a row.** `gym_sessions.privacy` (`friends` /
+      `discovery`) is what makes one, and it has been written by the finish flow since P6. Same
+      call ranks (P3) and leagues (P7) made: a copy of the session could only ever drift from the
+      sets it describes. The three new tables carry data the session genuinely does not have —
+      `friendships`, `post_reactions`, `post_comments`.
+- [x] Usernames: `User.username` claimed at signup (allow-listed `^[a-z0-9_]{3,20}$`, 409 on a
+      taken one, derived from the name when left blank) and **backfilled for every existing
+      account at boot**, so search finds v1 users without a migration or a nag screen.
+- [x] `GET /social/search?q=` — username or name, with the friendship status per hit
+- [x] Friendships: `POST /social/friends/:id` (auto-accepts if they already asked — otherwise two
+      people who both tap Add deadlock), `/accept`, `/decline`, `DELETE`, `GET /social/friends`
+      returning friends + incoming + outgoing with each person's Bodyrank
+- [x] Referrals: `User.referralCode` (unique index, backfilled), `GET /social/referral` with the
+      invite link and the 1/3/5 quests, `POST /social/referral/claim` — claiming also opens a
+      friend request, and `/welcome?ref=CODE` carries the code through the whole funnel.
+      ~~Reward claim~~ — XP and currency ledgers are P11's; the quests show progress and the
+      reward, and say so. A CLAIM button that credits nothing is worse than one that waits.
+- [x] Invite share link via the Web Share API, clipboard fallback
+- [x] `GET /social/feed?scope=friends|discovery` — cursor-paged, privacy enforced in exactly one
+      place (`assertVisible`), which every read *and* write route goes through
+- [x] Reactions (🔥 💪 👏 😤 🐐, one per user, tap again to clear) + comments with delete
+- [x] Friends feed + Discovery feed on Home, Discovery offering the two-up grid (SPEC §4), layout
+      remembered
+- [x] `GET /social/leaderboard?scope=&metric=` — 8 metrics × 2 scopes: Bodyrank, LP this week,
+      volume (30d), streak, workouts, plus v1's relative-strength / Wilks / progress-rate folded
+      in as metrics rather than rewritten. **No country scope** — nothing in the schema knows
+      where anyone is, and a filter over a field we do not collect is a menu item that lies.
+- [x] The streak rule is now one exported function shared by Home and the leaderboard. Two
+      implementations of "how long is your streak" is a bug the user sees before we do.
+- [x] **Exit check — verified on dev against the API, end to end:**
+      - Signup claims a username; duplicate → **409 "That username is taken"**, malformed → **400**.
+      - Referral: code `8K8RYV`, link `/welcome?ref=8K8RYV`, beta claimed it → quest 1/1 done,
+        second claim **400**, junk code **404**.
+      - Search found beta with status `incoming` (the claim had opened the request), accept →
+        `accepted`, friend list carries the rank; adding yourself **400**.
+      - Two sessions posted (alpha `friends`, beta `discovery`): beta's friends feed showed both
+        with volume, sets, PRs and the trained muscles; alpha's discovery feed showed only beta's.
+      - **Privacy:** a third account saw **0** friends-feed posts, **1** discovery post, and got
+        *"You cannot see this post"* on both reading and reacting to the friends-only one.
+      - Reactions: 🔥 → switch to 💪 → tap again clears; unknown emoji **400**. Comment posted and
+        counted; blank comment **400**.
+      - All 8 leaderboard metrics returned sensible orders; friends scope returned exactly the two
+        friends with `you` set. Predicted Bodyranks sort below every placed one.
+      - The two real v1 accounts kept all 24 workouts each and got usernames.
+      - Test accounts deleted afterwards, and their posts went with them (discovery back to 0).
 
 ---
 
@@ -849,3 +883,34 @@ tab is still a placeholder. Note that P9's leaderboards and P7's Leagues are dif
 should stay that way: a league is this week's LP among ~30 rivals, a leaderboard is all-time and
 global.
 **Blockers:** none. CI dispatched both pushes this session within seconds.
+
+### 2026-08-07 — P9 complete, and a bug that predated the whole rebuild
+Friends, posts, reactions, comments, referrals and eight leaderboards are live. Full detail in the
+P9 section above.
+
+**There is no `posts` table.** A post is a completed session whose privacy is `friends` or
+`discovery` — a field the finish flow has been writing since P6. Everything a post shows is
+already on the session and its sets, so a row copying them could only ever disagree with them.
+That is the third time this call has been made (ranks in P3, leagues in P7) and it keeps being
+right. The three tables P9 does add — friendships, reactions, comments — all carry data that
+exists nowhere else.
+
+**The real find was not in P9's code.** A brand-new test account turned up holding a deleted
+tester's sessions, PRs and Wilks score. `UsersService.deleteUser` had always been
+`userRepo.delete(userId)` and nothing else, so every dependent row survived the account — and
+SQLite hands the freed id straight to the next signup, which then *adopts* them. The loud symptom
+was a 500 on registration (`onboarding_progress` is unique on `userId`), and the quiet one was a
+stranger inheriting your training history. Both are fixed: `deleteUser` now sweeps every table
+with a `userId`, driven by `sqlite_master` rather than a hand-written repository list — a list is
+exactly what went stale — and a boot sweep clears the rows already orphaned by the old behaviour
+(dev had 36 of them, plus 21 sets). **This is a `main` bug too, and P14 must carry the fix over.**
+
+**Dev's database was lost and restored during the session.** The service was stopped by a deploy
+while sql.js was mid-flush; sql.js rewrites the entire file on every save, so the file was
+truncated and the next boot seeded an empty database. `deploy-dev.sh` snapshots before every
+deploy, so the fix was restoring the newest `.bak-*` — both real accounts and all 778 sets came
+back. Written up in `MEMORY.md §8` because the failure looks like data loss and is not.
+
+**Next:** P10 — Profile & settings. `User.username`, `bio` and `avatarId` exist; cosmetics
+(border / banner / title) and the user-owned tables (routines, custom exercises) do not yet.
+**Blockers:** none.
