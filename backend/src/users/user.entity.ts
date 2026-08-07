@@ -114,6 +114,37 @@ export class User {
   @Column({ type: 'text', nullable: true })
   limitations: string;
 
+  // ── v2 cosmetics and preferences (P10) ────────────────────────
+  // All nullable JSON/text blobs rather than columns per setting: they are
+  // read whole, written whole, and never queried by any of their fields, and a
+  // NOT NULL column added to `users` is the change that can rebuild the table.
+
+  /** Equipped cosmetic ids (`lib/cosmetics.ts`). Null = the free default. */
+  @Column({ nullable: true })
+  titleId: string;
+
+  @Column({ nullable: true })
+  borderId: string;
+
+  @Column({ nullable: true })
+  bannerId: string;
+
+  /** Earned currency. P11 owns awarding it; the Store spends it. */
+  @Column({ nullable: true, type: 'integer' })
+  currency: number;
+
+  /** JSON string[] of cosmetic ids bought or granted. */
+  @Column({ nullable: true, type: 'text' })
+  cosmetics: string;
+
+  /** JSON string[] — the Profile card order (`Edit Profile Layout`). */
+  @Column({ nullable: true, type: 'text' })
+  profileLayout: string;
+
+  /** JSON blob of every user preference (units, calendar, analysis, audio…). */
+  @Column({ nullable: true, type: 'text' })
+  preferences: string;
+
   @Column({ default: false })
   isActivated: boolean;
 

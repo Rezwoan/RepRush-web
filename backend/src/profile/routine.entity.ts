@@ -1,0 +1,91 @@
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  Index,
+} from 'typeorm';
+
+/** A folder of routines (SPEC §12.3). Empty folders exist, so this is a row. */
+@Entity('routine_folders')
+export class RoutineFolder {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Index()
+  @Column()
+  userId: number;
+
+  @Column()
+  name: string;
+
+  @CreateDateColumn()
+  createdAt: Date;
+}
+
+/**
+ * A saved workout (SPEC §12.3) — a name and a list of exercises.
+ *
+ * The exercise list is a JSON blob for the same reason `gym_sessions.plan` is:
+ * it is written whole, read whole, never queried by any of its fields, and
+ * sql.js rewrites the entire database file on every flush.
+ */
+@Entity('routines')
+export class Routine {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Index()
+  @Column()
+  userId: number;
+
+  @Column()
+  name: string;
+
+  /** Null = loose, outside any folder. */
+  @Column({ nullable: true })
+  folderId: number;
+
+  /** JSON: `{ exerciseId, name, sets, repMin, repMax, restSec }[]`. */
+  @Column({ type: 'text' })
+  exercises: string;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+}
+
+/**
+ * An exercise the user wrote themselves (`Create Exercise`, deferred here from
+ * P6). Deliberately shaped like a catalog entry so the picker, the generator
+ * and the rank engine can treat it as one — its id is `custom:<n>`.
+ */
+@Entity('user_exercises')
+export class UserExercise {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Index()
+  @Column()
+  userId: number;
+
+  @Column()
+  name: string;
+
+  /** Our muscle id — the one the rank engine scores against. */
+  @Column()
+  primaryMuscle: string;
+
+  @Column()
+  equipment: string;
+
+  /** 'compound' | 'isolation' — picks the strength-standards multiplier. */
+  @Column({ nullable: true })
+  mechanic: string;
+
+  @CreateDateColumn()
+  createdAt: Date;
+}

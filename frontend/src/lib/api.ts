@@ -27,7 +27,7 @@ api.interceptors.request.use((config) => {
  * exists and still talks to the API, so a blanket redirect would throw the user
  * out of signup the moment anything 401s.
  */
-const PUBLIC_ROUTES = ['/login', '/onboarding', '/welcome', '/kitchen-sink'];
+const PUBLIC_ROUTES = ['/login', '/onboarding', '/welcome', '/kitchen-sink', '/u'];
 
 const isPublicRoute = (path: string) =>
   PUBLIC_ROUTES.some((r) => path === r || path.startsWith(`${r}/`));
@@ -183,6 +183,33 @@ export const ranksApi = {
     sex?: string;
     age?: number;
   }) => api.post('/ranks/calculate', body),
+};
+
+// ─── Profile (SPEC §9, §12.2, §12.3) ──────────────────────────────────────────
+export const profileApi = {
+  /** Everything the Profile tab renders, in one call. */
+  me: (window?: number) => api.get('/profile/me', { params: { window } }),
+  update: (body: Record<string, unknown>) => api.patch('/profile', body),
+  statistics: () => api.get('/profile/statistics'),
+  publicProfile: (username: string) => api.get(`/profile/u/${encodeURIComponent(username)}`),
+
+  health: (metric: string) => api.get('/profile/health', { params: { metric } }),
+  logHealth: (metric: string, value: number, date?: string) =>
+    api.post('/profile/health', { metric, value, date }),
+  deleteHealth: (metric: string, id: number) => api.delete(`/profile/health/${metric}/${id}`),
+
+  routines: () => api.get('/profile/routines'),
+  saveRoutine: (body: Record<string, unknown>) => api.post('/profile/routines', body),
+  deleteRoutine: (id: number) => api.delete(`/profile/routines/${id}`),
+  createFolder: (name: string) => api.post('/profile/folders', { name }),
+  deleteFolder: (id: number) => api.delete(`/profile/folders/${id}`),
+
+  exercises: () => api.get('/profile/exercises'),
+  createExercise: (body: Record<string, unknown>) => api.post('/profile/exercises', body),
+  deleteExercise: (id: number) => api.delete(`/profile/exercises/${id}`),
+
+  store: () => api.get('/profile/store'),
+  buy: (id: string) => api.post('/profile/store/buy', { id }),
 };
 
 // ─── Social (SPEC §8) ─────────────────────────────────────────────────────────

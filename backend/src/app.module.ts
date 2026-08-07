@@ -20,6 +20,7 @@ import { SeedModule } from './seed/seed.module';
 import { RanksModule } from './ranks/ranks.module';
 import { HomeModule } from './home/home.module';
 import { SocialModule } from './social/social.module';
+import { ProfileModule } from './profile/profile.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { SocialModule } from './social/social.module';
     RanksModule,
     HomeModule,
     SocialModule,
+    ProfileModule,
     SeedModule,
   ],
 })
