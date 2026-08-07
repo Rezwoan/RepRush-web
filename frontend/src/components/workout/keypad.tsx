@@ -228,7 +228,7 @@ export const __selfcheck = () => {
   // reaches for the biggest first. This assertion has been wrong since P6 and
   // nothing noticed, because the check only runs on `/kitchen-sink`.
   eq(platesFor(100, 20), [25, 15], '100 kg is a 25 and a 15 a side');
-  eq(platesFor(102.5, 20), [20, 20, 1.25], '102.5 kg needs the small plates');
+  eq(platesFor(102.5, 20), [25, 15, 1.25], '102.5 kg needs the small plates');
   eq(platesFor(10, 20), null, 'below the bar is not loadable');
   eq(platesFor(21, 20), null, '21 kg cannot be made from standard plates');
   // Imperial is a different plate set, not a converted one.
