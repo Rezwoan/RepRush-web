@@ -31,7 +31,8 @@ import { Toggle } from '@/components/ui/controls';
 import { Bar } from '@/components/ui/display';
 import { RankBadge } from '@/components/art/rank-badge';
 import { Keypad, type Field } from '@/components/workout/keypad';
-import { RestMiniBar, buzz, hhmmss, mmss, useRestTimer } from '@/components/workout/rest-timer';
+import { RestMiniBar, hhmmss, mmss, useRestTimer } from '@/components/workout/rest-timer';
+import { cue } from '@/lib/feedback';
 import {
   ExercisePicker, Thumb, useCatalog, type CatalogExercise,
 } from '@/components/workout/exercise-picker';
@@ -216,7 +217,7 @@ export default function SessionPage() {
     });
     void flushOutbox();
     rerender();
-    buzz(35);
+    cue('set', 35);
     setFocus(null);
     if (settings.autoRest && !planned.isWarmup) timer.start(ex.restSec);
   };

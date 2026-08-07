@@ -13,6 +13,7 @@ import { Check, ChevronRight } from 'lucide-react';
 import { authApi, profileApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
+import { cachePref } from '@/lib/feedback';
 import { THEMES } from '@/lib/themes';
 import { Button } from '@/components/ui/button';
 import { Segmented, Toggle } from '@/components/ui/controls';
@@ -66,6 +67,10 @@ export function SettingsPanel({
 
   const set = async <K extends keyof Preferences>(key: K, value: Preferences[K]) => {
     setPrefs((p) => ({ ...p, [key]: value }));
+    // Haptics, SFX and the rest alert are read from the cached profile blob, not
+    // from this screen's state — patch it too or a flipped switch would only
+    // take effect after the next `/auth/me`.
+    cachePref(key as any, value as any);
     await profileApi.update({ preferences: { [key]: value } }).catch(() => {});
     onChanged();
   };

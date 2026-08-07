@@ -19,6 +19,7 @@ import { ranksApi, workoutsApi, homeApi } from '@/lib/api';
 import { flushOutbox, materializeSets, resolveSessionId } from '@/lib/offline';
 import { rankLabel, rankValue, type Rank } from '@/lib/ranks';
 import { spring } from '@/lib/motion';
+import { cue } from '@/lib/feedback';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Bar } from '@/components/ui/display';
@@ -109,6 +110,12 @@ export default function SummaryPage() {
       .filter((r) => ids.has(r.exerciseId) || names.has(r.name))
       .sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
   }, [ranks, localSets]);
+
+  // One flourish for the whole chain, once the numbers are actually on screen —
+  // not four, one per step.
+  useEffect(() => {
+    if (ready) cue('finish', [40, 60, 90]);
+  }, [ready]);
 
   const steps: StepId[] = ['summary', 'ranking', 'streak', 'progression'];
   const advance = useCallback(() => {

@@ -13,7 +13,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Clock, Dumbbell, MessageCircle, Star, Trash2 } from 'lucide-react';
-import { socialApi } from '@/lib/api';
+import { profileApi, socialApi } from '@/lib/api';
+import { cachePref, getPrefs } from '@/lib/feedback';
 import { flushOutbox, queueReaction } from '@/lib/offline';
 import { spring } from '@/lib/motion';
 import { MUSCLE_BY_ID, type MuscleId } from '@/lib/muscles';
@@ -345,8 +346,6 @@ export function PostCard({ post: initial, compact = false }: { post: Post; compa
 
 // ── the feed ────────────────────────────────────────────────────────
 
-const LAYOUT_KEY = 'reprush_feed_layout';
-
 export function Feed({
   scope,
   emptyTitle,
@@ -363,16 +362,15 @@ export function Feed({
   const [busy, setBusy] = useState(false);
   // Discovery offers the two-up grid (SPEC §4); the friends feed is always the
   // single column, because a friend's session is something you read, not scan.
+  //
+  // The layout is the `biggerDiscoveryPosts` preference, not a second setting of
+  // its own. It used to be a private localStorage key while Settings carried a
+  // switch for the same thing that changed nothing — two controls, one of them
+  // lying. Read in an effect so the server pass and the first client pass agree.
   const [grid, setGrid] = useState(false);
   const loaded = useRef(false);
 
-  useEffect(() => {
-    try {
-      setGrid(window.localStorage.getItem(LAYOUT_KEY) === 'grid');
-    } catch {
-      /* private mode — the default layout is fine */
-    }
-  }, []);
+  useEffect(() => setGrid(!getPrefs().biggerDiscoveryPosts), []);
 
   const load = useCallback(
     async (before?: string) => {
@@ -397,11 +395,10 @@ export function Feed({
 
   const setLayout = (g: boolean) => {
     setGrid(g);
-    try {
-      window.localStorage.setItem(LAYOUT_KEY, g ? 'grid' : 'list');
-    } catch {
-      /* ignore */
-    }
+    cachePref('biggerDiscoveryPosts', !g);
+    // Fire and forget: the cached copy already applies, and the layout is a
+    // preference, not data — losing the write costs one re-tap.
+    void profileApi.update({ preferences: { biggerDiscoveryPosts: !g } }).catch(() => {});
   };
 
   if (posts === null) {

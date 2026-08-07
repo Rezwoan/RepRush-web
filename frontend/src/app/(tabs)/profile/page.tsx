@@ -35,7 +35,7 @@ import { rankLabel } from '@/lib/ranks';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Chip, Segmented } from '@/components/ui/controls';
-import { Bar, EmptyState, StatTile } from '@/components/ui/display';
+import { Bar, EmptyState, StatTile, TabSkeleton } from '@/components/ui/display';
 import { RankBadge } from '@/components/art/rank-badge';
 import { Bodygraph, BodygraphPair } from '@/components/art/bodygraph';
 import { Mascot, type MascotPose } from '@/components/art/mascot';
@@ -281,7 +281,7 @@ export default function ProfilePage() {
     await profileApi.update({ layout: next }).catch(() => {});
   };
 
-  if (!ready) return null;
+  if (!ready) return <TabSkeleton />;
 
   if (view && data) {
     const back = () => router.push('/profile');

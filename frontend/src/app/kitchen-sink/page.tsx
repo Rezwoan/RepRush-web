@@ -32,6 +32,7 @@ import { __selfcheck as medalCheck } from '@/components/art/medal';
 import { __selfcheck as equipmentCheck } from '@/components/art/equipment-icon';
 import { __selfcheck as keypadCheck } from '@/components/workout/keypad';
 import { __selfcheck as restCheck } from '@/components/workout/rest-timer';
+import { __selfcheck as feedbackCheck } from '@/lib/feedback';
 
 const POSES: MascotPose[] = ['idle', 'cheer', 'flex', 'fire', 'sleep', 'sad'];
 
@@ -56,6 +57,7 @@ function SelfChecks() {
     ['equipment', equipmentCheck],
     ['keypad', keypadCheck],
     ['rest timer', restCheck],
+    ['feedback', feedbackCheck],
   ] as const;
   return (
     <ul className="space-y-1 text-sm">

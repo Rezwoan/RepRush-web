@@ -19,7 +19,7 @@ import { TIERS, TIER_LABEL, rankLabel, rankValue, type Tier } from '@/lib/ranks'
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Chip, TabBarLinks } from '@/components/ui/controls';
-import { Bar, EmptyState, StatTile } from '@/components/ui/display';
+import { Bar, EmptyState, StatTile, TabSkeleton } from '@/components/ui/display';
 import { Sheet } from '@/components/ui/sheet';
 import { RankBadge } from '@/components/art/rank-badge';
 import { BodygraphPair } from '@/components/art/bodygraph';
@@ -517,7 +517,7 @@ export default function RanksPage() {
   const [detail, setDetail] = useState<ExerciseRank | null>(null);
   const [help, setHelp] = useState(false);
 
-  if (!ready) return null;
+  if (!ready) return <TabSkeleton />;
 
   const needsData = tab !== 'leagues' && tab !== 'calc';
 

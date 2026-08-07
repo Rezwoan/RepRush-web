@@ -152,6 +152,32 @@ export function EmptyState({
   );
 }
 
+// ── Skeleton ────────────────────────────────────────────────────────
+/**
+ * The shimmer block. The `.skeleton` class has existed since P1 and nothing
+ * used it: every tab rendered `null` until its first response landed, so the
+ * app opened on a blank screen and then jumped.
+ */
+export function Skeleton({ className }: { className?: string }) {
+  return <div aria-hidden className={cn('skeleton', className)} />;
+}
+
+/**
+ * The first paint of a data tab: a sub-tab strip and a few cards, at roughly
+ * the heights the real ones occupy, so the content lands rather than shoves.
+ * `aria-busy` is what a screen reader needs — the shimmer says nothing to it.
+ */
+export function TabSkeleton({ cards = 3 }: { cards?: number }) {
+  return (
+    <div aria-busy="true" aria-label="Loading" className="space-y-3 py-1">
+      <Skeleton className="h-10 w-full rounded-xl" />
+      {Array.from({ length: cards }, (_, i) => (
+        <Skeleton key={i} className="h-40 w-full rounded-2xl" />
+      ))}
+    </div>
+  );
+}
+
 // ── Stat tile ───────────────────────────────────────────────────────
 export function StatTile({
   label,

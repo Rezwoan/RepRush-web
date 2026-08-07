@@ -17,6 +17,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SkipForward, Timer } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getPrefs, haptic, sfx } from '@/lib/feedback';
 
 const KEY = 'reprush_rest_v1';
 
@@ -33,42 +34,6 @@ const read = (): Stored | null => {
     return v && v.endsAt > Date.now() ? v : null;
   } catch {
     return null;
-  }
-};
-
-/**
- * A short two-tone chime, synthesised rather than shipped as an audio file.
- * WebAudio is already in every browser; a bundled mp3 is bytes plus a fetch
- * that fails exactly when the gym wifi does.
- */
-function chime() {
-  try {
-    const Ctx = window.AudioContext ?? (window as any).webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    [880, 1320].forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.frequency.value = freq;
-      osc.type = 'sine';
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime + i * 0.18);
-      gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + i * 0.18 + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + i * 0.18 + 0.22);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(ctx.currentTime + i * 0.18);
-      osc.stop(ctx.currentTime + i * 0.18 + 0.24);
-    });
-    setTimeout(() => ctx.close().catch(() => {}), 900);
-  } catch {
-    /* audio is a nicety; never let it break the logging path */
-  }
-}
-
-export const buzz = (pattern: number | number[] = 40) => {
-  try {
-    navigator.vibrate?.(pattern);
-  } catch {
-    /* unsupported — the visual state is the real feedback */
   }
 };
 
@@ -113,8 +78,12 @@ export function useRestTimer(onFinish?: () => void): RestTimer {
   useEffect(() => {
     if (!state || remaining > 0 || finished.current) return;
     finished.current = true;
-    chime();
-    buzz([80, 60, 120]);
+    // Settings → Other preferences → Rest alert. The countdown still ends; this
+    // is only whether it announces itself.
+    if (getPrefs().restAlert) {
+      sfx('rest');
+      haptic([80, 60, 120]);
+    }
     onFinishRef.current?.();
     localStorage.removeItem(KEY);
     setState(null);

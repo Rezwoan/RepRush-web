@@ -24,8 +24,11 @@ export const viewport: Viewport = {
   themeColor: '#0462b2',
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  // No `maximumScale` / `userScalable: false`. They were there to stop
+  // double-tap zoom on controls, which `touch-action: manipulation` in
+  // globals.css now does properly — blocking pinch zoom outright fails
+  // WCAG 1.4.4 and is exactly the person who most needs it.
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -96,6 +96,17 @@
   html {
     -webkit-tap-highlight-color: transparent;
   }
+  /* Kills the 300ms double-tap-to-zoom delay on controls without disabling
+     pinch zoom for the whole document — `user-scalable=no` did both, and the
+     second half of that is an accessibility failure, not a nicety. */
+  button,
+  a,
+  [role='button'],
+  input,
+  select,
+  label {
+    touch-action: manipulation;
+  }
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01';
@@ -157,6 +168,12 @@
   }
   .focus-ring:focus-visible {
     @apply ring-2 ring-ring;
+  }
+  /* Keyboard focus, everywhere, in one rule rather than on 73 call sites.
+     `:where()` carries zero specificity, so any component that styles its own
+     focus still wins — this is the floor, not an override. */
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
   .field {
     @apply w-full bg-input border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground

@@ -14,11 +14,12 @@ import { CalendarDays, Calculator, ChevronRight, Plus, Trophy, Users } from 'luc
 import { goalsApi, homeApi } from '@/lib/api';
 import { flushOutbox, queueBodyWeight } from '@/lib/offline';
 import { spring } from '@/lib/motion';
+import { getPrefs } from '@/lib/feedback';
 import { cn } from '@/lib/utils';
 import { MUSCLE_BY_ID, type MuscleId } from '@/lib/muscles';
 import { Button } from '@/components/ui/button';
 import { Chip, TabBarLinks } from '@/components/ui/controls';
-import { Bar, EmptyState, StatTile } from '@/components/ui/display';
+import { Bar, EmptyState, StatTile, TabSkeleton } from '@/components/ui/display';
 import { Sheet } from '@/components/ui/sheet';
 import { BodygraphPair } from '@/components/art/bodygraph';
 import { Mascot } from '@/components/art/mascot';
@@ -393,12 +394,19 @@ function ForYou({
   const [goalOpen, setGoalOpen] = useState(false);
   const [weightOpen, setWeightOpen] = useState(false);
   const { today, recovery, goal, last14 } = data;
+  // Read in an effect, not during render: prefs come from localStorage, which
+  // the server pass cannot see, and a mismatch re-renders the whole root.
+  const [showSuggestion, setShowSuggestion] = useState(true);
+  useEffect(() => setShowSuggestion(getPrefs().suggestedWorkouts), []);
   const status = STATUS_COPY[recovery.status];
   const colors = useMemo(() => fatigueColors(recovery.fatigue), [recovery.fatigue]);
 
   return (
     <>
-      {/* 1 — Today's workout */}
+      {/* 1 — Today's workout. Settings → Other preferences → Suggested workouts
+          turns the *suggestion* off; a session already in progress is not a
+          suggestion, and hiding it would strand it. */}
+      {(showSuggestion || today.state === 'resume') && (
       <motion.div
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
@@ -446,6 +454,7 @@ function ForYou({
           {today.state === 'resume' ? 'Resume session' : 'Start workout'}
         </button>
       </motion.div>
+      )}
 
       {/* 2 — Recovery zone */}
       <Section
@@ -600,7 +609,7 @@ export default function HomePage() {
   const { data, ready, error, reload } = useSummary();
   const [tab, setTab] = useState<Tab>('you');
 
-  if (!ready) return null;
+  if (!ready) return <TabSkeleton />;
 
   return (
     <div>

@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { spring } from '@/lib/motion';
 import { useSvgId } from '@/lib/svg-id';
+import { cue, type Cue } from '@/lib/feedback';
 
 // ── Rays ────────────────────────────────────────────────────────────
 export function Rays({
@@ -123,6 +124,8 @@ export interface CelebrationProps {
   rayColor?: string;
   confetti?: boolean;
   className?: string;
+  /** Which cue announces it. `null` for the quiet ones (a summary recap). */
+  sound?: Cue | null;
 }
 
 export function Celebration({
@@ -137,7 +140,14 @@ export function Celebration({
   rayColor,
   confetti = true,
   className,
+  sound = 'celebrate',
 }: CelebrationProps) {
+  // Every reward moment in the app — rank-up, medal, streak, level — opens one
+  // of these, so this is the only place that has to announce one.
+  useEffect(() => {
+    if (open && sound) cue(sound, [30, 40, 60]);
+  }, [open, sound]);
+
   // Enter/escape dismiss, so the queue can be cleared from a keyboard.
   useEffect(() => {
     if (!open) return;
