@@ -122,8 +122,11 @@ export class SeedService implements OnModuleInit {
     await this.seedWorkoutPlans(adminId, userId);
     await this.backfillExerciseIds();
 
-    const orphans = await this.usersService.sweepOrphanedOnboarding();
-    if (orphans) this.logger.log(`Removed ${orphans} orphaned onboarding row(s)`);
+    // Not housekeeping: SQLite reuses a deleted account's id, so an orphaned
+    // row gets adopted by whoever is created next. See `sweepOrphanedRows`.
+    const swept = await this.usersService.sweepOrphanedRows();
+    const total = Object.values(swept).reduce((a, b) => a + b, 0);
+    if (total) this.logger.log(`Swept ${total} orphaned row(s): ${JSON.stringify(swept)}`);
   }
 
   /**

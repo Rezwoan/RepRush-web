@@ -169,22 +169,53 @@ export class UsersService {
   }
 
   /**
-   * One-off sweep for rows already orphaned by the old delete (above).
+   * Sweep rows already orphaned by the old delete (above).
    *
-   * Only `onboarding_progress` is swept: it is the one with a unique index on
-   * `userId`, so it is the one that actively breaks the next signup. Other
-   * orphans are unreachable rather than harmful, and a blanket delete over a
-   * production database is not a thing to do casually.
+   * This is not housekeeping — it is a correctness fix. SQLite hands a deleted
+   * account's id to the next one created, so an orphaned row is not merely
+   * unreachable: it gets **adopted**. On dev a brand-new account turned up
+   * holding a deleted tester's sessions, PRs and Wilks score, which is how this
+   * was found. `onboarding_progress` was only the loudest symptom (it is unique
+   * on `userId`, so it 500s the signup instead of corrupting it quietly).
+   *
+   * Deleting a row whose owner does not exist can lose nothing that any account
+   * can still reach.
    */
-  async sweepOrphanedOnboarding(): Promise<number> {
+  async sweepOrphanedRows(): Promise<Record<string, number>> {
     const db = this.userRepo.manager;
-    const [{ n }] = await db.query(
-      'SELECT COUNT(*) AS n FROM onboarding_progress WHERE userId NOT IN (SELECT id FROM users)',
+    const swept: Record<string, number> = {};
+
+    const sweep = async (table: string, where: string) => {
+      const [{ n }] = await db.query(`SELECT COUNT(*) AS n FROM ${table} WHERE ${where}`);
+      if (Number(n) > 0) {
+        await db.query(`DELETE FROM ${table} WHERE ${where}`);
+        swept[table] = Number(n);
+      }
+    };
+
+    const tables: { name: string }[] = await db.query(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
     );
-    if (n > 0) {
-      await db.query('DELETE FROM onboarding_progress WHERE userId NOT IN (SELECT id FROM users)');
+    const names = tables.map((t) => t.name);
+
+    for (const name of names) {
+      if (name === 'users') continue;
+      const cols: { name: string }[] = await db.query(`PRAGMA table_info(${name})`);
+      if (cols.some((c) => c.name === 'userId')) {
+        await sweep(name, 'userId NOT IN (SELECT id FROM users)');
+      }
+      // Rows that hang off a session rather than off the user directly.
+      if (cols.some((c) => c.name === 'sessionId')) {
+        await sweep(name, 'sessionId NOT IN (SELECT id FROM gym_sessions)');
+      }
     }
-    return Number(n) || 0;
+    if (names.includes('friendships')) {
+      await sweep(
+        'friendships',
+        'requesterId NOT IN (SELECT id FROM users) OR addresseeId NOT IN (SELECT id FROM users)',
+      );
+    }
+    return swept;
   }
 
   async adminResetPassword(userId: number, newPassword: string) {
