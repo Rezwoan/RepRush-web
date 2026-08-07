@@ -57,6 +57,11 @@ install_deps() {
 
 echo "[3/6] Stopping dev services for the rebuild..."
 sudo systemctl stop reprush-dev-backend.service reprush-dev-frontend.service
+# Stopping for the build means a build that fails would otherwise leave dev
+# dead — worse than the old behaviour, where a failed build simply kept
+# serving the previous one. Bring them back whatever happens; `start` on an
+# already-running unit is a no-op, so step 5 is unaffected.
+trap 'sudo systemctl start reprush-dev-backend.service reprush-dev-frontend.service || true' EXIT
 
 # ── 3. Backend ────────────────────────────────────────────
 echo "  building backend..."
