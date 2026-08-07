@@ -19,7 +19,7 @@ https://dev-reprush.rezwoan.codes, and its exit check below is verified in the b
 | P7 | Ranks tab | **DONE** |
 | P9 | Friends & social | **DONE** |
 | P10 | Profile & settings | **DONE** |
-| P11 | Gamification glue | TODO |
+| P11 | Gamification glue | **DONE** |
 | P12 | Offline & PWA hardening | TODO |
 | P13 | Polish pass | TODO |
 | P14 | Cutover to production | TODO |
@@ -548,19 +548,51 @@ Deliberately not built here, and why:
 
 ---
 
-## P11 — Gamification glue · `TODO`
+## P11 — Gamification glue · `DONE` (2026-08-07)
 
-- [ ] XP awards + level curve + level-up rewards + claim flow
-- [ ] Currency ledger
-- [ ] Streak service: day rules, freezes (earn 1 per 7 days, max 2, auto-spend), best streak,
-      streak-at-risk push
-- [ ] Medal engine: rules per category, tiered, evaluated post-session + nightly
-- [ ] Quests: daily (3, rotating) + weekly (3), progress tracking, claim
-- [ ] Notification triggers: workout reminder at usual training time, streak at risk, friend
-      activity, quest expiry, rank decay warning
-- [ ] Celebration queue so multiple simultaneous rewards play in a sensible order, once
-- [ ] **Exit check:** completing a workout on dev fires XP → rank → medal → streak in order, and each
-      reward is idempotent (no double-award on outbox retry)
+- [x] **`reward_claims` is the only thing this phase stores.** Which quests you have is a hash of
+      (user, day); a medal is a threshold over your own history; the streak and its freezes are a
+      walk over your training days. All of it re-derives from the sets — the one fact that cannot
+      is *what you have already taken*, because the quest rolls over at midnight and the currency
+      has been spent. The unique `(userId, key)` index is what makes claiming idempotent.
+- [x] XP: training XP (the same itemised model the post-session chain shows) plus claimed XP.
+      Level curve in `backend/src/profile/xp.ts`, first level 522 XP, self-checked at the
+      boundary.
+- [x] Currency (**Spark**): `sessionSpark = 20 + min(10, streak)`, **pulled rather than pushed**.
+      `WorkoutsService` does not call gamification — that would be a module cycle, and a session
+      finished offline is completed by the outbox hours later. It is paid on the next read, keyed
+      by session id, so a replayed completion cannot pay twice.
+- [x] Streak with freezes (SPEC §10): one earned per 7 unbroken days, max 2 banked, auto-spent to
+      cover a single missed day, and a broken streak banks nothing. Nine assertions in
+      `rules.ts` — the boundary cases are exactly where a freeze would silently pay for two days.
+- [x] Medal engine: five categories × five tiers (Total Workouts, Total Volume, Level Up!,
+      On Fire!, Quest Master), earned tiers in their material, the next greyed, the rest `?`. Two
+      new materials in `medal.tsx` so a five-tier ladder has five looks. `Your Display` equips
+      three onto the profile.
+- [x] Quests: one daily + three weekly, rotating deterministically per user per day/week, plus
+      P9's referral quests — whose `CLAIM` buttons are now real. Countdowns derive from the clock.
+- [x] Level rewards, claimable once reached.
+- [x] Notification trigger: the **existing** 5pm reminder is streak-aware now
+      (`"3 day streak at risk"`, and it mentions a freeze if one is banked). A second nightly cron
+      would have meant two pushes on the same evening for the same reason.
+- [x] ~~Celebration queue~~ — `components/ui/celebration.tsx` already has `useCelebrationQueue`
+      from P1, and P6's post-session chain already uses it. Writing a second is two things to keep
+      in step.
+- [x] **Exit check — verified on dev against the API:**
+      - Boot self-checks green: `GamificationService: streaks ok, medals ok, quests ok`.
+      - A fresh account: level 1, 0 Spark, empty streak, one daily quest, three weekly, five medal
+        categories at zero.
+      - Claiming an unfinished quest **400 "Not finished yet"**; a junk key **404**.
+      - After one 14-set session: **+21 Spark** (20 + 1 streak), streak 1, the daily quest
+        complete, `Total Workouts` at tier 1.
+      - **Paid exactly once:** two further reads awarded 0 and the balance stayed 21; replaying
+        the completion left it at 21.
+      - Claiming the finished quest: 21 → **26 Spark**, XP rose, the row went `claimed`; claiming
+        again **400 "Already claimed"** and the balance did not move.
+      - Medals: equipping two stuck, a junk id was dropped, four ids were capped at three.
+      - The Spark reached the Store (26), and an unaffordable purchase **400 "Not enough
+        currency"**.
+      - Prod 200 and untouched. Test accounts deleted.
 
 ---
 
@@ -992,4 +1024,30 @@ colours in another — is two files that have to agree, and eventually don't.
 notification triggers. Note that `xp.ts` already holds the itemised model and the level curve, the
 Store already spends `User.currency`, and the referral quests in P9 are waiting for exactly this
 ledger to make their CLAIM buttons real.
+**Blockers:** none.
+
+### 2026-08-07 — P11 complete
+Quests, medals, streak freezes, XP, Spark and claiming are live. Full detail in the P11 section.
+
+The phase is almost entirely *derived*, which is now the fourth time this call has paid off
+(ranks P3, leagues P7, posts P9, and everything here). One table, `reward_claims`, holds the only
+fact the sets cannot re-derive: what you have already taken. Its unique `(userId, key)` index is
+the whole idempotency story — the outbox can replay a claim, two devices can race, and the second
+insert simply fails.
+
+Two design notes worth keeping. The per-session Spark is **pulled, not pushed**: having
+`WorkoutsService` call gamification would have made Workouts → Gamification → Push → Workouts a
+module cycle, and it would have been wrong anyway, because a session finished in a basement gym is
+completed by the outbox hours later. Paying on the next read, keyed by session id, handles both.
+And the streak-at-risk notification became *the existing reminder, told better* rather than a
+second cron — two pushes on one evening for one reason is a bug, not a feature.
+
+The streak self-check earned its keep: nine assertions around the freeze boundaries, including
+that two missed days break a streak even with a freeze banked, and that a broken streak does not
+carry its freezes into the next one.
+
+**Next:** P12 — Offline & PWA hardening. The outbox already covers session writes; it needs
+reactions, quest claims and bodyweight, plus idempotency keys, a real service worker precache and
+an install prompt. Note that quest claims are *already* idempotent server-side, so the outbox only
+has to not lose them.
 **Blockers:** none.

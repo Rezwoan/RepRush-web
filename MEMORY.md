@@ -283,6 +283,16 @@ Notable v1 rules that must survive into v2:
   Why: currency is not awarded until P11, so pricing 34 themes would only take something away.
   Revisit when the ledger is on.
 
+- **2026-08-07** P11 stores **one table**, `reward_claims`. Quests, medals, levels, streaks and
+  freezes are all derived; the only fact the sets cannot re-derive is which rewards were taken.
+  Idempotency is the unique `(userId, key)` index, not application logic.
+- **2026-08-07** The per-session Spark is **pulled on the next read**, not pushed at completion.
+  Why: `WorkoutsService → GamificationService → PushService → WorkoutsService` is a module cycle,
+  and a session finished offline is completed by the outbox hours later. Keyed by session id, so
+  paying twice is impossible.
+- **2026-08-07** The streak-at-risk notification is the **existing** 5pm reminder with better
+  copy, not a second cron. Why: two pushes on the same evening for the same reason.
+
 ---
 
 ## 7. Open risks
@@ -657,3 +667,13 @@ Two rules that fall out of it:
   `components/art/equipment-icon.tsx` — not from `lib/muscles.ts`, where you would look first.
 - **`UID` is readonly in bash.** A check script that captures a user id into `$UID` silently gets
   the shell's own uid, and the cleanup then deletes nothing. It cost one leftover test account.
+
+**P11 · 2026-08-07**
+
+- **The medal art only had four materials** (stone/bronze/silver/gold) and the ladder needs five.
+  Adding `platinum` and `mythic` to `MEDAL_MATERIALS` in `medal.tsx` is two colour pairs; a tier
+  with no material silently renders as stone, which reads as "not earned".
+- `MEDAL_EMBLEMS` has no `anvil`. Check the key exists before naming one in a rules file — an
+  unknown emblem falls back to the default rather than failing.
+- Quest rotation is `hash(userId:period)` into the pool. Deterministic, so it needs no rota table
+  and no cron, and two reads a second apart cannot disagree about what today's quest is.
