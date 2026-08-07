@@ -307,7 +307,7 @@ export function CoachMark({
               </span>
               <button
                 onClick={onNext}
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground"
+                className="rounded-lg bg-primary-fill px-4 py-2 text-sm font-bold text-primary-foreground"
               >
                 {step === total ? actionLabel : 'Next'}
               </button>

@@ -109,7 +109,7 @@ export function Keypad({
       className="fixed inset-x-0 bottom-0 z-[70] border-t border-border bg-popover safe-bottom"
     >
       {/* The banner is the single most misunderstood thing in a lifting log. */}
-      <div className="flex items-center justify-between gap-2 bg-primary px-4 py-2 text-primary-foreground">
+      <div className="flex items-center justify-between gap-2 bg-primary-fill px-4 py-2 text-primary-foreground">
         <p className="text-xs font-semibold">
           {field === 'weight'
             ? 'Log the total weight (bar included if applicable)'
@@ -208,7 +208,7 @@ const keyCls = (tone: 'plain' | 'accent' | 'primary' = 'plain') =>
     'press grid h-12 place-items-center rounded-xl text-lg font-extrabold',
     'border-b-2 active:translate-y-[2px] active:border-b-0',
     tone === 'primary'
-      ? 'h-auto border-b-black/25 bg-primary text-primary-foreground'
+      ? 'h-auto border-b-black/25 bg-primary-fill text-primary-foreground'
       : tone === 'accent'
         ? 'border-b-border bg-secondary text-foreground'
         : 'border-b-border bg-card text-foreground',

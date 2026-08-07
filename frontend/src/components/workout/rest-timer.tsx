@@ -142,7 +142,7 @@ export function RestMiniBar({ timer, className }: { timer: RestTimer; className?
           exit={{ y: 60, opacity: 0 }}
           className={cn(
             'fixed inset-x-0 bottom-[72px] z-40 mx-auto flex max-w-2xl items-center gap-3',
-            'border-t border-border bg-primary px-4 py-2.5 text-primary-foreground',
+            'border-t border-border bg-primary-fill px-4 py-2.5 text-primary-foreground',
             className,
           )}
         >

@@ -39,6 +39,42 @@ export interface Theme {
 
 const hsl = (h: number, s: number, l: number) => `${h} ${s}% ${l}%`;
 
+// ── contrast ────────────────────────────────────────────────────────
+/**
+ * The brand cobalt at 50% lightness carries white text at **3.9:1**, and AA
+ * wants 4.5. Darkening `--primary` to fix it breaks the other direction —
+ * `text-primary` on the page background falls to 4.2 — so there is no single
+ * lightness that satisfies both, and the two uses need two tokens.
+ *
+ * `--primary-fill` is the one white sits on. Its lightness is *found*, not
+ * fixed: green reads far brighter than blue at the same L, so a constant would
+ * be too dark for some of the 34 themes and still failing on others.
+ */
+function rgb(h: number, s: number, l: number): [number, number, number] {
+  const S = s / 100;
+  const L = l / 100;
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = S * Math.min(L, 1 - L);
+  const f = (n: number) => L - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return [f(0), f(8), f(4)];
+}
+
+const luminance = (h: number, s: number, l: number) => {
+  const lin = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const [r, g, b] = rgb(h, s, l);
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+};
+
+/** Contrast of white against this colour. 21 is black, 1 is white on white. */
+export const contrastWithWhite = (h: number, s: number, l: number) =>
+  1.05 / (luminance(h, s, l) + 0.05);
+
+/** The lightest shade of this hue that still carries white text at AA. */
+export function fillLightness(h: number, s: number, start: number, target = 4.5): number {
+  for (let l = start; l >= 20; l -= 1) if (contrastWithWhite(h, s, l) >= target) return l;
+  return 20;
+}
+
 /** Derive the full CSS-variable set for a theme. */
 export function themeVars(t: Theme): Record<string, string> {
   const dark = t.mode === 'dark';
@@ -64,6 +100,7 @@ export function themeVars(t: Theme): Record<string, string> {
     '--popover-foreground': hsl(b, Math.min(bs + 8, 40), L.fg),
 
     '--primary': hsl(t.primary, ps, dark ? 50 : 45),
+    '--primary-fill': hsl(t.primary, ps, fillLightness(t.primary, ps, dark ? 50 : 45)),
     '--primary-foreground': hsl(0, 0, 100),
 
     '--secondary': hsl(b, bs - 4 < 0 ? 0 : bs - 4, dark ? 16 : 94),
@@ -213,7 +250,17 @@ export const __selfcheck = () => {
       if (!/^-?[\d.]+ [\d.]+% [\d.]+%$/.test(val) && !val.startsWith('hsl'))
         throw new Error(`${t.id}: malformed ${key} = "${val}"`);
     }
+    // The whole point of `--primary-fill`. Checked for every theme, because a
+    // hue that fails AA in theme 27 is otherwise invisible until someone with
+    // low vision opens theme 27.
+    const [fh, fs, fl] = (v['--primary-fill'] ?? '').match(/[\d.]+/g)!.map(Number);
+    const ratio = contrastWithWhite(fh, fs, fl);
+    if (ratio < 4.5) throw new Error(`${t.id}: white on --primary-fill is ${ratio.toFixed(2)}:1`);
+    // …and it must not have gone so dark it stopped looking like the brand.
+    if (fl < 30) throw new Error(`${t.id}: --primary-fill went to ${fl}% lightness`);
   }
   if (!THEMES.some((t) => t.id === DEFAULT_THEME)) throw new Error('DEFAULT_THEME not in catalog');
+  if (contrastWithWhite(0, 0, 100) > 1.01) throw new Error('white on white should be 1:1');
+  if (Math.abs(contrastWithWhite(0, 0, 0) - 21) > 0.1) throw new Error('white on black should be 21:1');
   return `${THEMES.length} themes ok`;
 };

@@ -44,7 +44,7 @@ export function Segmented<T extends string>({
               <motion.span
                 layoutId={`${uid}-seg`}
                 transition={spring.snappy}
-                className="absolute inset-0 rounded-xl bg-primary"
+                className="absolute inset-0 rounded-xl bg-primary-fill"
               />
             )}
             <span className="relative">{o.label}</span>
@@ -224,7 +224,7 @@ export function OptionCard({
         <span
           className={cn(
             'grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 transition-colors',
-            selected ? 'border-primary bg-primary text-primary-foreground' : 'border-border',
+            selected ? 'border-primary bg-primary-fill text-primary-foreground' : 'border-border',
           )}
         >
           {selected && <Check size={14} strokeWidth={3} />}

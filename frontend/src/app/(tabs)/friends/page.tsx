@@ -269,7 +269,7 @@ function FriendsPanel({
                   <button
                     aria-label={`Accept ${f.name}`}
                     onClick={() => act(socialApi.accept(f.id))}
-                    className="press grid h-10 w-10 place-items-center rounded-full bg-primary text-primary-foreground"
+                    className="press grid h-10 w-10 place-items-center rounded-full bg-primary-fill text-primary-foreground"
                   >
                     <Check size={18} />
                   </button>
@@ -599,7 +599,7 @@ export default function FriendsPage() {
         <button
           onClick={() => setAdding(true)}
           aria-label="Add friend"
-          className="press grid h-11 w-11 place-items-center rounded-full bg-primary text-primary-foreground"
+          className="press grid h-11 w-11 place-items-center rounded-full bg-primary-fill text-primary-foreground"
         >
           <UserPlus size={20} />
         </button>

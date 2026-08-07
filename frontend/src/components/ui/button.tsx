@@ -30,7 +30,7 @@ export const buttonVariants = cva(
         // (onboarding, celebrations, session finish). The active:translate pairs
         // with the shrinking border to make it depress properly.
         chunky:
-          'bg-primary text-primary-foreground border-b-4 border-b-black/30 ' +
+          'bg-primary-fill text-primary-foreground border-b-4 border-b-black/30 ' +
           'active:translate-y-[3px] active:border-b-[1px] hover:brightness-110',
         chunkyGold:
           'bg-accent text-accent-foreground border-b-4 border-b-black/25 ' +

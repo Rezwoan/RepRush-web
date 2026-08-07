@@ -150,7 +150,7 @@ export function QuestsPanel({ onBack }: { onBack: () => void }) {
       }
     >
       <div className="surface mb-4 flex items-center gap-3 p-3">
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-primary font-extrabold text-primary-foreground">
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-primary-fill font-extrabold text-primary-foreground">
           {data.level.level}
         </span>
         <div className="min-w-0 flex-1">

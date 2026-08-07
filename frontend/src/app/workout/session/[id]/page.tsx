@@ -285,7 +285,7 @@ export default function SessionPage() {
       <header
         className={cn(
           'sticky top-0 z-30 flex items-center gap-3 border-b border-border px-4 py-3 backdrop-blur-xl',
-          timer.active ? 'bg-primary text-primary-foreground' : 'bg-background/90',
+          timer.active ? 'bg-primary-fill text-primary-foreground' : 'bg-background/90',
         )}
       >
         <button
@@ -311,7 +311,7 @@ export default function SessionPage() {
           aria-label="Finish workout"
           className={cn(
             'press grid h-10 w-10 shrink-0 place-items-center rounded-full',
-            timer.active ? 'bg-white/20' : 'bg-primary text-primary-foreground',
+            timer.active ? 'bg-white/20' : 'bg-primary-fill text-primary-foreground',
           )}
         >
           <ChevronRight size={22} />

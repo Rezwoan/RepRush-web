@@ -237,7 +237,7 @@ function LevelsCard({ data }: { data: Overview }) {
   return (
     <Card title="Levels">
       <div className="flex items-center gap-4">
-        <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-primary text-lg font-extrabold text-primary-foreground">
+        <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-primary-fill text-lg font-extrabold text-primary-foreground">
           {level}
         </span>
         <div className="min-w-0 flex-1">

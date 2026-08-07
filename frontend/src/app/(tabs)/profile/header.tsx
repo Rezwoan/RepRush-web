@@ -87,7 +87,7 @@ export function ProfileHeaderCard({
             )}
           </span>
           {level !== undefined && (
-            <span className="nums absolute -bottom-1 right-0 rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-extrabold text-primary-foreground">
+            <span className="nums absolute -bottom-1 right-0 rounded-full bg-primary-fill px-1.5 py-0.5 text-[10px] font-extrabold text-primary-foreground">
               {level}
             </span>
           )}

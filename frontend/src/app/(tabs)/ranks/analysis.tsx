@@ -230,7 +230,7 @@ export function AnalysisPanel({ data }: { data: Overview }) {
                 <span
                   className={cn(
                     'nums grid h-9 w-full place-items-center rounded-lg text-sm font-extrabold',
-                    week.counts[i] ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground',
+                    week.counts[i] ? 'bg-primary-fill text-primary-foreground' : 'bg-secondary text-muted-foreground',
                     i === week.today && 'ring-2 ring-primary ring-offset-2 ring-offset-background',
                   )}
                 >

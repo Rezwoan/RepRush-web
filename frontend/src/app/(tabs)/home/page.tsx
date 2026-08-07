@@ -565,7 +565,7 @@ function ForYou({
           <button
             onClick={() => setWeightOpen(true)}
             aria-label="Log bodyweight"
-            className="press grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground"
+            className="press grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary-fill text-primary-foreground"
           >
             <Plus size={20} />
           </button>
