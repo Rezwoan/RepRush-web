@@ -36,11 +36,13 @@ if [ -f "$DB" ]; then
   echo "  snapshot taken"
 fi
 
-# `npm ci` on this Pi occasionally reports "added N packages" and leaves
-# node_modules/.bin incomplete, so the very next line dies with
-# "sh: 1: nest: not found". It succeeds on a plain retry every time. Rather
-# than burning a whole deploy on it, check for the binary the build needs and
-# reinstall once if it is missing.
+# `npm ci` on this Pi intermittently reported "added N packages" and left
+# node_modules/.bin incomplete, so the next line died with "sh: 1: nest: not
+# found". The cause was npm rewriting node_modules underneath the *running*
+# dev services — the retry surfaced it as `rm: cannot remove
+# 'node_modules/typeorm/browser/...': Directory not empty`. The services are
+# now stopped for the whole install-and-build phase; dev is briefly down,
+# which is exactly what a dev stack is for.
 install_deps() {
   local dir="$1" bin="$2"
   cd "$dir"
@@ -53,8 +55,11 @@ install_deps() {
   [ -x "node_modules/.bin/$bin" ] || { echo "install failed: $bin still missing in $dir"; exit 1; }
 }
 
+echo "[3/6] Stopping dev services for the rebuild..."
+sudo systemctl stop reprush-dev-backend.service reprush-dev-frontend.service
+
 # ── 3. Backend ────────────────────────────────────────────
-echo "[3/6] Building backend..."
+echo "  building backend..."
 install_deps "$APP_DIR/backend" nest
 npm run build
 
@@ -63,10 +68,10 @@ echo "[4/6] Building frontend..."
 install_deps "$APP_DIR/frontend" next
 npm run build
 
-# ── 5. Restart dev services only ──────────────────────────
-echo "[5/6] Restarting dev services..."
-sudo systemctl restart reprush-dev-backend.service
-sudo systemctl restart reprush-dev-frontend.service
+# ── 5. Start dev services only ────────────────────────────
+echo "[5/6] Starting dev services..."
+sudo systemctl start reprush-dev-backend.service
+sudo systemctl start reprush-dev-frontend.service
 
 # ── 6. Health check ───────────────────────────────────────
 echo "[6/6] Health check..."
