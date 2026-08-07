@@ -198,14 +198,30 @@ Notable v1 rules that must survive into v2:
   gets Calculator and Analysis sub-tabs), §9 (Profile cards), §10 (the itemised XP model, quest and
   medal shapes) and a new §12 (typed goals with target dates and 1RM targets, the Health Log,
   routine folders). Both folders are gitignored; SPEC remains the only committed record.
-- **2026-08-07 — OPEN, decide in P7.** The reference ladder has **eight** tiers, not seven: it
-  inserts **Champion** between Diamond and Titan and its apex is **Olympian** (no divisions), where
-  ours ends at Legend. It also numbers divisions the **other way** — `I → II → III` ascending, so
-  Titan III is the best Titan, while `lib/ranks.ts` uses `III → II → I` and self-checks that order.
-  Nothing is broken: the engine is internally consistent and P3's ladder was verified against it.
-  But the shipped app disagrees with the owner's reference on both points, and P7 builds the screen
-  that makes it visible. Changing division direction touches `rankValue()`, `rankFromPercentile()`
-  and P3's exit-check table; adding Champion additionally re-spaces every `TIER_FLOOR`.
+- **2026-08-07 — ~~OPEN, decide in P7~~ SETTLED in P7, both in the reference's favour.** The ladder
+  has **eight** tiers — Bronze, Silver, Gold, Platinum, Diamond, **Champion**, Titan, **Olympian** —
+  and **divisions ascend `I → II → III`**, so Titan III is the best Titan and Gold I is the median
+  gym-goer. **Olympian is a single band with no divisions**; `divisionsIn(tier)` is the only place
+  that is special-cased, in both `backend/src/ranks/standards.ts` and `frontend/src/lib/ranks.ts`,
+  and `nextDivisionPercentile` derives its edges from it so the apex cannot sprout a division.
+  `TIER_FLOOR` percentiles: 0 / 25 / 45 / 65 / 79 / 88 / 94 / 98.5. Why: the owner said the
+  screenshots are the vision, and the change cost two arithmetic lines per copy of the ladder plus
+  a re-spacing — everything else consumes a `Rank` opaquely. Verified by re-running the engine over
+  the real 778-set history: both accounts' percentiles came back identical to P3's.
+- **2026-08-07** Leagues have **no season or division table**. A season *is* the ISO week and a
+  division *is* your slice of everyone sorted by the LP they earned in it, both derived at read
+  time from the same weekly-LP number the Bodyrank card already computes. Why: the same reason
+  ranks are derived — a stored ladder needs a cron to roll it over and can disagree with the sets.
+  Ceiling in `RanksService.leagues`: it snapshots every user per request, so past a few hundred
+  accounts cache the per-user weekly LP for the length of the week.
+- **2026-08-07** `Save Rank` in the Calculator and onboarding's first lift are **one method**,
+  `RanksService.recordLift`. Why: ranks derive from `workout_sets` and nothing else, so "saving a
+  rank" can only mean logging the set — they were the same twenty lines twice. `AuthModule` imports
+  `RanksModule` for it and dropped its own `GymSession`/`WorkoutSet` repositories.
+- **2026-08-07** P7's Gallery is SPEC §6's Gallery — tier-tinted cards for your *ranked exercises*.
+  The **medal** cabinet ("every badge and medal, earned vs locked with unlock conditions") needs the
+  medal engine and its unlock rules, which are P11's, so it ships there. The tier ladder itself is
+  already browsable in the Ranks tab's `?` help sheet.
 - **2026-08-07** The generated plan is stored as a **JSON blob** on `gym_sessions.plan`, not as
   rows. Why: it is written once at session start, read whole, and never queried by any of its
   fields; sql.js rewrites the entire database file on flush, so a `plan_exercises` table would tax
@@ -532,3 +548,27 @@ Two rules that fall out of it:
 - Test accounts can be cleaned up entirely from the Pi in one command — see the P4 note; the same
   `sudo grep ADMIN /var/www/reprush-dev/backend/.env` → login → `DELETE /api/admin/users/:id` loop
   works, and deleting a user takes their sessions and sets with them.
+
+**P7 · 2026-08-07**
+
+- **The `Rank` object carries `percentile`, and the frontend type was missing it.** The backend has
+  always sent it; `frontend/src/lib/ranks.ts` declared only tier/division/lp, so every screen that
+  wanted "stronger than 62% of lifters" would have had to invent it. It is required on `Rank` now,
+  while `rankValue()` takes only `{tier, division, lp}` so callers can still compare bare literals.
+- **The same was true of the `User` type in `auth-context.tsx`** — `/auth/me` returns the whole
+  entity, but the interface stopped at v1's fields, so P4's `sex`, `birthDate` and `avatarId` were
+  invisible to TypeScript. The Calculator needs `sex` and `birthDate` because they pick the
+  standards column and the age handicap.
+- **A five-person division cannot promote five and demote five.** Constants copied straight from the
+  spec put every row in both zones at once, and the promote branch won. Any zone expressed as a
+  fixed count needs clamping against the actual list length — `Math.floor(rows.length / 3)` here.
+- **`weightKg` is the *added* weight, not the load.** A pull-up or a crunch is logged at 0, so the
+  obvious `${weightKg} kg × ${reps}` renders `Best 0 kg × 8` and reads as a bug. `bestLabel()` /
+  `targetLabel()` in `app/(tabs)/ranks/types.ts` say `8 reps` instead. Anything new that prints a
+  logged set has to handle it.
+- **`TabBarLinks` switches to a scrolling strip past four options** (Ranks has six). Equal `flex-1`
+  thirds stop fitting a phone, and shrinking the type instead is how a tab bar becomes unreadable.
+- **Screenshotting the deployed dev app over CDP times out often, and it is not a frozen app.** The
+  P4 note is still the answer: read `document.body.innerText` to know where the machine is, and
+  drive a **`scroll`** action rather than a bare `screenshot` — the scroll returns its own image and
+  forces the paint, so it works where two consecutive screenshots do not.

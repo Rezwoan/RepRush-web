@@ -16,7 +16,7 @@ https://dev-reprush.rezwoan.codes, and its exit check below is verified in the b
 | P4 | Onboarding funnel | **DONE** |
 | P5 | Home tab | **DONE** |
 | P6 | Workout tab | **DONE** |
-| P7 | Ranks tab | TODO |
+| P7 | Ranks tab | **DONE** |
 | P9 | Friends & social | TODO |
 | P10 | Profile & settings | TODO |
 | P11 | Gamification glue | TODO |
@@ -359,16 +359,69 @@ in the same 512-unit box. A self-check asserts every equipment type resolves to 
 
 ---
 
-## P7 — Ranks tab · `TODO`
+## P7 — Ranks tab · `DONE` (2026-08-07)
 
-- [ ] Your Rank: hero badge (greyed + predicted before placements), Placements card, Rank Standings,
-      per-exercise rank list
-- [ ] Bodygraph: tinted front/back, tap-a-muscle detail sheet, tier legend
-- [ ] Leagues: weekly division table, promotion/demotion, season countdown
-- [ ] Gallery: every badge and medal, earned vs locked with unlock conditions
-- [ ] Rank-up celebration screen (reusable from P6's chain)
-- [ ] Rank Calculator standalone tool
-- [ ] **Exit check:** an account with v1 history shows a populated Bodygraph and a real Bodyrank
+- [x] **The two open ladder decisions are settled — the ladder now matches the owner's reference.**
+      Eight tiers: Bronze → Silver → Gold → Platinum → Diamond → **Champion** → Titan →
+      **Olympian**, where Olympian is a single apex band with no divisions. Divisions **ascend**
+      `I → II → III`, so Titan III is the best Titan. `divisionsIn(tier)` is the one place the apex
+      is special-cased, and `nextDivisionPercentile` derives its edges from it, so the two cannot
+      disagree. New `TIER_FLOOR`: 0 / 25 / 45 / 65 / 79 / 88 / 94 / 98.5.
+- [x] Champion's emblem is `lorc/crown`, already vendored — no new asset needed. Olympian keeps the
+      winged emblem and the old Legend cyan; Champion is magenta (`--tier-champion`).
+- [x] Your Rank: hero badge (greyed + `Predicted Rank` before placements), rainbow-bordered
+      Placements card with ten hexes, Rank Standings tiles, per-exercise list with LP bar and
+      percentile
+- [x] Bodygraph: front/back tinted by each muscle's own tier, tap-a-muscle sheet (rank, LP, decay,
+      contributing exercises, `Train this`), scrollable tier legend
+- [x] Leagues: `GET /ranks/leagues` — weekly division table, promotion/demotion zones, season
+      countdown. **No season or division table**: a season *is* the ISO week and a division *is*
+      your slice of everyone sorted by the LP they earned in it. Deferred from P3 for exactly this
+      screen.
+- [x] Gallery: search + tier filter over your ranked lifts, two-up tier-tinted cards with badge,
+      Kg/Reps boxes and an LP bar — SPEC §6's Gallery.
+      ~~every badge and medal, earned vs locked~~ — the *medal* cabinet needs the medal engine and
+      its unlock conditions, which are P11's. The ladder itself is browsable now: the `?` help sheet
+      renders all eight tier badges beside the rules.
+- [x] Rank Calculator: exercise carousel + picker, weight/reps rulers, **`Save Rank`** toggle
+      (`POST /ranks/record`), result card with rays and LP bar, localStorage Calculator History
+- [x] ~~Rank-up celebration screen~~ — `components/ui/celebration.tsx` already is one and P6's
+      post-session chain already uses it. Writing a second would be two things to keep in step.
+- [x] Analysis: Average Ranks per catalog category (averaged server-side, where the ladder lives),
+      Predictions with the same prescription the session's rank strip shows, Statistics with a
+      Su–Sa rank-up week row, and a tier Rank Distribution donut filterable by muscle group
+- [x] `GET /ranks/me` now also carries `next` per exercise, `rankUps` and `categories`, so the four
+      data-driven sub-tabs are one request between them
+- [x] **Exit check — verified on dev, in the browser and against the API:**
+      - Boot self-checks green: `e1rm ok, standards ok, recovery ok, generator ok`. Zero ERROR lines.
+      - **The real v1 history, both accounts, unchanged in shape:** user5 27 ranked exercises
+        `{champion 1, diamond 1, platinum 6, gold 6, silver 8, bronze 5}`, Bodyrank **Silver I**
+        (p31.5, placements 10/10, 12/21 muscles, 72 rank-ups); user6 29 exercises
+        `{diamond 1, gold 1, silver 9, bronze 18}`, Bodyrank **Bronze II** (p12.7). Identical
+        percentiles to P3 — only the labels moved, which is what a relabelling should do.
+      - A fresh account with 13 recorded lifts: placements 10/10, `predicted` false, Bodyrank
+        **Gold I** p45.1, 11/21 muscles lit on the Bodygraph, donut across four tiers.
+      - Bench 100×5 @82 kg male 25 → **Diamond III p86.5** — P3's worked example, same percentile.
+        Its `next` is `102.5×5 → Champion I`, i.e. crossing a tier boundary, named correctly.
+      - Calculator: bench 60×5 → **Silver I, 31st percentile, est. 1RM 70 kg**; history recorded.
+      - `POST /ranks/record`: 201 on five real lifts, **400** on `reps: 0`, **404** on a junk
+        exercise id.
+      - Leagues: season `2026-W32`, resets in 2d 12h, five rows, `YOU` highlighted.
+      - Prod 200 and untouched throughout. Test accounts deleted; dev is back to its 2 real users.
+
+Two real bugs, both found by looking at the deployed screen rather than the code:
+- **Every row in the league table showed a promotion chevron.** `promoteTop` and `demoteBottom` were
+  flat 5s, so in a five-person division every row was in both zones at once and promote won the
+  ternary. Each zone is now capped at a third of the table, and the copy drops out entirely when the
+  division is too small for either.
+- **`Best 0 kg × 8`.** A pull-up is logged with `weightKg` 0 — that is the *added* weight, not the
+  load — so the obvious template read as a bug on every bodyweight lift. `bestLabel` / `targetLabel`
+  say `8 reps`, and the Gallery card shows `BW` instead of `0 KG`.
+
+One deliberate deletion: signup's `recordFirstLift` and the Calculator's `Save Rank` were the same
+twenty lines, for the same reason — a rank you show but never store a set for evaporates. They are
+now one method, `RanksService.recordLift`, and `AuthModule` imports `RanksModule` instead of
+carrying its own repositories.
 
 ---
 
@@ -760,3 +813,39 @@ the other, which is the point, but check `gh run list` first anyway.**
 reference ladder has eight tiers to our seven, and numbers divisions the other way round. P7 builds
 the screen that makes both visible.
 **Blockers:** none.
+
+### 2026-08-07 — P7 complete, and the ladder finally matches the vision
+Six sub-tabs live at `/ranks`: Your Rank, Bodygraph, Leagues, Gallery, Calculator, Analysis. Full
+detail in the P7 section above.
+
+**The two open ladder decisions are closed, both in the reference's favour.** Champion goes in
+between Diamond and Titan, Legend becomes **Olympian** and loses its divisions, and divisions now
+ascend `I → II → III`. The change was much smaller than the note that recorded it feared: `TIERS`,
+`TIER_FLOOR` and two arithmetic lines per copy of the ladder, plus a `divisionsIn(tier)` that
+`nextDivisionPercentile` derives its edges from so the apex cannot grow a division by accident.
+Everything else consumes a `Rank` opaquely. Champion's emblem was already vendored — `lorc/crown` —
+so no asset work either.
+
+**The check that mattered was re-running it over the real 778-set history**, the same move P3 and P6
+both needed. Both accounts' percentiles came back *identical* to P3's — user5 p31.5, user6 p12.7 —
+with the distribution across tiers unchanged apart from one exercise sliding from Titan into the new
+Champion band. A relabelling that moves a percentile is a bug; this one didn't.
+
+Leagues shipped without a `season` or `division` table, which is the P3 decision applied again: a
+season *is* the ISO week, a division *is* your slice of everyone sorted by the LP they earned in it,
+and both fall out of the weekly-LP number the Bodyrank card already computes. A stored ladder would
+need a cron to roll it over and could disagree with the sets.
+
+Two bugs, both visible only on the deployed page: every league row showed a promotion chevron (five
+promote and five demote in a five-person division means everyone is in both zones), and every
+bodyweight lift read `Best 0 kg × 8`, because 0 is the *added* weight on a pull-up.
+
+`Save Rank` turned out to be the same operation as onboarding's first lift — ranks derive from
+`workout_sets`, so the only honest way to keep a calculated rank is to log the set. Both now go
+through `RanksService.recordLift`, and `AuthModule` dropped its own repositories to get there.
+
+**Next:** P9 — Friends & social. `User.username` already exists (unique index, P2) and the Friends
+tab is still a placeholder. Note that P9's leaderboards and P7's Leagues are different things and
+should stay that way: a league is this week's LP among ~30 rivals, a leaderboard is all-time and
+global.
+**Blockers:** none. CI dispatched both pushes this session within seconds.
