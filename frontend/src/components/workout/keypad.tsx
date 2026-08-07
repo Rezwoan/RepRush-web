@@ -224,7 +224,10 @@ export const __selfcheck = () => {
 
   eq(platesFor(20, 20), [], 'an empty bar needs no plates');
   eq(platesFor(60, 20), [20], '60 kg is a 20 on each side');
-  eq(platesFor(100, 20), [20, 20], '100 kg is two 20s a side');
+  // [25, 15], not [20, 20]. Both load 100 kg in two plates; the calculator
+  // reaches for the biggest first. This assertion has been wrong since P6 and
+  // nothing noticed, because the check only runs on `/kitchen-sink`.
+  eq(platesFor(100, 20), [25, 15], '100 kg is a 25 and a 15 a side');
   eq(platesFor(102.5, 20), [20, 20, 1.25], '102.5 kg needs the small plates');
   eq(platesFor(10, 20), null, 'below the bar is not loadable');
   eq(platesFor(21, 20), null, '21 kg cannot be made from standard plates');
@@ -232,7 +235,9 @@ export const __selfcheck = () => {
   eq(platesFor(135, 45, PLATES_LB), [45], '135 lb is a 45 a side on a 45 lb bar');
   eq(platesFor(225, 45, PLATES_LB), [45, 45], '225 lb is two 45s a side');
   eq(platesFor(50, 45, PLATES_LB), [2.5], '50 lb is the smallest pair');
-  // Greedy is optimal here because every plate divides the next one up.
+  // Greedy is not provably minimal — 25 does not divide 20 — but it always
+  // finds *a* valid load on both plate sets, and reaching for the heaviest
+  // plate first is what anyone actually does at the rack.
   const heavy = platesFor(180, 20);
   if (!heavy || heavy[0] !== 25) throw new Error('keypad: the calculator should reach for the biggest plate first');
   if (Math.abs((heavy.reduce((a, b) => a + b, 0) * 2 + 20) - 180) > 1e-9)
