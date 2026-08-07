@@ -607,12 +607,25 @@ function ExerciseCard({
                 const done = logged.find((s) => s.setNumber === i + 1);
                 const prev = info?.prev?.find((p) => p.setNumber === i + 1);
                 const draft = drafts[key];
-                const weight = done
-                  ? String(done.weightKg)
-                  : (draft?.weight ?? (planned.weightKg != null ? String(planned.weightKg) : ''));
-                const reps = done
-                  ? String(done.actualReps)
-                  : (draft?.reps ?? (planned.targetReps ? String(planned.targetReps) : ''));
+                const focused = focusKey === key;
+
+                // An empty draft field falls back to the ghost — `||`, not `??`.
+                // Editing the weight creates a draft whose `reps` is '', and
+                // with `??` that blanked the reps ghost the moment you touched
+                // the kg column, so the row read "100 / —" for a set that was
+                // about to log 7 reps.
+                //
+                // While a field is focused its raw draft wins, so backspacing
+                // to empty leaves it empty instead of the ghost springing back.
+                const ghostWeight = planned.weightKg != null ? String(planned.weightKg) : '';
+                const ghostReps = planned.targetReps ? String(planned.targetReps) : '';
+                const cell = (field: Field, ghost: string) => {
+                  const raw = field === 'weight' ? draft?.weight : draft?.reps;
+                  return focused && focusField === field ? (raw ?? '') : (raw || ghost);
+                };
+
+                const weight = done ? String(done.weightKg) : cell('weight', ghostWeight);
+                const reps = done ? String(done.actualReps) : cell('reps', ghostReps);
 
                 return (
                   <li
