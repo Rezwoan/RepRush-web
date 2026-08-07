@@ -4,9 +4,10 @@ const withPWA = require('next-pwa')({
   register: true,
   skipWaiting: true,
   disable: process.env.NODE_ENV === 'development',
-  // Any navigation we haven't cached falls back to the dashboard shell, which
-  // then renders from local state — better than the browser's offline error.
-  fallbacks: { document: '/dashboard' },
+  // Any navigation we haven't cached falls back to the v2 shell, which then
+  // renders from its localStorage cache — better than the browser's offline
+  // error page. `/dashboard` was v1's and is no longer where the app lives.
+  fallbacks: { document: '/home' },
   runtimeCaching: [
     // API reads: serve fresh when possible, fall back to the last good response
     // so the app still has plans, history and profile data with no connection.

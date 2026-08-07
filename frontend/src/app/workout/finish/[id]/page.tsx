@@ -13,9 +13,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ChevronRight, Pill, X } from 'lucide-react';
-import { bodyWeightApi } from '@/lib/api';
 import {
-  flushOutbox, getCachedSession, materializeSets, queueCompleteSession, resolveSessionId,
+  flushOutbox, getCachedSession, materializeSets, queueBodyWeight, queueCompleteSession,
+  resolveSessionId,
 } from '@/lib/offline';
 import { hhmmss } from '@/components/workout/rest-timer';
 import { Button } from '@/components/ui/button';
@@ -55,11 +55,10 @@ export default function FinishPage() {
     setBusy(true);
 
     const kg = parseFloat(bodyweight);
-    if (kg > 0) {
-      // Best-effort and fire-and-forget: a bodyweight entry must never be the
-      // reason a finished session fails to finish.
-      bodyWeightApi.log(kg).catch(() => {});
-    }
+    // Queued like everything else here. It used to be a fire-and-forget POST,
+    // which quietly dropped the entry for anyone finishing a session offline —
+    // the exact user this whole screen is built for.
+    if (kg > 0) queueBodyWeight(kg);
 
     queueCompleteSession(sessionId, {
       caption: caption.trim() || undefined,

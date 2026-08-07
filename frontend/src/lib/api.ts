@@ -67,9 +67,16 @@ export const usersApi = {
 };
 
 // ─── Workouts ─────────────────────────────────────────────────────────────────
+/**
+ * Header the outbox stamps on every queued write, so a retry after a lost
+ * response cannot write twice. See `common/idempotency.interceptor.ts`.
+ */
+export const idem = (key?: string) =>
+  key ? { headers: { 'X-Idempotency-Key': key } } : undefined;
+
 export const workoutsApi = {
-  startSession: (workoutType: string, workoutPlanId?: number, plan?: unknown) =>
-    api.post('/workouts/sessions', { workoutType, workoutPlanId, plan }),
+  startSession: (workoutType: string, workoutPlanId?: number, plan?: unknown, key?: string) =>
+    api.post('/workouts/sessions', { workoutType, workoutPlanId, plan }, idem(key)),
   /** Build a session (SPEC §5.1). Reads and writes nothing until Start Workout. */
   generate: (params: {
     durationMin?: number;
@@ -85,13 +92,13 @@ export const workoutsApi = {
   getSessionSummary: (id: number) => api.get(`/workouts/sessions/${id}/summary`),
   getExercises: () => api.get('/workouts/exercises'),
   getExerciseHistory: (name: string) => api.get('/workouts/exercises/history', { params: { name } }),
-  completeSession: (id: number, finish?: object) =>
-    api.patch(`/workouts/sessions/${id}/complete`, finish ?? {}),
+  completeSession: (id: number, finish?: object, key?: string) =>
+    api.patch(`/workouts/sessions/${id}/complete`, finish ?? {}, idem(key)),
   resetSession: (id: number) =>
     api.delete(`/workouts/sessions/${id}`),
-  logSet: (sessionId: number, data: any) =>
-    api.post(`/workouts/sessions/${sessionId}/sets`, data),
-  deleteSet: (id: number) => api.delete(`/workouts/sets/${id}`),
+  logSet: (sessionId: number, data: any, key?: string) =>
+    api.post(`/workouts/sessions/${sessionId}/sets`, data, idem(key)),
+  deleteSet: (id: number, key?: string) => api.delete(`/workouts/sets/${id}`, idem(key)),
   getHeatmap: (year?: number) =>
     api.get('/workouts/heatmap', { params: { year } }),
   getPRs: () => api.get('/workouts/prs'),
@@ -102,8 +109,8 @@ export const workoutsApi = {
 
 // ─── Body Weight ──────────────────────────────────────────────────────────────
 export const bodyWeightApi = {
-  log: (weightKg: number, note?: string, date?: string) =>
-    api.post('/body-weight', { weightKg, note, date }),
+  log: (weightKg: number, note?: string, date?: string, key?: string) =>
+    api.post('/body-weight', { weightKg, note, date }, idem(key)),
   getHistory: (days?: number) =>
     api.get('/body-weight/history', { params: { days } }),
   getLatest: () => api.get('/body-weight/latest'),
@@ -216,7 +223,7 @@ export const profileApi = {
 export const gameApi = {
   /** Level, currency, streak, quests and medals — one call for every screen. */
   me: () => api.get('/gamification/me'),
-  claim: (key: string) => api.post('/gamification/claim', { key }),
+  claim: (key: string, opId?: string) => api.post('/gamification/claim', { key }, idem(opId)),
   equipMedals: (ids: string[]) => api.post('/gamification/medals/equip', { ids }),
 };
 
@@ -236,8 +243,8 @@ export const socialApi = {
   feed: (scope: 'friends' | 'discovery', before?: string) =>
     api.get('/social/feed', { params: { scope, before } }),
   post: (sessionId: number) => api.get(`/social/posts/${sessionId}`),
-  react: (sessionId: number, emoji: string | null) =>
-    api.post(`/social/posts/${sessionId}/react`, { emoji }),
+  react: (sessionId: number, emoji: string | null, key?: string) =>
+    api.post(`/social/posts/${sessionId}/react`, { emoji }, idem(key)),
   comments: (sessionId: number) => api.get(`/social/posts/${sessionId}/comments`),
   comment: (sessionId: number, text: string) =>
     api.post(`/social/posts/${sessionId}/comments`, { text }),

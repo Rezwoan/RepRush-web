@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { join } from 'path';
+import { CommonModule } from './common/common.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { WorkoutsModule } from './workouts/workouts.module';
@@ -42,6 +43,7 @@ import { GamificationModule } from './gamification/gamification.module';
         logging: false,
       }),
     }),
+    CommonModule,
     AuthModule,
     UsersModule,
     WorkoutsModule,

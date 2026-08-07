@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Check, Gift, Lock } from 'lucide-react';
 import { gameApi } from '@/lib/api';
+import { flushOutbox, queueClaim } from '@/lib/offline';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Bar } from '@/components/ui/display';
@@ -118,12 +119,13 @@ export function QuestsPanel({ onBack }: { onBack: () => void }) {
 
   const claim = async (key: string) => {
     setError('');
-    try {
-      const res = await gameApi.claim(key);
-      setData(res.data);
-    } catch (err: any) {
-      setError(err?.response?.data?.message ?? 'Could not claim that.');
-    }
+    // Queued, so a claim tapped with no signal is not lost — and the server's
+    // unique (user, key) index means a replay cannot pay twice.
+    queueClaim(key);
+    await flushOutbox();
+    const res = await gameApi.me().catch(() => null);
+    if (res) setData(res.data);
+    else setError('Saved — it will sync when you are back online.');
   };
 
   if (!data) {

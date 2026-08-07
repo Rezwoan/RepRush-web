@@ -7,7 +7,7 @@
  * genuinely someone else's job (a feature request form, a review link) say so
  * rather than pretending.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, ChevronRight } from 'lucide-react';
 import { authApi, profileApi } from '@/lib/api';
@@ -51,6 +51,18 @@ export function SettingsPanel({
   const [prefs, setPrefs] = useState<Preferences>(data.preferences);
   const [pw, setPw] = useState({ oldPassword: '', newPassword: '' });
   const [pwMsg, setPwMsg] = useState('');
+  // The browser only offers the install prompt once, through an event it fires
+  // when it feels like it — so it has to be caught and kept.
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const onPrompt = (e: any) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', onPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', onPrompt);
+  }, []);
 
   const set = async <K extends keyof Preferences>(key: K, value: Preferences[K]) => {
     setPrefs((p) => ({ ...p, [key]: value }));
@@ -306,6 +318,21 @@ export function SettingsPanel({
         <Row label="Calendar" sub={`Week starts ${prefs.weekStart}`} onClick={() => setScreen('calendar')} right={<ChevronRight size={18} className="text-muted-foreground" />} />
         <Row label="Other preferences" onClick={() => setScreen('other')} right={<ChevronRight size={18} className="text-muted-foreground" />} />
       </Group>
+
+      {installPrompt && (
+        <Group title="App">
+          <Row
+            label="Install RepRush"
+            sub="Add it to your home screen — it works offline"
+            onClick={async () => {
+              installPrompt.prompt();
+              await installPrompt.userChoice.catch(() => undefined);
+              setInstallPrompt(null);
+            }}
+            right={<ChevronRight size={18} className="text-muted-foreground" />}
+          />
+        </Group>
+      )}
 
       <Group title="Resources">
         <Row label="About & attributions" onClick={() => setScreen('about')} right={<ChevronRight size={18} className="text-muted-foreground" />} />

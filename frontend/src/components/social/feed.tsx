@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Clock, Dumbbell, MessageCircle, Star, Trash2 } from 'lucide-react';
 import { socialApi } from '@/lib/api';
+import { flushOutbox, queueReaction } from '@/lib/offline';
 import { spring } from '@/lib/motion';
 import { MUSCLE_BY_ID, type MuscleId } from '@/lib/muscles';
 import type { Rank } from '@/lib/ranks';
@@ -235,15 +236,22 @@ export function PostCard({ post: initial, compact = false }: { post: Post; compa
   const colors = useMemo(() => muscleColors(post.muscles), [post.muscles]);
 
   const react = async (emoji: string) => {
-    // Optimistic: a reaction that waits for a round trip feels broken.
+    // Optimistic, and queued rather than posted: a reaction tapped on gym wifi
+    // that has stopped routing should still land when the app reconnects.
     const clearing = post.myReaction === emoji;
-    setPost((p) => ({ ...p, myReaction: clearing ? null : emoji }));
-    try {
-      const r = await socialApi.react(post.sessionId, clearing ? null : emoji);
-      setPost(r.data);
-    } catch {
-      setPost((p) => ({ ...p, myReaction: initial.myReaction }));
-    }
+    const was = post.reactions.find((r) => r.emoji === emoji)?.count ?? 0;
+    setPost((p) => ({
+      ...p,
+      myReaction: clearing ? null : emoji,
+      reactions: [
+        ...p.reactions.filter((r) => r.emoji !== emoji && r.emoji !== p.myReaction),
+        ...(clearing ? [] : [{ emoji, count: was + 1 }]),
+      ].filter((r) => r.count > 0),
+    }));
+    queueReaction(post.sessionId, clearing ? null : emoji);
+    await flushOutbox();
+    const fresh = await socialApi.post(post.sessionId).catch(() => null);
+    if (fresh) setPost(fresh.data);
   };
 
   const topMuscles = post.muscles

@@ -10,7 +10,7 @@
  * which fits comfortably, and synchronous access keeps the logging path free of
  * races that a hand-rolled IDB wrapper would invite.
  */
-import { workoutsApi } from './api';
+import { bodyWeightApi, gameApi, socialApi, workoutsApi } from './api';
 
 const QUEUE_KEY = 'reprush_outbox_v1';
 const SESSION_KEY = 'reprush_session_cache_v1';
@@ -52,7 +52,11 @@ type Op =
     }
   | { id: string; kind: 'logSet'; sessionId: number; localId: string; payload: Record<string, unknown> }
   | { id: string; kind: 'deleteSet'; sessionId: number; setId: number }
-  | { id: string; kind: 'completeSession'; sessionId: number; finish?: FinishPayload };
+  | { id: string; kind: 'completeSession'; sessionId: number; finish?: FinishPayload }
+  // P12: the writes outside a workout session that must also survive no signal.
+  | { id: string; kind: 'react'; sessionId: number; emoji: string | null }
+  | { id: string; kind: 'claim'; rewardKey: string }
+  | { id: string; kind: 'bodyWeight'; weightKg: number; date?: string };
 
 // ─── Storage helpers ─────────────────────────────────────────────────────────
 
@@ -254,6 +258,29 @@ export function queueCompleteSession(sessionId: number, finish?: FinishPayload) 
   if (s) { s.completedAt = new Date().toISOString(); setCache(c); }
 }
 
+/**
+ * A reaction, a quest claim and a bodyweight entry (SPEC §10 → Offline).
+ *
+ * All three are queued rather than posted for the same reason sets are: the gym
+ * is where the signal is worst and the app is used most. Every one is safe to
+ * replay — reactions are last-write-wins, claims are unique per (user, key) on
+ * the server, and bodyweight relies on the op id as its idempotency key.
+ */
+export function queueReaction(sessionId: number, emoji: string | null) {
+  // Only the newest reaction to a post matters; an earlier queued one is noise.
+  setQueue(getQueue().filter((op) => !(op.kind === 'react' && op.sessionId === sessionId)));
+  enqueue({ id: uid(), kind: 'react', sessionId, emoji });
+}
+
+export function queueClaim(rewardKey: string) {
+  if (getQueue().some((op) => op.kind === 'claim' && op.rewardKey === rewardKey)) return;
+  enqueue({ id: uid(), kind: 'claim', rewardKey });
+}
+
+export function queueBodyWeight(weightKg: number, date?: string) {
+  enqueue({ id: uid(), kind: 'bodyWeight', weightKg, date });
+}
+
 // ─── Flush ───────────────────────────────────────────────────────────────────
 
 let flushing = false;
@@ -279,7 +306,7 @@ export async function flushOutbox(): Promise<{ synced: number; failed: number }>
 
       try {
         if (op.kind === 'startSession') {
-          const res = await workoutsApi.startSession(op.workoutType, op.workoutPlanId, op.plan);
+          const res = await workoutsApi.startSession(op.workoutType, op.workoutPlanId, op.plan, op.id);
           const realId = res.data.id as number;
           const map = getIdMap();
           map[String(op.tempSessionId)] = realId;
@@ -291,14 +318,20 @@ export async function flushOutbox(): Promise<{ synced: number; failed: number }>
           if (temp) { c[String(realId)] = { ...temp, id: realId }; delete c[String(op.tempSessionId)]; setCache(c); }
         } else if (op.kind === 'logSet') {
           const sid = resolveSessionId(op.sessionId);
-          await workoutsApi.logSet(sid, op.payload);
+          await workoutsApi.logSet(sid, op.payload, op.id);
           touched.add(sid);
         } else if (op.kind === 'deleteSet') {
-          await workoutsApi.deleteSet(op.setId);
+          await workoutsApi.deleteSet(op.setId, op.id);
           touched.add(resolveSessionId(op.sessionId));
         } else if (op.kind === 'completeSession') {
-          await workoutsApi.completeSession(resolveSessionId(op.sessionId), op.finish);
+          await workoutsApi.completeSession(resolveSessionId(op.sessionId), op.finish, op.id);
           touched.add(resolveSessionId(op.sessionId));
+        } else if (op.kind === 'react') {
+          await socialApi.react(resolveSessionId(op.sessionId), op.emoji, op.id);
+        } else if (op.kind === 'claim') {
+          await gameApi.claim(op.rewardKey, op.id);
+        } else if (op.kind === 'bodyWeight') {
+          await bodyWeightApi.log(op.weightKg, undefined, op.date, op.id);
         }
 
         setQueue(getQueue().slice(1));
