@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { ClerkProvider, useAuth as useClerkAuth, useClerk, useUser as useClerkUser } from '@clerk/nextjs';
 import { authApi } from '@/lib/api';
 import { setToken, getToken } from '@/lib/token';
 import { useAuth } from '@/lib/auth-context';
+import { readReferralCode } from '@/lib/referral';
 import { registerClerkSignOut } from '@/lib/clerk-signout';
 
 /**
@@ -30,8 +31,10 @@ export const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KE
 function ClerkBridge() {
   const { isLoaded, isSignedIn, getToken: getClerkToken } = useClerkAuth();
   const { signOut } = useClerk();
+  const { user: clerkUser } = useClerkUser();
   const { user, refresh } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   // One exchange per mount. Without this, `refresh()` updating the context
   // re-runs the effect and fires a second exchange against the same Clerk
   // session while the first is still in flight.
@@ -56,10 +59,38 @@ function ClerkBridge() {
         const res = await authApi.clerk(clerkToken);
 
         if (res.data?.needsSignup) {
-          // Verified, but nobody here by that address. The rank engine needs a
-          // sex, a birth date and a bodyweight before it can score anything, so
-          // send them through the funnel rather than inventing a hollow account.
-          router.replace('/welcome?clerk=1');
+          /*
+           * Verified by Clerk, and nobody here by that address yet — so create
+           * the account now, before anything else asks them for anything.
+           *
+           * This used to send them into `/welcome` to answer twenty questions
+           * and sign up at the *end*. The order is reversed: the account exists
+           * from this moment, and `/welcome?setup=1` is profile setup for it. It
+           * is also why this lives here rather than on `/sign-up` — the OAuth
+           * callback, the email flow and any future door all pass through this
+           * one exchange.
+           *
+           * The name is a placeholder the funnel overwrites within the minute;
+           * it is only here because the account needs *something* to derive a
+           * handle from, and an email's local part makes a better one than
+           * "athlete".
+           */
+          const name =
+            clerkUser?.firstName ||
+            clerkUser?.username ||
+            clerkUser?.primaryEmailAddress?.emailAddress?.split('@')[0] ||
+            'Athlete';
+          const created = await authApi.register({
+            clerkToken,
+            name,
+            // Captured on `/welcome?ref=CODE`, three screens and one redirect ago.
+            referralCode: readReferralCode() || undefined,
+          });
+          if (created.data?.token) {
+            setToken(created.data.token);
+            await refresh();
+          }
+          router.replace('/welcome?setup=1');
           return;
         }
         if (res.data?.token) {
@@ -67,43 +98,29 @@ function ClerkBridge() {
           await refresh();
         }
       } catch {
-        // A failed exchange must not strand someone on a blank screen: leave the
-        // Clerk session alone and let them use the login screen, which now shows
-        // the password form as well.
+        // A failed exchange must not strand someone on a blank screen. Anywhere
+        // else in the app that is survivable — they keep the session they had.
+        // On the two screens that render nothing *but* this handshake it is a
+        // dead loader, so those go back to a form they can act on.
+        if (pathname === '/sso-callback' || pathname === '/sign-up') {
+          router.replace('/login?error=clerk');
+        }
       } finally {
         exchanging.current = false;
       }
     })();
-  }, [isLoaded, isSignedIn, user, getClerkToken, refresh, router]);
+  }, [isLoaded, isSignedIn, user, clerkUser, getClerkToken, refresh, router, pathname]);
 
   return null;
 }
 
-export interface ClerkSignup {
-  /** A verified Clerk session is present and should drive signup. */
-  active: boolean;
-  email: string;
-  name: string;
-  /** The session token to hand `POST /auth/register` in place of a password. */
-  getToken: () => Promise<string | null>;
-}
-
-const NO_CLERK: ClerkSignup = { active: false, email: '', name: '', getToken: async () => null };
-
-function useClerkSignupImpl(): ClerkSignup {
-  const { isLoaded, isSignedIn, getToken } = useClerkAuth();
-  const { user } = useClerkUser();
-  if (!isLoaded || !isSignedIn || !user) return NO_CLERK;
-  return {
-    active: true,
-    email: user.primaryEmailAddress?.emailAddress ?? '',
-    name: [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.username || '',
-    getToken: () => getToken(),
-  };
-}
-
 /**
- * What the signup funnel needs to know about an in-progress Clerk session.
+ * Is a verified Clerk session present?
+ *
+ * The one thing outside this file that still needs to know: `/welcome` must
+ * tell "no account, show the pitch" apart from "account on its way, wait for
+ * the bridge". It used to hand out the email, the name and a token as well,
+ * because the funnel did the registering; the bridge above does that now.
  *
  * The implementation is chosen **once, at module load**, from a build-time
  * constant. That matters: `useClerkAuth()` throws outside `<ClerkProvider>`, and
@@ -112,7 +129,12 @@ function useClerkSignupImpl(): ClerkSignup {
  * Binding the whole hook up front keeps the call order identical on every render
  * of every deployment.
  */
-export const useClerkSignup: () => ClerkSignup = clerkEnabled ? useClerkSignupImpl : () => NO_CLERK;
+export const useClerkSignedIn: () => boolean = clerkEnabled
+  ? () => {
+      const { isLoaded, isSignedIn } = useClerkAuth();
+      return Boolean(isLoaded && isSignedIn);
+    }
+  : () => false;
 
 /**
  * Mounts `<ClerkProvider>` — but only when a publishable key exists.

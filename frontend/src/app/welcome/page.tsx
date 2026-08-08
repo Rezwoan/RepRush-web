@@ -1,26 +1,31 @@
 'use client';
 /**
- * The onboarding funnel — SPEC §3, all 28 screens, one route.
+ * The onboarding funnel — SPEC §3, one route.
  *
  * It lives at `/welcome` rather than `/onboarding` because v1's `/onboarding`
  * is a different thing that still ships: a post-login profile-completion
- * prompt linked from the dashboard banner. This funnel runs *before* an account
- * exists, so the two can't share a route.
+ * prompt linked from the dashboard banner.
  *
- * Every answer is held client-side (and in localStorage, so a reload resumes)
- * until step 26 posts the whole payload to `/auth/register`.
+ * **An account already exists by the time the questions start.** The funnel
+ * used to end in a signup form, so twenty answers were given by someone the app
+ * had never met and the journey finished by asking them to sign up — the wrong
+ * way round, and a wall of work in front of the thing they came to do. Now the
+ * splash and the value carousel are the only screens a signed-out visitor can
+ * reach; "Get started" goes to `/sign-up`, and the funnel resumes here with a
+ * session. The answers are held client-side (and in localStorage, so a reload
+ * resumes) until `building` saves them with `PATCH /profile`.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, Check, Eye, EyeOff, Share2 } from 'lucide-react';
-import { authApi, ranksApi } from '@/lib/api';
+import { ArrowLeft, Check } from 'lucide-react';
+import { profileApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
-import { clerkEnabled, useClerkSignup } from '@/components/auth/clerk-gate';
-import { setToken } from '@/lib/token';
+import { useClerkSignedIn } from '@/components/auth/clerk-gate';
+import { captureReferralCode } from '@/lib/referral';
 import { spring } from '@/lib/motion';
 import { cn } from '@/lib/utils';
-import { TIER_LABEL, TIER_VAR, ROMAN, type Tier, type Division } from '@/lib/ranks';
+import type { Tier } from '@/lib/ranks';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/ui/logo';
 import { OptionCard, Segmented, Chip } from '@/components/ui/controls';
@@ -44,9 +49,9 @@ import {
   EQUIPMENT_GROUPS,
   EQUIPMENT_LABEL,
   EQUIPMENT_PRESET,
-  FIRST_RANK_EXERCISES,
   QUESTION_STEPS,
   STEPS,
+  STEP_INDEX,
   Step,
   birthDateFromAge,
   clearProgress,
@@ -56,9 +61,8 @@ import {
   kgToLb,
   lbToKg,
   loadProgress,
-  captureReferralCode,
-  readReferralCode,
   saveProgress,
+  setupInProgress,
 } from './config';
 
 const haptic = (ms: number | number[] = 12) => {
@@ -165,6 +169,7 @@ function Splash({ onStart }: { onStart: () => void }) {
           I already have an account
         </Button>
       </div>
+      <p className="-mt-2 text-xs text-muted-foreground">Takes about two minutes.</p>
     </div>
   );
 }
@@ -619,170 +624,81 @@ function EquipmentStep({ a, set }: { a: Answers; set: (p: Partial<Answers>) => v
   );
 }
 
-const REPS = Array.from({ length: 20 }, (_, i) => i + 1);
-
-function FirstRankStep({
-  a,
-  set,
-  onDone,
-}: {
-  a: Answers;
-  set: (p: Partial<Answers>) => void;
-  onDone: () => void;
-}) {
-  const [pick, setPick] = useState(FIRST_RANK_EXERCISES[0]);
-  const [weight, setWeight] = useState(a.weightUnit === 'lb' ? 135 : 60);
-  const [reps, setReps] = useState(5);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const imperial = a.weightUnit === 'lb';
-
-  const submit = async () => {
-    setBusy(true);
-    setError('');
-    try {
-      const weightKg = imperial ? +lbToKg(weight).toFixed(1) : weight;
-      const res = await ranksApi.calculate({
-        exerciseId: pick.id,
-        weightKg,
-        reps,
-        bodyweightKg: a.weightKg,
-        sex: a.sex || undefined,
-        age: a.age,
-      });
-      const { rank } = res.data;
-      set({
-        firstRank: {
-          exerciseId: pick.id,
-          name: pick.label,
-          weightKg,
-          reps,
-          tier: rank.tier,
-          division: rank.division,
-          lp: rank.lp,
-          percentile: rank.percentile,
-        },
-      });
-      haptic([30, 40, 30]);
-      onDone();
-    } catch {
-      setError("Couldn't reach the ranking engine. Check your connection and try again.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Screen bubble="Pick a lift you know your numbers for. I'll rank it right now." pose="flex" title="Your first rank">
-      <div className="no-scrollbar -mx-6 flex gap-2 overflow-x-auto px-6 pb-1">
-        {FIRST_RANK_EXERCISES.map((e) => (
-          <button
-            key={e.id}
-            onClick={() => setPick(e)}
-            className={cn(
-              'press flex w-28 shrink-0 flex-col items-center gap-2 rounded-2xl border-2 p-3 transition-colors',
-              pick.id === e.id ? 'border-primary bg-primary/10' : 'border-border bg-card',
-            )}
-          >
-            <EquipmentIcon equipment={e.equipment} size={30} />
-            <span className="text-center text-xs font-bold leading-tight">{e.label}</span>
-          </button>
-        ))}
-      </div>
-
-      <div>
-        <p className="mb-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">
-          {pick.bodyweight ? 'Added weight' : 'Weight'}
-        </p>
-        <RulerPicker
-          label="Weight lifted"
-          unit={imperial ? 'lb' : 'kg'}
-          min={0}
-          max={imperial ? 700 : 320}
-          step={imperial ? 5 : 2.5}
-          major={4}
-          value={weight}
-          onChange={setWeight}
-        />
-        {pick.bodyweight && (
-          <p className="text-center text-xs text-muted-foreground">
-            Leave at 0 for plain bodyweight reps.
-          </p>
-        )}
-      </div>
-
-      <div>
-        <p className="mb-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">Reps</p>
-        <WheelPicker label="Reps" options={REPS} value={reps} onChange={setReps} itemHeight={44} />
-      </div>
-
-      {error && <p className="text-center text-sm font-semibold text-destructive">{error}</p>}
-      <Button variant="chunkyGold" size="cta" disabled={busy} onClick={submit}>
-        {busy ? 'Ranking…' : 'Get my rank'}
-      </Button>
-    </Screen>
-  );
-}
-
-function RankReveal({ a, onDone }: { a: Answers; onDone: () => void }) {
-  const r = a.firstRank;
-  const tier = (r?.tier ?? 'unranked') as Tier;
-  const share = async () => {
-    const text = `I just ranked ${TIER_LABEL[tier]} ${ROMAN[(r?.division ?? 3) as Division]} on ${r?.name} in RepRush.`;
-    try {
-      if (navigator.share) await navigator.share({ text, title: 'RepRush' });
-      else await navigator.clipboard.writeText(text);
-    } catch {
-      /* user dismissed the share sheet */
-    }
-  };
-
-  return (
-    <div className="flex min-h-[80vh] flex-col items-center justify-center gap-6 text-center">
-      <Confetti />
-      <div className="relative grid h-72 w-72 place-items-center">
-        <Rays color={TIER_VAR[tier]} />
-        <RankBadge tier={tier} division={(r?.division ?? 3) as Division} size="xl" entrance />
-      </div>
-      <div>
-        <p className="text-sm font-bold uppercase tracking-widest text-muted-foreground">{r?.name}</p>
-        <h1 className="mt-1 text-4xl font-extrabold" style={{ color: TIER_VAR[tier] }}>
-          {TIER_LABEL[tier]} {ROMAN[(r?.division ?? 3) as Division]}
-        </h1>
-        <p className="mt-3 text-muted-foreground">
-          Stronger than <span className="nums font-bold text-foreground">{Math.round(r?.percentile ?? 0)}%</span>{' '}
-          of lifters your size.
-        </p>
-      </div>
-      <div className="flex w-full max-w-sm gap-3">
-        <Button variant="chunkyOutline" size="icon" className="h-14 w-14 shrink-0" onClick={share} aria-label="Share">
-          <Share2 size={20} />
-        </Button>
-        <Button variant="chunky" size="cta" onClick={onDone}>
-          Onwards &amp; upwards
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 const BUILD_STAGES = ['Compiling profile', 'Calculating strength levels', 'Generating Bodyrank'];
 
-function BuildingStep({ onDone }: { onDone: () => void }) {
+/**
+ * The only screen that writes anything.
+ *
+ * Everything before it is answers in localStorage; this is where they land on
+ * the account (`PATCH /profile`). It is deliberately the screen that already
+ * *looks* like work being done, and it sits immediately after the last
+ * question, so a failure is reported while the answers are still on screen and
+ * one tap from being retried — rather than after three celebration screens.
+ *
+ * The save and the three progress rows run concurrently and the step waits for
+ * both: the rows are theatre, and finishing them early would show a built
+ * profile that is still in flight.
+ */
+function BuildingStep({ a, onDone }: { a: Answers; onDone: () => void }) {
+  const { refresh } = useAuth();
   const [stage, setStage] = useState(0);
-  useEffect(() => {
-    if (stage >= BUILD_STAGES.length) {
-      const t = setTimeout(onDone, 500);
-      return () => clearTimeout(t);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
+
+  const save = useCallback(async () => {
+    setError('');
+    try {
+      await profileApi.update({
+        ...(a.name.trim() ? { name: a.name.trim() } : {}),
+        ...(a.sex ? { sex: a.sex } : {}),
+        ...(a.avatarId ? { avatarId: a.avatarId } : {}),
+        ...(a.experience ? { experience: a.experience } : {}),
+        ...(a.goal ? { goal: a.goal } : {}),
+        ...(a.trainingLocation ? { trainingLocation: a.trainingLocation } : {}),
+        birthDate: birthDateFromAge(a.age),
+        heightCm: a.heightCm,
+        weightKg: a.weightKg,
+        equipment: a.equipment,
+        // "None of these" is a UI-only answer; the backend stores the real ones.
+        limitations: a.limitations.filter((l) => l !== 'none'),
+        // The funnel asked for lb/ft on two screens and then threw the answer
+        // away, so an imperial user was shown kg from the moment they signed up.
+        preferences: { units: a.weightUnit === 'lb' || a.heightUnit === 'ft' ? 'imperial' : 'metric' },
+      });
+      await refresh();
+      setSaved(true);
+    } catch (err: any) {
+      setError(err?.response?.data?.message ?? "Couldn't save your answers. Check your connection.");
     }
+  }, [a, refresh]);
+
+  // Once per mount. `save` changes identity with every answer object, and a
+  // retry is a button, not a re-render.
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    save();
+  }, [save]);
+
+  useEffect(() => {
+    if (stage >= BUILD_STAGES.length) return;
     const t = setTimeout(() => setStage((s) => s + 1), 900);
     return () => clearTimeout(t);
-  }, [stage, onDone]);
+  }, [stage]);
+
+  useEffect(() => {
+    if (!saved || stage < BUILD_STAGES.length) return;
+    const t = setTimeout(onDone, 500);
+    return () => clearTimeout(t);
+  }, [saved, stage, onDone]);
 
   return (
     <div className="flex min-h-[70vh] flex-col items-center justify-center gap-8 px-2 text-center">
-      <Mascot pose="idle" size={130} float />
-      <h1 className="text-[26px] font-extrabold">Building your profile</h1>
+      <Mascot pose={error ? 'sad' : 'idle'} size={130} float={!error} />
+      <h1 className="text-[26px] font-extrabold">
+        {error ? 'That did not save' : 'Building your profile'}
+      </h1>
       <div className="w-full max-w-sm space-y-5">
         {BUILD_STAGES.map((label, i) => (
           <div key={label}>
@@ -794,6 +710,14 @@ function BuildingStep({ onDone }: { onDone: () => void }) {
           </div>
         ))}
       </div>
+      {error && (
+        <div className="w-full max-w-sm space-y-3">
+          <p className="text-sm font-semibold text-destructive">{error}</p>
+          <Button variant="chunky" size="cta" onClick={save}>
+            Try again
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -863,188 +787,6 @@ function StreakStep({ onDone }: { onDone: () => void }) {
   );
 }
 
-/** Same rule the backend enforces (`USERNAME_RE` in social.service.ts). */
-const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
-
-function SignupStep({ a, onDone }: { a: Answers; onDone: () => void }) {
-  const { refresh } = useAuth();
-  const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [username, setUsername] = useState(() =>
-    (a.name || '').toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 20),
-  );
-  const [show, setShow] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-
-  // When the funnel was entered from Clerk (`/welcome?clerk=1`), the identity is
-  // already proven: the address comes from the verified session and there is no
-  // password to choose, because Clerk holds the credential from here on.
-  const clerk = useClerkSignup();
-
-  const handleOk = !username || USERNAME_RE.test(username);
-  const valid = clerk.active
-    ? handleOk
-    : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && password.length >= 8 && handleOk;
-
-  const submit = async () => {
-    if (!valid || busy) return;
-    setBusy(true);
-    setError('');
-    try {
-      const clerkToken = clerk.active ? await clerk.getToken() : null;
-      const res = await authApi.register({
-        // The backend ignores both of these when a clerkToken is present — the
-        // address is taken from the verified session, never from the client.
-        email: email.trim(),
-        password,
-        clerkToken: clerkToken || undefined,
-        name: a.name.trim() || clerk.name || 'Athlete',
-        // Blank is fine — the backend derives one from the name. Friends search
-        // by username, so nobody may leave without a handle.
-        username: username || undefined,
-        // Set when they arrived on an invite link (`/welcome?ref=CODE`).
-        referralCode: readReferralCode() || undefined,
-        sex: a.sex || undefined,
-        birthDate: birthDateFromAge(a.age),
-        heightCm: a.heightCm,
-        weightKg: a.weightKg,
-        avatarId: a.avatarId || undefined,
-        experience: a.experience || undefined,
-        goal: a.goal || undefined,
-        trainingLocation: a.trainingLocation || undefined,
-        equipment: a.equipment,
-        limitations: a.limitations.filter((l) => l !== 'none'),
-        // The funnel asked for lb/ft on two screens and then threw the answer
-        // away, so an imperial user was shown kg from the moment they signed up.
-        units: a.weightUnit === 'lb' || a.heightUnit === 'ft' ? 'imperial' : 'metric',
-        // Logged as a real set, so the rank the reveal promised is on the account.
-        firstRank: a.firstRank
-          ? { exerciseId: a.firstRank.exerciseId, weightKg: a.firstRank.weightKg, reps: a.firstRank.reps }
-          : undefined,
-      });
-      if (res.data?.token) setToken(res.data.token);
-      await refresh();
-      onDone();
-    } catch (err: any) {
-      setError(err?.response?.data?.message ?? 'Something went wrong. Try again.');
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Screen
-      bubble={`Almost there${a.name ? `, ${a.name}` : ''}. Save it so it's yours.`}
-      pose="cheer"
-      title="A stronger you is closer than you think."
-    >
-      {clerk.active ? (
-        // Verified by Clerk, so it is shown rather than asked for. Editable would
-        // be a lie — the backend takes the address off the session either way.
-        <div className="rounded-2xl border-2 border-border bg-card px-4 py-3.5">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-            Signed in as
-          </p>
-          <p className="font-semibold truncate">{clerk.email}</p>
-        </div>
-      ) : (
-        <input
-          type="email"
-          autoComplete="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email"
-          className="w-full rounded-2xl border-2 border-border bg-card px-4 py-4 font-semibold outline-none transition-colors focus:border-primary"
-        />
-      )}
-      <div>
-        <div className="flex items-center rounded-2xl border-2 border-border bg-card px-4 focus-within:border-primary">
-          <span className="font-bold text-muted-foreground">@</span>
-          <input
-            autoComplete="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-            placeholder="username"
-            maxLength={20}
-            className="w-full bg-transparent py-4 pl-1 font-semibold outline-none"
-          />
-        </div>
-        {!handleOk && (
-          <p className="mt-1 text-xs font-semibold text-muted-foreground">
-            3–20 characters: letters, numbers or _
-          </p>
-        )}
-      </div>
-      {/* Clerk, offered *first* and by default.
-          The funnel used to end in an email-and-password form with no mention
-          of Clerk anywhere, so the only door a new user was ever shown was the
-          one we are moving away from — Clerk existed on /login and nowhere in
-          signup. The answers are already in localStorage (`saveProgress`), so
-          leaving for /sign-up and coming back to /welcome?clerk=1 resumes this
-          exact step with everything intact and `clerk.active` true. */}
-      {!clerk.active && clerkEnabled && (
-        <>
-          <Button
-            type="button"
-            variant="chunky"
-            size="cta"
-            onClick={() => router.push('/sign-up')}
-          >
-            Continue with Google or email
-          </Button>
-          <div className="flex items-center gap-3" aria-hidden>
-            <span className="h-px flex-1 bg-border" />
-            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              or use a password
-            </span>
-            <span className="h-px flex-1 bg-border" />
-          </div>
-        </>
-      )}
-      {!clerk.active && (
-        <div className="relative">
-          <input
-            type={show ? 'text' : 'password'}
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password (8+ characters)"
-            onKeyDown={(e) => e.key === 'Enter' && submit()}
-            className="w-full rounded-2xl border-2 border-border bg-card px-4 py-4 pr-12 font-semibold outline-none transition-colors focus:border-primary"
-          />
-          <button
-            type="button"
-            onClick={() => setShow((s) => !s)}
-            aria-label={show ? 'Hide password' : 'Show password'}
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground"
-          >
-            {show ? <EyeOff size={18} /> : <Eye size={18} />}
-          </button>
-        </div>
-      )}
-      {error && <p className="text-sm font-semibold text-destructive">{error}</p>}
-      <Button variant="chunky" size="cta" disabled={!valid || busy} onClick={submit}>
-        {busy ? 'Creating account…' : 'Create account'}
-      </Button>
-      <p className="text-center text-xs text-muted-foreground">
-        Everything you just answered is saved to this account.
-      </p>
-      {/* The last chance to realise you already have an account. Signing in
-          with the same email lands you on your existing history either way
-          (the backend matches on it), but saying so beats letting someone
-          wonder whether they have just made a duplicate. */}
-      <button
-        type="button"
-        onClick={() => router.push('/login')}
-        className="text-center text-xs font-semibold text-primary hover:underline"
-      >
-        Already have an account? Sign in
-      </button>
-    </Screen>
-  );
-}
-
 function MedalStep({ onDone }: { onDone: () => void }) {
   return (
     <div className="flex min-h-[75vh] flex-col items-center justify-center gap-6 text-center">
@@ -1077,7 +819,7 @@ function HelloStep({ name, avatarId, onDone }: { name: string; avatarId: string;
       <Mascot pose={(avatarId as any) || 'cheer'} size={170} float />
       <h1 className="text-4xl font-extrabold">Welcome, {name || 'athlete'}.</h1>
       <p className="max-w-xs text-muted-foreground">
-        Your profile is built, your first rank is on the board. Time to train.
+        Your profile is built and your Bodygraph is waiting. Time to fill it in.
       </p>
       <Button variant="chunky" size="cta" className="max-w-sm" onClick={onDone}>
         Let&apos;s go
@@ -1127,19 +869,28 @@ function TourStep({ onDone }: { onDone: () => void }) {
 
 // ── The machine ─────────────────────────────────────────────────────
 
+/** The last step a signed-out visitor may reach: the pitch, and nothing more. */
+const LAST_PUBLIC_STEP = STEP_INDEX['carousel'];
+
 export default function WelcomePage() {
   const router = useRouter();
   const { user, loading } = useAuth();
+  const clerkSignedIn = useClerkSignedIn();
   const [ready, setReady] = useState(false);
   const [idx, setIdx] = useState(0);
   const [a, setA] = useState<Answers>(DEFAULT_ANSWERS);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const setup = useRef(false);
 
   // Resume where the funnel was left. Read in an effect, not during render, so
   // the server and the first client pass agree.
   useEffect(() => {
-    // Grab  before anything can navigate away from it.
+    // Grab the invite code before anything can navigate away from it — the
+    // account that will claim it is created a page later, at /sign-up.
     captureReferralCode();
+    // `?setup=1` is what /sign-up sends back: "this signed-in account has just
+    // been made and still owes us its profile."
+    setup.current = new URLSearchParams(window.location.search).has('setup');
     const saved = loadProgress();
     if (saved) {
       setIdx(saved.step);
@@ -1149,23 +900,48 @@ export default function WelcomePage() {
   }, []);
 
   /**
-   * An already-signed-in *visitor* has no business in the funnel — but signup
-   * happens at step 26, so from there on `user` is set and this must not fire.
-   * Hence the decision is made once, when auth first resolves, and `user`
-   * changing afterwards is our own doing.
+   * Who is allowed in.
+   *
+   * - **No account** → the splash and the carousel only. Every screen past them
+   *   writes to an account, and the funnel used to let a stranger answer all
+   *   twenty questions before finding that out.
+   * - **Signed in, mid-setup** (`?setup=1`, or saved progress from a reload) →
+   *   the funnel, which is now profile setup.
+   * - **Signed in, done** → `/home`. Nothing here is for them.
+   *
+   * Decided once, when auth first resolves: `building` calls `refresh()`, and a
+   * re-run after that would read "signed in, no progress yet cleared" and fight
+   * the funnel it is standing in.
    */
   const [gate, setGate] = useState<'checking' | 'funnel' | 'redirect'>('checking');
+  // The wait below has to end. If the exchange never lands — backend down, or a
+  // network that went away mid-handshake — a loader that spins forever is the
+  // worst of the options; the pitch at least has a working sign-in door on it.
+  const [waitedLongEnough, setWaitedLongEnough] = useState(false);
   useEffect(() => {
-    if (loading) return;
+    if (gate !== 'checking') return;
+    const t = setTimeout(() => setWaitedLongEnough(true), 12_000);
+    return () => clearTimeout(t);
+  }, [gate]);
+
+  useEffect(() => {
+    if (loading || !ready || gate !== 'checking') return;
+    // A Clerk session with no RepRush user yet means `ClerkBridge` is still
+    // exchanging it for an account. Wait rather than deciding on half the facts.
+    if (!user && clerkSignedIn && !waitedLongEnough) return;
+
     if (user) {
-      clearProgress();
-      setGate('redirect');
-      router.replace('/home');
+      if (setup.current || setupInProgress()) setGate('funnel');
+      else {
+        setGate('redirect');
+        router.replace('/home');
+      }
     } else {
+      setIdx((i) => Math.min(i, LAST_PUBLIC_STEP));
       setGate('funnel');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading]);
+  }, [loading, ready, user, clerkSignedIn, waitedLongEnough]);
 
   useEffect(() => {
     if (ready) saveProgress(idx, a);
@@ -1213,9 +989,12 @@ export default function WelcomePage() {
 
   if (!ready || gate !== 'funnel') return <BrandLoader />;
 
+  // The one-way door: the questions start on the other side of an account.
+  const leaveThePitch = user ? next : () => router.push('/sign-up');
+
   // Full-bleed screens own their whole viewport and skip the funnel chrome.
   if (step.id === 'splash') return <Splash onStart={next} />;
-  if (step.id === 'carousel') return <Carousel onDone={next} onBack={back} />;
+  if (step.id === 'carousel') return <Carousel onDone={leaveThePitch} onBack={back} />;
 
   const body = (() => {
     switch (step.kind) {
@@ -1340,18 +1119,12 @@ export default function WelcomePage() {
             );
           case 'equipment':
             return <EquipmentStep a={a} set={set} />;
-          case 'first-rank':
-            return <FirstRankStep a={a} set={set} onDone={next} />;
-          case 'rank-reveal':
-            return <RankReveal a={a} onDone={next} />;
           case 'building':
-            return <BuildingStep onDone={next} />;
+            return <BuildingStep a={a} onDone={next} />;
           case 'bodyrank':
             return <BodyrankStep onDone={next} />;
           case 'streak':
             return <StreakStep onDone={next} />;
-          case 'signup':
-            return <SignupStep a={a} onDone={next} />;
           case 'medal':
             return <MedalStep onDone={next} />;
           case 'hello':
@@ -1365,22 +1138,12 @@ export default function WelcomePage() {
   })();
 
   // Screens that own their own CTA don't get the funnel's NEXT button.
-  const SELF_DRIVEN = new Set([
-    'avatar',
-    'first-rank',
-    'rank-reveal',
-    'building',
-    'bodyrank',
-    'streak',
-    'signup',
-    'medal',
-    'hello',
-    'tour',
-  ]);
+  const SELF_DRIVEN = new Set(['avatar', 'building', 'bodyrank', 'streak', 'medal', 'hello', 'tour']);
   const showNext = !SELF_DRIVEN.has(step.id) && !(step.kind === 'choice' && step.auto);
   const canProceed = answered;
-  // Past signup there is no going back — the account exists.
-  const showBack = qIndex >= 0 || ['rank-reveal'].includes(step.id);
+  // Past `building` there is no going back — the answers are saved. Nor before
+  // the first question: the pitch behind it belongs to people without accounts.
+  const showBack = qIndex > 0;
 
   return (
     <div ref={scrollRef} className="mx-auto flex min-h-[100dvh] max-w-lg flex-col px-6 pb-8 pt-4">

@@ -13,12 +13,20 @@ import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { UsersService } from '../users/users.service';
 import { User, UserRole } from '../users/user.entity';
-import { RanksService } from '../ranks/ranks.service';
 import { SocialService, USERNAME_RE, slugifyUsername } from '../social/social.service';
 import { ClerkService } from './clerk.service';
 import { resolveClerkAccount, __selfcheck as clerkResolveSelfcheck } from './clerk-resolve';
 
-/** The whole onboarding funnel, submitted in one shot at step 26 (SPEC §3.3). */
+/**
+ * Signup, which is now **identity only**.
+ *
+ * The onboarding funnel used to be submitted here in one shot at its last step,
+ * which meant answering twenty questions before an account existed and being
+ * asked to sign up at the *end* of the journey. The order is reversed: an
+ * account is created first, at `/sign-up`, and the funnel's answers arrive
+ * afterwards as a patch on it (`PATCH /profile`, `ProfileService.update`).
+ * That is also where their allow-lists live now.
+ */
 export interface RegisterDto {
   email: string;
   password: string;
@@ -27,53 +35,17 @@ export interface RegisterDto {
   username?: string;
   /** A friend's referral code, if they arrived through an invite link. */
   referralCode?: string;
-  sex?: string;
-  birthDate?: string;
-  heightCm?: number;
-  weightKg?: number;
-  avatarId?: string;
-  experience?: string;
-  goal?: string;
-  trainingLocation?: string;
-  equipment?: string[];
-  limitations?: string[];
-  /** The lift ranked at step 21, so the rank the reveal promised actually exists. */
-  firstRank?: { exerciseId?: string; weightKg?: number; reps?: number };
-  /** Whichever of kg/lb and cm/ft they answered the funnel in. */
-  units?: string;
   /**
-   * A Clerk session token, when the funnel was reached by signing up through
-   * Clerk rather than by typing a password. It replaces both `email` and
+   * A Clerk session token, when the account is being created from a Clerk
+   * sign-up rather than a typed password. It replaces both `email` and
    * `password`: the address comes from Clerk (verified) and there is no password
    * to set, because Clerk holds the credential from here on.
    */
   clerkToken?: string;
 }
 
-/**
- * Allow-lists for every free-form profile field the funnel can send.
- *
- * This is a trust boundary and `sex` in particular is not cosmetic — it picks
- * the strength-standards column, so a junk value would silently mis-rank
- * someone forever. Anything unrecognised is dropped, not stored.
- */
-const ENUMS: Record<string, readonly string[]> = {
-  sex: ['male', 'female'],
-  experience: ['never', 'beginner', 'intermediate', 'advanced'],
-  goal: ['muscle', 'strength', 'fat_loss', 'health', 'athletic'],
-  trainingLocation: ['big_gym', 'small_gym', 'home', 'outdoors', 'travelling'],
-};
-const EQUIPMENT = ['barbell', 'dumbbell', 'cable', 'machine', 'bodyweight', 'kettlebell', 'band', 'plate'];
-const LIMITATIONS = ['back', 'knees', 'shoulders', 'wrists'];
-
 const MIN_PASSWORD = 8;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-const pickList = (v: unknown, allowed: string[]) =>
-  Array.isArray(v) ? Array.from(new Set(v.filter((x): x is string => allowed.includes(x)))) : null;
-
-const inRange = (v: unknown, min: number, max: number) =>
-  typeof v === 'number' && isFinite(v) && v >= min && v <= max ? v : null;
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -93,7 +65,6 @@ export class AuthService implements OnModuleInit {
     private usersService: UsersService,
     private jwtService: JwtService,
     private config: ConfigService,
-    private ranks: RanksService,
     // Usernames and referral codes are P9's rules; signup is just another caller.
     private social: SocialService,
     private clerk: ClerkService,
@@ -177,39 +148,13 @@ export class AuthService implements OnModuleInit {
       referralCode: await this.social.freeReferralCode(),
     };
     if (identity) profile.clerkUserId = identity.clerkUserId;
-    for (const [field, allowed] of Object.entries(ENUMS)) {
-      const v = (dto as any)[field];
-      if (typeof v === 'string' && allowed.includes(v)) (profile as any)[field] = v;
-    }
-    const equipment = pickList(dto.equipment, EQUIPMENT);
-    const limitations = pickList(dto.limitations, LIMITATIONS);
-    if (equipment?.length) profile.equipment = JSON.stringify(equipment);
-    if (limitations) profile.limitations = JSON.stringify(limitations);
-    const height = inRange(dto.heightCm, 90, 260);
-    const weight = inRange(dto.weightKg, 25, 400);
-    if (height !== null) profile.heightCm = height;
-    if (weight !== null) profile.weightKg = weight;
-    // Date-only string; the rank engine reads it for the age coefficient.
-    if (typeof dto.birthDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dto.birthDate))
-      profile.birthDate = dto.birthDate;
-    if (typeof dto.avatarId === 'string' && dto.avatarId.length <= 32) profile.avatarId = dto.avatarId;
-    // The funnel's lb/ft answer becomes the Units preference. Written as the
-    // whole blob because this is the account's first one; `PATCH /profile`
-    // merges from here on.
-    if (dto.units === 'imperial' || dto.units === 'metric')
-      profile.preferences = JSON.stringify({ units: dto.units });
 
-    if (Object.keys(profile).length) await this.usersService.updateProfile(user.id, profile);
+    await this.usersService.updateProfile(user.id, profile);
 
     // v1's "Profile N% complete" banner tracks a different, older checklist. The
-    // v2 funnel *is* onboarding, so an account that came through it is done —
-    // otherwise a user who just answered twenty questions lands on a nag.
-    await this.usersService.updateOnboarding(user.id, {
-      hasHeightWeight: height !== null && weight !== null,
-      dismissed: true,
-    });
-
-    await this.recordFirstLift(user.id, dto.firstRank);
+    // v2 funnel *is* onboarding, and this account is on its way into it — so it
+    // must not also land on a nag telling it to complete a profile.
+    await this.usersService.updateOnboarding(user.id, { dismissed: true });
 
     // Best-effort: an unknown or malformed code is not a reason to fail a signup
     // the user has already answered twenty questions for.
@@ -285,27 +230,6 @@ export class AuthService implements OnModuleInit {
       expiresIn: this.config.get('JWT_EXPIRY') || '30d',
     });
     return { token, user: this.sanitize(fresh), linked, needsSignup: false as const };
-  }
-
-  /**
-   * Store the onboarding lift as one real logged set.
-   *
-   * Ranks are derived from `workout_sets` and nothing else (see MEMORY →
-   * Decisions), so without this the funnel tells someone they are Silver III on
-   * bench press and then hands them an empty Ranks tab. Best-effort: a failure
-   * here must not cost the user the account they just created.
-   */
-  private async recordFirstLift(userId: number, lift: RegisterDto['firstRank']) {
-    const exerciseId = typeof lift?.exerciseId === 'string' ? lift.exerciseId : null;
-    const weightKg = inRange(lift?.weightKg, 0, 1000);
-    const reps = inRange(lift?.reps, 1, 100);
-    if (!exerciseId || weightKg === null || reps === null) return;
-
-    try {
-      await this.ranks.recordLift(userId, exerciseId, weightKg, reps, 'Onboarding');
-    } catch (err) {
-      this.logger.warn(`first lift not recorded for user ${userId}: ${err?.message ?? err}`);
-    }
   }
 
   async activateAccount(token: string, newPassword: string) {

@@ -385,6 +385,16 @@ export class ProfileService {
       bannerId?: string;
       layout?: string[];
       preferences?: Partial<Preferences>;
+      // The onboarding funnel's answers (see SETUP_ENUMS).
+      sex?: string;
+      birthDate?: string;
+      heightCm?: number;
+      weightKg?: number;
+      experience?: string;
+      goal?: string;
+      trainingLocation?: string;
+      equipment?: string[];
+      limitations?: string[];
     },
   ) {
     const user = await this.users.findOne({ where: { id: userId } });
@@ -445,6 +455,31 @@ export class ProfileService {
       }
       patch.preferences = JSON.stringify(next);
     }
+
+    /*
+     * The onboarding funnel's answers.
+     *
+     * They used to be posted to `/auth/register` in one shot, because the funnel
+     * ran before an account existed. It runs *after* signup now, so they arrive
+     * here as a patch — and this is a trust boundary: `sex` picks the
+     * strength-standards column, so a junk value would silently mis-rank someone
+     * forever. Anything unrecognised is dropped rather than stored.
+     */
+    for (const [field, allowed] of Object.entries(SETUP_ENUMS)) {
+      const v = (dto as Record<string, unknown>)[field];
+      if (typeof v === 'string' && allowed.includes(v)) (patch as Record<string, unknown>)[field] = v;
+    }
+    const equipment = pickList(dto.equipment, EQUIPMENT);
+    const limitations = pickList(dto.limitations, LIMITATIONS);
+    if (equipment?.length) patch.equipment = JSON.stringify(equipment);
+    if (limitations) patch.limitations = JSON.stringify(limitations);
+    const height = inRange(dto.heightCm, 90, 260);
+    const weight = inRange(dto.weightKg, 25, 400);
+    if (height !== null) patch.heightCm = height;
+    if (weight !== null) patch.weightKg = weight;
+    // Date-only string; the rank engine reads it for the age coefficient.
+    if (typeof dto.birthDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dto.birthDate))
+      patch.birthDate = dto.birthDate;
 
     if (Object.keys(patch).length) await this.users.update(userId, patch);
     return this.overview(userId);
@@ -1017,6 +1052,21 @@ const EQUIPMENT = [
   'plate',
 ];
 
+/** Free-form profile fields the onboarding funnel writes, and their allow-lists. */
+const SETUP_ENUMS: Record<string, readonly string[]> = {
+  sex: ['male', 'female'],
+  experience: ['never', 'beginner', 'intermediate', 'advanced'],
+  goal: ['muscle', 'strength', 'fat_loss', 'health', 'athletic'],
+  trainingLocation: ['big_gym', 'small_gym', 'home', 'outdoors', 'travelling'],
+};
+const LIMITATIONS = ['back', 'knees', 'shoulders', 'wrists'];
+
+const pickList = (v: unknown, allowed: string[]) =>
+  Array.isArray(v) ? Array.from(new Set(v.filter((x): x is string => allowed.includes(x)))) : null;
+
+const inRange = (v: unknown, min: number, max: number) =>
+  typeof v === 'number' && isFinite(v) && v >= min && v <= max ? v : null;
+
 // ── self-check ──────────────────────────────────────────────────────
 // Week boundaries are where an off-by-one is invisible: the number is still
 // plausible, just measured from the wrong Monday.
@@ -1042,6 +1092,14 @@ export function __selfcheck() {
   if (key(calendarStart(new Date(2026, 2, 9), 180, 1)) !== '2026-01-01')
     fail('March is in the first half-year');
   if (key(calendarStart(wed, 365, 1)) !== '2026-01-01') fail('a year window starts on 1 Jan');
+
+  // The funnel's answers are now a patch, so this is the only thing standing
+  // between a hand-rolled request and a permanently mis-ranked account.
+  if (SETUP_ENUMS.sex.includes('other')) fail('sex must stay the two standards columns');
+  if (pickList(['barbell', 'laser'], EQUIPMENT)?.join() !== 'barbell') fail('unknown equipment must be dropped');
+  if (pickList('barbell' as unknown, EQUIPMENT) !== null) fail('a non-array equipment list must be refused');
+  if (inRange(500, 25, 400) !== null) fail('a 500 kg bodyweight must be refused');
+  if (inRange(75, 25, 400) !== 75) fail('a real bodyweight must survive');
 
   // A calendar window can never reach further back than the rolling one it
   // replaces, or the card would silently widen when the preference flipped.

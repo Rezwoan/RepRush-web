@@ -1,25 +1,23 @@
 /**
  * The onboarding funnel's data layer — every question that is *just* a list of
  * options lives here as data, so `page.tsx` only hand-writes the screens that
- * genuinely need custom UI (pickers, the first-rank flow, signup, celebrations).
+ * genuinely need custom UI (pickers, celebrations).
  *
- * The step order is SPEC §3.3 verbatim.
+ * The step order is SPEC §3.3, minus two screens:
+ *
+ * - **Signup.** It was the *last* step, which meant answering twenty questions
+ *   before an account existed and being asked to sign up at the end of the
+ *   journey. Account creation moved to `/sign-up`, ahead of all of this; the
+ *   funnel is now profile setup for an account that already exists.
+ * - **First rank.** It asked for a lift and a weight in order to hand out a
+ *   rank on the spot, which a complete beginner — the person this funnel is
+ *   most for — has no answer to. Nothing is lost: the Ranks tab has the same
+ *   calculator, for the day they do have a number.
  */
 import type { Equipment } from '@/components/art/equipment-icon';
 import type { MascotPose } from '@/components/art/mascot';
 
 // ── Answers ─────────────────────────────────────────────────────────
-
-export interface FirstRank {
-  exerciseId: string;
-  name: string;
-  weightKg: number;
-  reps: number;
-  tier: string;
-  division: number;
-  lp: number;
-  percentile: number;
-}
 
 export interface Answers {
   name: string;
@@ -38,7 +36,6 @@ export interface Answers {
   hasPlan: string;
   trainingLocation: string;
   equipment: string[];
-  firstRank: FirstRank | null;
   heightUnit: 'cm' | 'ft';
   weightUnit: 'kg' | 'lb';
 }
@@ -60,7 +57,6 @@ export const DEFAULT_ANSWERS: Answers = {
   hasPlan: '',
   trainingLocation: '',
   equipment: [],
-  firstRank: null,
   heightUnit: 'cm',
   weightUnit: 'kg',
 };
@@ -260,13 +256,12 @@ export const STEPS: Step[] = [
     ],
   },
   { id: 'equipment', kind: 'custom', q: true },
-  { id: 'first-rank', kind: 'custom', q: true },
 
-  { id: 'rank-reveal', kind: 'custom' },
+  // `building` is where the answers are actually saved (PATCH /profile), which
+  // is why it is the first step past the progress bar and the back button.
   { id: 'building', kind: 'custom' },
   { id: 'bodyrank', kind: 'custom' },
   { id: 'streak', kind: 'custom' },
-  { id: 'signup', kind: 'custom' },
   { id: 'medal', kind: 'custom' },
   { id: 'hello', kind: 'custom' },
   { id: 'tour', kind: 'custom' },
@@ -338,25 +333,11 @@ export const EQUIPMENT_PRESET: Record<string, Equipment[]> = {
   travelling: ['band', 'bodyweight'],
 };
 
-// ── First rank carousel (step 21) ───────────────────────────────────
-// Catalog ids from `backend/data/exercises.json`. Deliberately the lifts people
-// already know their numbers for — this screen is asked before an account
-// exists, so it has to be answerable from memory.
-export const FIRST_RANK_EXERCISES = [
-  { id: 'Barbell_Bench_Press_-_Medium_Grip', label: 'Bench Press', equipment: 'barbell' as Equipment, bodyweight: false },
-  { id: 'Barbell_Squat', label: 'Squat', equipment: 'barbell' as Equipment, bodyweight: false },
-  { id: 'Barbell_Deadlift', label: 'Deadlift', equipment: 'barbell' as Equipment, bodyweight: false },
-  { id: 'Barbell_Shoulder_Press', label: 'Overhead Press', equipment: 'barbell' as Equipment, bodyweight: false },
-  { id: 'Wide-Grip_Lat_Pulldown', label: 'Lat Pulldown', equipment: 'cable' as Equipment, bodyweight: false },
-  { id: 'Barbell_Curl', label: 'Barbell Curl', equipment: 'barbell' as Equipment, bodyweight: false },
-  { id: 'Leg_Press', label: 'Leg Press', equipment: 'machine' as Equipment, bodyweight: false },
-  { id: 'Pullups', label: 'Pull-Ups', equipment: 'bodyweight' as Equipment, bodyweight: true },
-];
-
 // ── Unit helpers ────────────────────────────────────────────────────
 // They live in `lib/units.ts` now, where the rest of the app can reach them —
 // this funnel was the only thing that could convert a weight, which is why
 // every screen after signup printed kg no matter what was picked here.
+import { clearReferralCode } from '@/lib/referral';
 import { cmToIn, feetInches, inToCm, kgToLb, lbToKg } from '@/lib/units';
 export { KG_PER_LB, CM_PER_IN, cmToIn, inToCm, kgToLb, lbToKg, feetInches } from '@/lib/units';
 
@@ -371,8 +352,10 @@ export function birthDateFromAge(age: number, now = new Date()): string {
 }
 
 // ── Persistence ─────────────────────────────────────────────────────
-// The whole funnel is client-side until signup, so a reload mid-funnel must not
-// throw away twenty answers. Step index rides along so it resumes in place.
+// The answers are held client-side until `building` saves them, so a reload
+// mid-funnel must not throw away twenty of them. The step index rides along so
+// it resumes in place — and it is also what tells the app that a signed-in
+// account is part-way through setup rather than done (see `app/page.tsx`).
 
 const KEY = 'reprush_onboarding_v2';
 
@@ -408,42 +391,23 @@ export function saveProgress(step: number, answers: Answers) {
 }
 
 /**
- * The referral code from an invite link (`/welcome?ref=CODE`), remembered for
- * the length of the funnel.
+ * Is a signed-in account part-way through setup?
  *
- * It has to be stored: the code arrives on the URL at step 1 and is not needed
- * until signup at step 26, and a reload in between would otherwise lose the
- * credit for whoever did the inviting.
+ * Only past the pitch counts. The splash saves a step too, and an existing user
+ * who once looked at it must not be dropped back into onboarding.
  */
-const REF_KEY = 'reprush_referral_code';
-
-export function captureReferralCode() {
-  if (typeof window === 'undefined') return;
-  try {
-    const code = new URLSearchParams(window.location.search).get('ref');
-    if (code) window.localStorage.setItem(REF_KEY, code.trim().toUpperCase().slice(0, 12));
-  } catch {
-    /* ignore */
-  }
-}
-
-export function readReferralCode(): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    return window.localStorage.getItem(REF_KEY);
-  } catch {
-    return null;
-  }
+export function setupInProgress(): boolean {
+  return (loadProgress()?.step ?? 0) > STEP_INDEX['carousel'];
 }
 
 export function clearProgress() {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.removeItem(KEY);
-    window.localStorage.removeItem(REF_KEY);
   } catch {
     /* ignore */
   }
+  clearReferralCode();
 }
 
 // ── self-check ──────────────────────────────────────────────────────
@@ -469,7 +433,7 @@ export const __selfcheck = () => {
   }
 
   // The backend allow-lists these; a value that isn't on both lists is silently
-  // dropped at register time, which looks like the answer never saved.
+  // dropped when the funnel saves, which looks like the answer never saved.
   const backend: Record<string, string[]> = {
     experience: ['never', 'beginner', 'intermediate', 'advanced'],
     goal: ['muscle', 'strength', 'fat_loss', 'health', 'athletic'],
@@ -479,7 +443,7 @@ export const __selfcheck = () => {
   for (const s of STEPS) {
     if (s.kind !== 'choice' || !backend[s.field]) continue;
     for (const o of s.options)
-      if (!backend[s.field].includes(o.value)) fail(`${s.id}: "${o.value}" is not accepted by /auth/register`);
+      if (!backend[s.field].includes(o.value)) fail(`${s.id}: "${o.value}" is not accepted by PATCH /profile`);
   }
   // Same for limitations, minus the UI-only "none".
   const limits = STEPS.find((s) => s.id === 'limitations');
@@ -487,7 +451,7 @@ export const __selfcheck = () => {
   else
     for (const o of limits.options)
       if (o.value !== 'none' && !['back', 'knees', 'shoulders', 'wrists'].includes(o.value))
-        fail(`limitations: "${o.value}" is not accepted by /auth/register`);
+        fail(`limitations: "${o.value}" is not accepted by PATCH /profile`);
 
   for (const [loc, list] of Object.entries(EQUIPMENT_PRESET)) {
     if (!list.length) fail(`${loc} preset is empty`);

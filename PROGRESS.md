@@ -1956,3 +1956,57 @@ happens when they are unproxied. Data intact across the schema change: `users` g
 the streak of 5 — the one step that needs a real Google account. Dev stays password-only until it
 gets its own Clerk development instance (`pk_live_` is bound to the production domain).
 **Blockers:** none. The `sk_live_` key was shared in plaintext and should be rotated.
+
+### 2026-08-08 — Signup before the journey, and auth screens we own
+
+Owner feedback, four things, one root: *"the buttons are crampled on the phone view"*, *"it does not
+match the design sense of the rest of the app"*, *"a user should not be able to start the /welcome
+journey without first creating an account — but it asks my name and all the stuff and then at the end
+asks me to do the actual sign-up"*, *"remove the first name / last name"*, and *"remove get your first
+rank from the account setup — what if someone is a total beginner and has nothing to log"*.
+
+**The order was backwards, and that was the real bug.** The funnel collected twenty answers from
+someone the app had never met and finished by asking them to sign up. Signup is now the *first*
+thing: `/welcome` stops at its value carousel, "Get started" and "Skip" both go to `/sign-up`, and
+every screen past the carousel is unreachable without a session (the step index is clamped, so a
+saved localStorage position cannot walk back in either).
+
+That inverted where things get written:
+
+- **`POST /auth/register` is identity only** — email/password or a Clerk token, plus name, username
+  and referral code. The twenty-field funnel DTO, its allow-lists and `recordFirstLift` are gone from
+  `AuthService`, and with them the `RanksModule` import.
+- **The funnel's answers are a patch** on an account that already exists — `PATCH /profile` learned
+  `sex`, `birthDate`, `heightCm`, `weightKg`, `experience`, `goal`, `trainingLocation`, `equipment`
+  and `limitations`, with the same allow-lists moved verbatim (`sex` picks the standards column, so
+  a junk value is a permanently mis-ranked account) and asserted in `ProfileService.__selfcheck`.
+- **`ClerkBridge` creates the account**, in one place, the moment Clerk says "verified, nobody here
+  by that address" — so the email flow, the OAuth callback and any future door all get it. It then
+  sends them to `/welcome?setup=1`.
+- **The `building` screen is where the funnel saves**, immediately after the last question, with a
+  retry button — not three celebration screens later.
+
+**The auth screens are ours now.** `/login` and `/sign-up` are custom Clerk flows (`useSignIn`,
+`useSignUp`, `/sso-callback` for OAuth) instead of Clerk's drop-in components. Four commits had gone
+into fighting that component's CSS and it still read as another product's form: a two-up social grid
+squeezed to ~130px a side on a phone. Deleted `clerk-appearance.tsx` and `auth-shell.tsx`; both pages
+now use the app's own `chunky` CTAs, `rounded-2xl border-2` fields and type scale, stacked full width.
+No first/last name — if the Clerk instance still marks a name required, one is filled from the email's
+local part rather than shown as two more fields. Password reset is inline (email code) rather than a
+hand-off, and the password field tries Clerk *then* this app's own database, so pre-Clerk accounts
+sign in on the same form without a disclosure to find.
+
+**Removed: the first-rank screens.** They asked a complete beginner for a lift and a weight in order
+to hand out a rank. The Ranks tab has the same calculator for the day they have a number.
+
+**One consequence, recorded deliberately:** an account now exists before the questions are answered,
+so an abandoned funnel leaves a real account with no sex or bodyweight. `app/page.tsx` sends anyone
+with saved funnel progress back to `/welcome` rather than to a home screen of blanks. A cleared
+localStorage on a new device lands them on `/home` with a sparse profile — the same state as a v1
+account, and the profile screen can fill it in.
+
+**Next:** the owner runs the real Clerk signup once (local dev has no keys, so only the keyless
+fallbacks and the funnel gate could be exercised here). If Clerk's dashboard has *Name* switched on,
+turning it off under Configure → User & Authentication → Personal information removes the
+placeholder-name step entirely.
+**Blockers:** none.

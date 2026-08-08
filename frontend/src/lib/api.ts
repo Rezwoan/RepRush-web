@@ -30,10 +30,20 @@ api.interceptors.request.use((config) => {
 // `/routine/:code` is a shared-program link. It needs a session to *claim*, but
 // it must not be hijacked by the global 401 bounce — that would throw the code
 // away. The page sends the visitor to `/login?next=…` itself and comes back.
-// `/sign-in` and `/sign-up` are Clerk's screens. They are signed-out by
+// `/sign-up` and `/sso-callback` are the signup doors. They are signed-out by
 // definition, and the bridge calls the API from them the moment Clerk finishes —
 // so a 401 there is the expected state, not an expired session to bounce on.
-const PUBLIC_ROUTES = ['/login', '/onboarding', '/welcome', '/kitchen-sink', '/u', '/routine', '/sign-in', '/sign-up'];
+const PUBLIC_ROUTES = [
+  '/login',
+  '/onboarding',
+  '/welcome',
+  '/kitchen-sink',
+  '/u',
+  '/routine',
+  '/sign-in',
+  '/sign-up',
+  '/sso-callback',
+];
 
 const isPublicRoute = (path: string) =>
   PUBLIC_ROUTES.some((r) => path === r || path.startsWith(`${r}/`));
