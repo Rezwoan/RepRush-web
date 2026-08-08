@@ -7,6 +7,7 @@ import { WorkoutSet } from '../workouts/workout-set.entity';
 import { CatalogService } from '../exercises/catalog.service';
 import { RanksService } from '../ranks/ranks.service';
 import { XP, levelFromXp } from '../profile/xp';
+import { COSMETIC_BY_ID, DEFAULT_COSMETIC } from '../profile/cosmetics';
 import { RewardClaim } from './claim.entity';
 import {
   DAILY_QUESTS,
@@ -164,6 +165,20 @@ export class GamificationService implements OnModuleInit {
     return {
       level,
       currency: user.currency ?? 0,
+      /**
+       * What the top bar draws in its identity slot. It rendered a mascot from
+       * the cached auth user inside a hardcoded blue ring, so an uploaded photo
+       * never appeared there and a bought border changed every avatar in the
+       * app except the one always on screen. The shell already makes this call;
+       * it may as well come back with the answer.
+       */
+      avatar: {
+        avatarId: user.avatarId ?? null,
+        profileImage: user.profileImage ?? null,
+        border: (
+          COSMETIC_BY_ID.get(user.borderId ?? '') ?? COSMETIC_BY_ID.get(DEFAULT_COSMETIC.border)
+        ).paint,
+      },
       streak,
       quests,
       medals,

@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Check, Lock, Target } from 'lucide-react';
 import { profileApi } from '@/lib/api';
 import { useTheme } from '@/lib/theme-context';
+import { statsChanged } from '@/lib/shell-stats';
 import { Button } from '@/components/ui/button';
 import { Segmented } from '@/components/ui/controls';
 import { EmptyState } from '@/components/ui/display';
@@ -78,6 +79,9 @@ export function StorePanel({
       }
       await load();
       onChanged();
+      // Buying spends Spark and equipping changes the avatar's border — both
+      // are drawn in the top bar, which is outside this screen's world.
+      statsChanged();
     } catch (err: any) {
       setMessage(err?.response?.data?.message ?? 'That did not work.');
     }

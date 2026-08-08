@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Check, Gift, Lock, ShoppingBag } from 'lucide-react';
 import { gameApi } from '@/lib/api';
 import { flushOutbox, queueClaim } from '@/lib/offline';
+import { statsChanged } from '@/lib/shell-stats';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Bar } from '@/components/ui/display';
@@ -127,6 +128,9 @@ export function QuestsPanel({ onBack, onStore }: { onBack: () => void; onStore?:
     const res = await gameApi.me().catch(() => null);
     if (res) setData(res.data);
     else setError('Saved — it will sync when you are back online.');
+    // The Spark balance in the top bar just changed. It is fetched by the tab
+    // shell, which has no idea this screen exists.
+    statsChanged();
   };
 
   if (!data) {
@@ -255,6 +259,9 @@ export function MedalsPanel({ onBack }: { onBack: () => void }) {
       : [...data.equippedMedals, id].slice(-3);
     const res = await gameApi.equipMedals(next).catch(() => null);
     if (res) setData(res.data);
+    // What you wear shows on the profile banner now, so the card behind this
+    // screen is out of date the moment this returns.
+    statsChanged();
   };
 
   return (

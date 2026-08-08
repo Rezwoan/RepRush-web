@@ -17,7 +17,7 @@ import { ImageCropper } from '@/components/ui/image-cropper';
 import { Mascot, type MascotPose } from '@/components/art/mascot';
 import { SparkAmount } from '@/components/ui/spark';
 import { cn } from '@/lib/utils';
-import { ProfileHeaderCard } from './header';
+import { ProfileCard } from '@/components/profile/profile-card';
 import { Panel } from './panel';
 import type { Cosmetic, Overview } from './types';
 
@@ -84,27 +84,20 @@ export function EditProfile({
       }
     >
       <div className="space-y-4">
-        <ProfileHeaderCard header={header} level={data.levels.level} />
+        <ProfileCard
+          header={header}
+          level={data.levels.level}
+          bodyrank={data.ranks.bodyrank}
+          standing={data.ranks.standing}
+        />
 
         <div className="grid grid-cols-2 gap-2">
+          {/* One button, because it is one choice. `Avatar` and `Picture` were
+              two, and the picture always won — so picking a mascot after
+              uploading a photo silently did nothing. */}
           <Button variant="chunkyLight" className="col-span-2" onClick={() => openPicker('avatar')}>
             Avatar
           </Button>
-          <label className="press flex cursor-pointer items-center justify-center gap-2 rounded-2xl border-2 border-border bg-card py-3 font-bold">
-            <Camera size={16} /> Picture
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = () => setCropSrc(String(reader.result));
-                reader.readAsDataURL(file);
-              }}
-            />
-          </label>
           <Button variant="chunkyLight" onClick={() => openPicker('title')}>
             Title
           </Button>
@@ -172,20 +165,60 @@ export function EditProfile({
         </section>
       </div>
 
-      <Sheet open={picker === 'avatar'} onOpenChange={() => setPicker(null)} title="Pick an avatar">
+      <Sheet open={picker === 'avatar'} onOpenChange={() => setPicker(null)} title="Your avatar">
         <div className="grid grid-cols-3 gap-3 pb-2">
+          {/* Your own photo is one of the choices, not a separate setting —
+              picking anything here replaces whatever was there before. */}
+          <label
+            className={cn(
+              'press flex cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl border-2 p-3',
+              header.profileImage ? 'border-primary bg-primary/10' : 'border-border bg-card',
+            )}
+          >
+            {header.profileImage ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={header.profileImage} alt="" className="h-14 w-14 rounded-full object-cover" />
+            ) : (
+              <span className="grid h-14 w-14 place-items-center rounded-full bg-secondary">
+                <Camera size={22} />
+              </span>
+            )}
+            <span className="mt-1 text-xs font-bold">
+              {header.profileImage ? 'Change photo' : 'Your photo'}
+            </span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => setCropSrc(String(reader.result));
+                reader.readAsDataURL(file);
+                // Cleared so re-picking the same file still fires `change`.
+                e.target.value = '';
+              }}
+            />
+          </label>
           {AVATARS.map((a) => (
             <button
               key={a.id}
               onClick={async () => {
                 setHeader({ ...header, avatarId: a.id, profileImage: null });
                 setPicker(null);
+                // The server clears the photo when an avatar is chosen — see
+                // `ProfileService.update`. Without that the pick was written
+                // and then out-voted by the picture on every render.
                 await profileApi.update({ avatarId: a.id }).catch(() => {});
+                await refresh();
                 onSaved();
               }}
               className={cn(
                 'press grid place-items-center rounded-2xl border-2 p-3',
-                header.avatarId === a.id ? 'border-primary bg-primary/10' : 'border-border bg-card',
+                !header.profileImage && header.avatarId === a.id
+                  ? 'border-primary bg-primary/10'
+                  : 'border-border bg-card',
               )}
             >
               <Mascot pose={a.id as MascotPose} size={56} />
@@ -238,6 +271,7 @@ export function EditProfile({
               try {
                 const res = await usersApi.uploadImage(base64);
                 setHeader({ ...header, profileImage: res.data?.profileImage ?? base64 });
+                setPicker(null);
                 await refresh();
                 onSaved();
               } catch {

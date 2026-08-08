@@ -21,6 +21,8 @@ import { ROUTINE_PACKAGES, packageById } from '../workouts/routine-packages';
 import { normaliseExercise, parseExercises } from './routine-shape';
 import { nextRoutineId } from './routine-rotation';
 import { COSMETIC_BY_ID, COSMETICS, DEFAULT_COSMETIC, freeIds, type CosmeticKind } from './cosmetics';
+import { MEDAL_CATEGORIES, MEDAL_MATERIALS } from '../gamification/rules';
+import { RewardClaim } from '../gamification/claim.entity';
 import { XP, levelFromXp } from './xp';
 
 const DAY_MS = 86_400_000;
@@ -118,6 +120,28 @@ const PREF_ENUMS: Partial<Record<keyof Preferences, string[]>> = {
   analysisWindow: ['rolling', 'calendar'],
 };
 
+/**
+ * The three medals a user wears, resolved to what the art needs.
+ *
+ * Resolved here rather than shipped as `workouts:2` for the client to decode:
+ * the emblem and the material ladder live in `gamification/rules.ts`, and a
+ * second copy of that table in the frontend is a copy that drifts. This is
+ * what the banner draws — both on your own profile and on anybody else's.
+ */
+function equippedMedals(user: User) {
+  const ids: unknown = parseJson<string[]>(user.equippedMedals, []);
+  return (Array.isArray(ids) ? ids : [])
+    .slice(0, 3)
+    .map((id) => {
+      const [categoryId, tier] = String(id).split(':');
+      const category = MEDAL_CATEGORIES.find((c) => c.id === categoryId);
+      const material = MEDAL_MATERIALS[Number(tier)];
+      if (!category || !material) return null;
+      return { id: String(id), label: category.label, emblem: category.emblem, material };
+    })
+    .filter(Boolean);
+}
+
 const parseJson = <T>(raw: string | null | undefined, fallback: T): T => {
   if (!raw) return fallback;
   try {
@@ -139,6 +163,7 @@ export class ProfileService {
     @InjectRepository(RoutineFolder) private folders: Repository<RoutineFolder>,
     @InjectRepository(UserExercise) private userExercises: Repository<UserExercise>,
     @InjectRepository(PostReaction) private reactions: Repository<PostReaction>,
+    @InjectRepository(RewardClaim) private claims: Repository<RewardClaim>,
     private catalog: CatalogService,
     private ranks: RanksService,
   ) {}
@@ -170,7 +195,36 @@ export class ProfileService {
         banner:
           COSMETIC_BY_ID.get(user.bannerId ?? '') ?? COSMETIC_BY_ID.get(DEFAULT_COSMETIC.banner),
       },
+      medals: equippedMedals(user),
     };
+  }
+
+  /**
+   * Where this user sits on the global Bodyrank board — the number the profile
+   * card calls *overall rank*.
+   *
+   * Sorted the same way the leaderboard sorts it, or the card and the board
+   * would name different positions for the same person: predicted ranks below
+   * placed ones, then by percentile.
+   *
+   * ponytail: one `bodyrank` pass per registered user, per profile open. That is
+   * what `SocialService.leaderboard` already costs and the roster is small. If
+   * it ever stops being small, cache the board for a minute — the position does
+   * not change between two taps.
+   */
+  private async globalPosition(userId: number) {
+    const users = await this.users.find({ where: { role: UserRole.USER }, select: ['id'] });
+    const scored = await Promise.all(
+      users.map(async (u) => {
+        const { rank, predicted } = await this.ranks.bodyrank(u.id);
+        return { id: u.id, percentile: rank.percentile, predicted };
+      }),
+    );
+    scored.sort(
+      (a, b) => Number(a.predicted) - Number(b.predicted) || b.percentile - a.percentile || a.id - b.id,
+    );
+    const at = scored.findIndex((r) => r.id === userId);
+    return { position: at < 0 ? null : at + 1, of: scored.length };
   }
 
   // ── the Profile tab, in one request ───────────────────────────────
@@ -300,13 +354,15 @@ export class ProfileService {
     // disagree with the sessions.
     const totalMinutes = Math.round(sessions.reduce((n, s) => n + durationOf(s), 0) / 60);
     const records = await this.recordCount(sessions, setsBySession);
-    const totalXp =
-      sessions.length * XP.perWorkout +
-      totalMinutes * XP.perMinute +
-      records * XP.perRecord +
-      best * XP.perStreakDay;
+    const totalXp = await this.totalXp(userId, {
+      workouts: sessions.length,
+      minutes: totalMinutes,
+      records,
+      bestStreak: best,
+    });
 
     const bodyrank = await this.ranks.bodyrank(userId);
+    const standing = await this.globalPosition(userId);
 
     const [routineCount, exerciseCount, reactionCount] = await Promise.all([
       this.routines.count({ where: { userId } }),
@@ -325,10 +381,32 @@ export class ProfileService {
       totals: { window: windowDays, duration, volume, reps, series },
       streaks: { current, best, days: this.streakDays(byDay, now) },
       levels: { ...levelFromXp(totalXp), records, workouts: sessions.length },
-      ranks: { bodyrank, best: bodyrank.rank },
+      ranks: { bodyrank, best: bodyrank.rank, standing },
       activity,
       counts: { routines: routineCount, exercises: exerciseCount, reactions: reactionCount },
     };
+  }
+
+  /**
+   * Training XP plus whatever has been claimed — the same sum
+   * `GamificationService.summary` runs.
+   *
+   * It used to be training XP alone here, so the Levels card and the level in
+   * the top bar drifted apart the moment anyone claimed a quest, and the two
+   * numbers describing one thing were both on screen at once.
+   */
+  private async totalXp(
+    userId: number,
+    m: { workouts: number; minutes: number; records: number; bestStreak: number },
+  ) {
+    const claims = await this.claims.find({ where: { userId } });
+    return (
+      m.workouts * XP.perWorkout +
+      m.minutes * XP.perMinute +
+      m.records * XP.perRecord +
+      m.bestStreak * XP.perStreakDay +
+      claims.reduce((n, c) => n + c.xp, 0)
+    );
   }
 
   /** The Su–Sa row on the Streaks card: did a workout land on each of the last 7 days? */
@@ -380,6 +458,8 @@ export class ProfileService {
       username?: string;
       bio?: string;
       avatarId?: string;
+      /** Only ever sent as `null`, to go back to a mascot. Uploads go to `/users/profile-image`. */
+      profileImage?: null;
       titleId?: string;
       borderId?: string;
       bannerId?: string;
@@ -420,7 +500,19 @@ export class ProfileService {
     }
 
     if (typeof dto.bio === 'string') patch.bio = dto.bio.trim().slice(0, 200);
-    if (typeof dto.avatarId === 'string' && dto.avatarId.length <= 32) patch.avatarId = dto.avatarId;
+
+    // An avatar and a photo are one choice, not two settings.
+    //
+    // The header draws the uploaded picture whenever there is one, so picking a
+    // mascot while a photo was stored changed nothing at all — the pick was
+    // written and then out-voted. Choosing an avatar clears the photo, which is
+    // what "choose" means.
+    if (typeof dto.avatarId === 'string' && dto.avatarId.length <= 32) {
+      patch.avatarId = dto.avatarId;
+      patch.profileImage = null;
+    } else if (dto.profileImage === null) {
+      patch.profileImage = null;
+    }
 
     // Equipping something you do not own is the one cheat this screen could
     // enable, so the check is here rather than in the client.
@@ -485,24 +577,73 @@ export class ProfileService {
     return this.overview(userId);
   }
 
-  /** What a friend sees (SPEC §9 → `Preview Public Profile`). */
+  /**
+   * Somebody else's profile (SPEC §9 → `Preview Public Profile`).
+   *
+   * The same card the owner sees, and then the parts of their record that are
+   * nobody's secret: rank, level, how much they have trained, what they wear.
+   * Deliberately *not* here: the health log, routines, preferences and anything
+   * per-session — a public profile is a record of achievement, not a window
+   * into somebody's diary.
+   */
   async publicProfile(username: string) {
     const user = await this.users.findOne({ where: { username: (username || '').toLowerCase() } });
     if (!user || user.role !== UserRole.USER) throw new NotFoundException('No such profile');
 
     const sessions = await this.sessions.find({
       where: { userId: user.id, completedAt: Not(IsNull()) },
-      select: ['id', 'completedAt'],
+      order: { completedAt: 'ASC' },
     });
-    const { current, best } = streaks(
-      sessions.map((s) => new Date(s.completedAt)),
-      new Date(),
+    const sets = sessions.length
+      ? await this.sets.find({ where: { sessionId: In(sessions.map((s) => s.id)) } })
+      : [];
+    const setsBySession = new Map<number, WorkoutSet[]>();
+    for (const s of sets) {
+      const list = setsBySession.get(s.sessionId) ?? [];
+      list.push(s);
+      setsBySession.set(s.sessionId, list);
+    }
+
+    const now = new Date();
+    const { current, best } = streaks(sessions.map((s) => new Date(s.completedAt)), now);
+    const working = sets.filter((s) => !s.isWarmup);
+    const minutes = Math.round(
+      sessions.reduce(
+        (n, s) =>
+          n + Math.max(0, new Date(s.completedAt).getTime() - new Date(s.startedAt).getTime()) / 60000,
+        0,
+      ),
     );
+    const records = await this.recordCount(sessions, setsBySession);
+
     return {
       header: this.header(user),
       bodyrank: await this.ranks.bodyrank(user.id),
+      standing: await this.globalPosition(user.id),
+      levels: {
+        ...levelFromXp(
+          await this.totalXp(user.id, { workouts: sessions.length, minutes, records, bestStreak: best }),
+        ),
+        records,
+      },
       workouts: sessions.length,
       streak: { current, best },
+      daysTrained: new Set(sessions.map((s) => dayKey(new Date(s.completedAt)))).size,
+      volumeKg: Math.round(working.reduce((n, s) => n + s.weightKg * s.actualReps, 0)),
+      minutes,
+      // Workouts per week for half a year — the shape of their training, with
+      // no dates attached to any individual session.
+      activity: Array.from({ length: 26 }, (_, i) => {
+        const end = now.getTime() - (25 - i) * 7 * DAY_MS;
+        const start = end - 7 * DAY_MS;
+        return {
+          week: dayKey(new Date(start)),
+          workouts: sessions.filter((s) => {
+            const t = new Date(s.completedAt).getTime();
+            return t >= start && t < end;
+          }).length,
+        };
+      }),
     };
   }
 
@@ -767,11 +908,6 @@ export class ProfileService {
       await this.folders.update({ id: folderId, userId }, { isDefault: true });
     }
     return this.listRoutines(userId);
-  }
-
-  /** Stamped when a routine is started, so the Workout tab can rotate the split. */
-  async markRoutineUsed(userId: number, routineId: number) {
-    await this.routines.update({ id: routineId, userId }, { lastUsedAt: new Date() });
   }
 
   // ── sharing a folder ──────────────────────────────────────────────
@@ -1092,6 +1228,21 @@ export function __selfcheck() {
   if (key(calendarStart(new Date(2026, 2, 9), 180, 1)) !== '2026-01-01')
     fail('March is in the first half-year');
   if (key(calendarStart(wed, 365, 1)) !== '2026-01-01') fail('a year window starts on 1 Jan');
+
+  // The medals a user wears are drawn on the banner of a card anybody can open
+  // by URL, from a string column that has held three different shapes. A junk
+  // entry must come back as nothing, not as an emblem the art cannot draw.
+  const worn = (raw: string) => equippedMedals({ equippedMedals: raw } as User);
+  if (worn(null as unknown as string).length !== 0) fail('no medals equipped is an empty list');
+  if (worn('not json').length !== 0) fail('an unparseable column is an empty list, not a crash');
+  if (worn('{"a":1}').length !== 0) fail('a non-array column is an empty list');
+  if (worn('["workouts:99"]').length !== 0) fail('a tier with no material is dropped');
+  if (worn('["nosuch:0"]').length !== 0) fail('an unknown category is dropped');
+  if (worn('["workouts:0","volume:1","level:2","streak:3"]').length !== 3)
+    fail('at most three medals are worn');
+  const first = worn('["workouts:2"]')[0];
+  if (first?.emblem !== 'bolt' || first?.material !== 'gold')
+    fail('a worn medal resolves to the emblem and material the art needs');
 
   // The funnel's answers are now a patch, so this is the only thing standing
   // between a hand-rolled request and a permanently mis-ranked account.

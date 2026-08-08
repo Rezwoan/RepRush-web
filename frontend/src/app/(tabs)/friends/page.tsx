@@ -31,6 +31,7 @@ import { Bar, EmptyState } from '@/components/ui/display';
 import { Sheet } from '@/components/ui/sheet';
 import { RankChip } from '@/components/art/rank-badge';
 import { Avatar, type PublicUser } from '@/components/social/feed';
+import { ProfileLink } from '@/components/profile/profile-link';
 import { SparkAmount } from '@/components/ui/spark';
 import type { Rank } from '@/lib/ranks';
 
@@ -103,12 +104,16 @@ function PersonRow({
 }) {
   return (
     <div className="surface flex items-center gap-3 p-3">
-      <Avatar user={user} size={42} />
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-bold leading-tight">{user.name}</p>
-        {user.username && <p className="truncate text-xs text-muted-foreground">@{user.username}</p>}
-        {rank && <RankChip rank={rank} size="sm" className="mt-1" />}
-      </div>
+      <ProfileLink username={user.username} className="flex min-w-0 flex-1 items-center gap-3">
+        <Avatar user={user} size={42} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-bold leading-tight">{user.name}</p>
+          {user.username && (
+            <p className="truncate text-xs text-muted-foreground">@{user.username}</p>
+          )}
+          {rank && <RankChip rank={rank} size="sm" className="mt-1" />}
+        </div>
+      </ProfileLink>
       {right}
     </div>
   );
@@ -456,27 +461,32 @@ function BoardsPanel() {
             >
               {r.position}
             </span>
-            <Avatar user={r.user} size={38} />
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-bold leading-tight">
-                {r.user.name}
-                {r.you && <span className="ml-2 text-xs font-extrabold text-primary">YOU</span>}
-              </p>
-              {r.rank ? (
-                <span className="mt-0.5 flex items-center gap-2">
-                  <RankChip rank={r.rank} size="sm" />
-                  {r.predicted && (
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                      predicted
-                    </span>
-                  )}
-                </span>
-              ) : (
-                r.user.username && (
-                  <p className="truncate text-xs text-muted-foreground">@{r.user.username}</p>
-                )
-              )}
-            </div>
+            <ProfileLink
+              username={r.user.username}
+              className="flex min-w-0 flex-1 items-center gap-3"
+            >
+              <Avatar user={r.user} size={38} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-bold leading-tight">
+                  {r.user.name}
+                  {r.you && <span className="ml-2 text-xs font-extrabold text-primary">YOU</span>}
+                </p>
+                {r.rank ? (
+                  <span className="mt-0.5 flex items-center gap-2">
+                    <RankChip rank={r.rank} size="sm" />
+                    {r.predicted && (
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        predicted
+                      </span>
+                    )}
+                  </span>
+                ) : (
+                  r.user.username && (
+                    <p className="truncate text-xs text-muted-foreground">@{r.user.username}</p>
+                  )
+                )}
+              </div>
+            </ProfileLink>
             <p className="nums shrink-0 font-extrabold">{r.display}</p>
           </motion.div>
         ))}

@@ -14,6 +14,7 @@ import { Chip } from '@/components/ui/controls';
 import { Sheet } from '@/components/ui/sheet';
 import { EmptyState } from '@/components/ui/display';
 import { useUnits } from '@/lib/units';
+import { cn } from '@/lib/utils';
 import { METRIC_LABEL, metricToDisplay, metricToStored, metricUnit } from './types';
 import { Panel } from './panel';
 
@@ -24,13 +25,34 @@ interface Entry {
   metric: string;
 }
 
-/** A filled area chart, drawn from the points themselves — no chart library. */
-function Chart({ points }: { points: Entry[] }) {
+/**
+ * A filled area chart, drawn from the points themselves — no chart library.
+ *
+ * Every point is a target: a chart of your bodyweight that cannot tell you what
+ * you weighed and when is a decoration. Tapping one reads it out; the last
+ * entry is selected on open, so the chart always says something.
+ *
+ * The dots sit in their own overlay rather than in the stretched `viewBox`,
+ * because `preserveAspectRatio="none"` is what lets the line fill the box and
+ * it would squash a circle into an ellipse.
+ */
+function Chart({
+  points,
+  format,
+}: {
+  points: Entry[];
+  format: (value: number) => string;
+}) {
+  const [picked, setPicked] = useState<number | null>(null);
+
+  // A new metric is a new set of points; an index into the old one is noise.
+  useEffect(() => setPicked(null), [points]);
+
   if (points.length < 2) {
     return (
       <div className="grid h-40 place-items-center rounded-2xl bg-muted/40">
         <span className="rounded-full bg-card px-3 py-1 text-sm font-bold text-muted-foreground">
-          {points.length ? 'One entry so far' : 'No data yet'}
+          {points.length ? `One entry so far — ${format(points[0].value)} on ${points[0].date}` : 'No data yet'}
         </span>
       </div>
     );
@@ -44,23 +66,56 @@ function Chart({ points }: { points: Entry[] }) {
     y: 100 - ((p.value - min) / span) * 80 - 10,
   }));
   const line = xy.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
+  const at = picked ?? points.length - 1;
+  const selected = points[at];
 
   return (
     <div className="rounded-2xl bg-muted/40 p-3">
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-40 w-full">
-        <path
-          d={`${line} L100,100 L0,100 Z`}
-          fill="hsl(var(--primary) / 0.18)"
-          stroke="none"
-        />
-        <path d={line} fill="none" stroke="hsl(var(--primary))" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
-      </svg>
-      <div className="nums mt-1 flex justify-between text-xs text-muted-foreground">
-        <span>{points[0].date}</span>
-        <span>
-          {min} – {max}
+      <div className="relative h-40 w-full">
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-full w-full">
+          <path d={`${line} L100,100 L0,100 Z`} fill="hsl(var(--primary) / 0.18)" stroke="none" />
+          <path
+            d={line}
+            fill="none"
+            stroke="hsl(var(--primary))"
+            strokeWidth={1.5}
+            vectorEffect="non-scaling-stroke"
+          />
+          <line
+            x1={xy[at].x}
+            x2={xy[at].x}
+            y1={0}
+            y2={100}
+            stroke="hsl(var(--primary) / 0.45)"
+            strokeWidth={1}
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
+        {points.map((p, i) => (
+          <button
+            key={p.id}
+            onClick={() => setPicked(i)}
+            aria-label={`${p.date}: ${format(p.value)}`}
+            aria-pressed={i === at}
+            className="press absolute grid h-9 w-9 -translate-x-1/2 -translate-y-1/2 place-items-center"
+            style={{ left: `${xy[i].x}%`, top: `${xy[i].y}%` }}
+          >
+            <span
+              className={cn(
+                'block rounded-full border-2 border-card bg-primary transition-all',
+                i === at ? 'h-3.5 w-3.5' : 'h-2 w-2',
+              )}
+            />
+          </button>
+        ))}
+      </div>
+      <div className="mt-2 flex items-baseline gap-2">
+        <span className="nums text-lg font-extrabold">{format(selected.value)}</span>
+        <span className="nums text-sm text-muted-foreground">{selected.date}</span>
+        <span className="flex-1" />
+        <span className="nums text-xs text-muted-foreground">
+          {format(min)} – {format(max)}
         </span>
-        <span>{points[points.length - 1].date}</span>
       </div>
     </div>
   );
@@ -125,7 +180,10 @@ export function HealthPanel({ onBack }: { onBack: () => void }) {
       </div>
 
       <h2 className="mb-2 font-extrabold">{METRIC_LABEL[metric]} chart</h2>
-      <Chart points={rows ?? []} />
+      <Chart
+        points={rows ?? []}
+        format={(v) => `${Math.round(metricToDisplay(metric, v, u) * 10) / 10} ${unit}`}
+      />
 
       <h2 className="mb-2 mt-5 font-extrabold">Data entries</h2>
       {rows?.length === 0 && (

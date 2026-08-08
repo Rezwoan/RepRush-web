@@ -248,9 +248,20 @@ export default function FinishPage() {
       </main>
 
       <div className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-2xl px-4 pb-4 safe-bottom">
-        <Button variant="chunky" size="cta" onClick={() => setConfirm(true)}>
-          Finish Workout
-        </Button>
+        {/* A session with nothing in it is not a workout, and finishing one
+            used to record a training day — which is what made the streak read
+            a day higher than the days actually trained. The server refuses it
+            too (`WorkoutsService.completeSession`); this is so the refusal is
+            never a surprise. */}
+        {sets.length === 0 ? (
+          <Button variant="chunkyOutline" size="cta" onClick={() => router.back()}>
+            Nothing logged yet — back to the session
+          </Button>
+        ) : (
+          <Button variant="chunky" size="cta" onClick={() => setConfirm(true)}>
+            Finish Workout
+          </Button>
+        )}
       </div>
 
       <Sheet open={privacyOpen} onOpenChange={setPrivacyOpen} title="Who can see this?">

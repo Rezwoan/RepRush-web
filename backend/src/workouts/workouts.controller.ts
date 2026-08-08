@@ -65,8 +65,10 @@ export class WorkoutsController {
     @CurrentUser() user: User,
     @Body() body: { workoutType: string; workoutPlanId?: number; plan?: unknown; routineId?: number },
   ) {
-    // `routineId` is what makes a split rotate: stamped on *start*, not on
-    // opening the day, so browsing your program does not reorder it.
+    // `routineId` is what makes a split rotate. It is *recorded* here and
+    // stamped onto the routine when the session is finished — see
+    // `completeSession`. Stamping it on start rotated the program for a
+    // workout that was then discarded.
     return this.workoutsService.startSession(
       user.id,
       body.workoutType,

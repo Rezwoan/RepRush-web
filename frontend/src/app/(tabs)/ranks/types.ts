@@ -59,7 +59,9 @@ export interface Overview {
 export interface LeagueRow {
   userId: number;
   name: string;
+  username: string | null;
   avatarId: string | null;
+  profileImage: string | null;
   weeklyLp: number;
   rank: Rank;
   you: boolean;

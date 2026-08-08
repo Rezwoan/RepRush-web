@@ -25,6 +25,17 @@ export class GymSession {
   @Column({ nullable: true })
   workoutPlanId: number;
 
+  /**
+   * The routine this session was started from, when it was started from one.
+   *
+   * Carried on the session rather than stamped straight onto the routine,
+   * because the stamp is what rotates the split and a session that gets
+   * discarded must not rotate anything. `completeSession` is what writes
+   * `routines.lastUsedAt`, and this is how it knows which day to write it to.
+   */
+  @Column({ nullable: true })
+  routineId: number;
+
   @Column({ nullable: true })
   workoutType: string;
 

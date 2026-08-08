@@ -40,6 +40,8 @@ export interface RoutineList {
   folders: FolderSummary[];
   loose: RoutineSummary[];
   total: number;
+  /** Which day to suggest next — decided by the backend. See `nextUp` below. */
+  nextRoutineId: number | null;
 }
 
 interface PackageSummary {
@@ -53,17 +55,15 @@ interface PackageSummary {
   days: { name: string; focus: string; exercises: string[] }[];
 }
 
-/**
- * Which day to suggest: the one gone longest without. A six-day split rotates
- * on its own that way, instead of asking someone to remember where they are in
- * the week. Never used at all sorts first — a day you have never done is the
- * one most overdue.
+/*
+ * There used to be a `nextUp()` here that picked the day gone longest without.
+ * The backend answers the same question in `routine-rotation.ts` — by program
+ * *order*, so skipping legs once does not make the app demand legs all week —
+ * and publishes it as `nextRoutineId` precisely so this screen and Home's
+ * Today's Workout card cannot name different days. This screen was ignoring it
+ * and deciding for itself, which is exactly the disagreement that file exists
+ * to prevent. It reads the field now.
  */
-function nextUp(routines: RoutineSummary[]): number | null {
-  if (!routines.length) return null;
-  const stamp = (r: RoutineSummary) => (r.lastUsedAt ? new Date(r.lastUsedAt).getTime() : 0);
-  return routines.reduce((best, r) => (stamp(r) < stamp(best) ? r : best), routines[0]).id;
-}
 
 function DayCard({
   routine,
@@ -146,7 +146,7 @@ export function RoutineChooser({
     profileApi
       .routines()
       .then((r) => setList(r.data))
-      .catch(() => setList({ folders: [], loose: [], total: 0 }));
+      .catch(() => setList({ folders: [], loose: [], total: 0, nextRoutineId: null }));
   }, []);
 
   useEffect(load, [load]);
@@ -185,7 +185,7 @@ export function RoutineChooser({
 
   const primary = list.folders.find((f) => f.isDefault) ?? list.folders[0] ?? null;
   const others = list.folders.filter((f) => f.id !== primary?.id);
-  const suggestedId = primary ? nextUp(primary.routines) : null;
+  const suggestedId = list.nextRoutineId;
 
   const packageSheet = (
     <Sheet open={packagesOpen} onOpenChange={setPackagesOpen} title="Programs">

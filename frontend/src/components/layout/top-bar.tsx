@@ -129,9 +129,10 @@ export function TopBar({
       <div className="mx-auto flex max-w-2xl items-center gap-2 px-4 py-2.5">
         {/* Identity + level */}
         <Link href="/profile" className="press flex min-w-0 items-center gap-2">
-          <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full border-2 border-primary bg-secondary">
-            {avatar}
-          </span>
+          {/* No ring of its own: the avatar wears the border the user equipped.
+              This used to be a hardcoded `border-primary`, which is why buying
+              a border changed nothing here. */}
+          {avatar}
           {level !== undefined && (
             <span className="min-w-0">
               <span className="block text-xs font-extrabold leading-tight">Lv.{level}</span>

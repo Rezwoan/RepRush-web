@@ -22,6 +22,8 @@ export interface ProfileHeader {
   joinedAt: string;
   currency: number;
   cosmetics: { title: Cosmetic; border: Cosmetic; banner: Cosmetic };
+  /** The three you wear — resolved by the backend, drawn on the banner. */
+  medals: { id: string; label: string; emblem: string; material: string }[];
 }
 
 /**
@@ -60,7 +62,12 @@ export interface Overview {
     records: number;
     workouts: number;
   };
-  ranks: { bodyrank: { rank: Rank; predicted: boolean; placements: { done: number; required: number } }; best: Rank };
+  ranks: {
+    bodyrank: { rank: Rank; predicted: boolean; placements: { done: number; required: number } };
+    best: Rank;
+    /** Position on the global Bodyrank board — the profile card's overall rank. */
+    standing: { position: number | null; of: number };
+  };
   activity: { week: string; workouts: number }[];
   counts: { routines: number; exercises: number; reactions: number };
 }

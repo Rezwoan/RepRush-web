@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, Not, IsNull, In } from 'typeorm';
 import { GymSession } from './gym-session.entity';
@@ -54,7 +54,9 @@ const parseJsonArray = (raw: string | null | undefined): string[] | null => {
 };
 
 @Injectable()
-export class WorkoutsService {
+export class WorkoutsService implements OnModuleInit {
+  private readonly logger = new Logger(WorkoutsService.name);
+
   constructor(
     @InjectRepository(GymSession) private sessionRepo: Repository<GymSession>,
     @InjectRepository(WorkoutSet) private setRepo: Repository<WorkoutSet>,
@@ -79,19 +81,25 @@ export class WorkoutsService {
       userId,
       workoutType,
       workoutPlanId,
+      routineId: routineId ?? null,
       plan: plan ? JSON.stringify(plan) : null,
       tracked: true,
     });
-    const saved = await this.sessionRepo.save(session);
-    // Best-effort: a session that started is worth more than a rotation stamp.
-    if (routineId) {
-      await this.routineRepo
-        .update({ id: routineId, userId }, { lastUsedAt: new Date() })
-        .catch(() => undefined);
-    }
-    return saved;
+    return this.sessionRepo.save(session);
   }
 
+  /**
+   * Finish a session — or throw it away if nothing was logged in it.
+   *
+   * An empty session is not a workout. Counting one as a training day is what
+   * made the streak read a day higher than the days actually trained, and the
+   * guard belongs here rather than in each of the three places that count
+   * streaks: every caller — the finish screen, the offline outbox replaying
+   * hours later — routes through this.
+   *
+   * Finishing is also the only moment a routine's rotation stamp may move. A
+   * session that was started and discarded rotated the split before this.
+   */
   async completeSession(
     sessionId: number,
     userId: number,
@@ -100,14 +108,54 @@ export class WorkoutsService {
   ) {
     const session = await this.sessionRepo.findOne({ where: { id: sessionId, userId } });
     if (!session) throw new NotFoundException('Session not found');
+
+    if (!(await this.setRepo.count({ where: { sessionId } }))) {
+      await this.sessionRepo.delete(sessionId);
+      return { id: sessionId, discarded: true };
+    }
+
     // Completing twice must not move the clock — the outbox retries, and a
     // replayed completion would otherwise stretch the recorded duration.
-    if (!session.completedAt) session.completedAt = new Date();
+    const alreadyDone = !!session.completedAt;
+    if (!alreadyDone) session.completedAt = new Date();
     if (notes !== undefined) session.notes = notes;
     if (finish?.caption !== undefined) session.caption = finish.caption;
     if (finish?.tracked !== undefined) session.tracked = finish.tracked;
     if (finish?.privacy !== undefined) session.privacy = finish.privacy;
-    return this.sessionRepo.save(session);
+    const saved = await this.sessionRepo.save(session);
+
+    if (!alreadyDone && session.routineId) {
+      // Best effort: the session is the record, the stamp is only a hint about
+      // which day to suggest next.
+      await this.routineRepo
+        .update({ id: session.routineId, userId }, { lastUsedAt: session.completedAt })
+        .catch(() => undefined);
+    }
+    return saved;
+  }
+
+  /**
+   * Sessions that were finished with nothing in them, from before
+   * `completeSession` refused to keep one.
+   *
+   * ponytail: a sweep at boot rather than a migration file — there is no
+   * migration runner here (`synchronize: true`), it is idempotent, and it costs
+   * one query on a table that is already small. Delete it once the deployed
+   * databases have been through it.
+   */
+  async onModuleInit() {
+    try {
+      const { affected } = await this.sessionRepo
+        .createQueryBuilder()
+        .delete()
+        .where('completedAt IS NOT NULL')
+        .andWhere('id NOT IN (SELECT sessionId FROM workout_sets)')
+        .execute();
+      if (affected) this.logger.log(`removed ${affected} completed session(s) with no sets logged`);
+    } catch (err) {
+      // Housekeeping must never be the reason the app will not start.
+      this.logger.warn(`empty-session sweep skipped: ${err}`);
+    }
   }
 
   // ─── The generator (SPEC §5.1) ──────────────────────────────────────────────

@@ -17,7 +17,6 @@ import {
   BarChart3,
   ChevronRight,
   Dumbbell,
-  Flame,
   HeartPulse,
   ListChecks,
   Medal as MedalIcon,
@@ -39,8 +38,9 @@ import { Bar, EmptyState, StatTile, TabSkeleton } from '@/components/ui/display'
 import { Sheet } from '@/components/ui/sheet';
 import { RankBadge } from '@/components/art/rank-badge';
 import { BodygraphPair } from '@/components/art/bodygraph';
-import { Mascot, type MascotPose } from '@/components/art/mascot';
-import { ProfileHeaderCard, useProfile } from './header';
+import { Mascot } from '@/components/art/mascot';
+import { ProfileCard } from '@/components/profile/profile-card';
+import { useProfile } from './header';
 import { EditProfile } from './edit';
 import { ConsumablesPanel } from './consumables';
 import { HealthPanel } from './health';
@@ -470,9 +470,11 @@ export default function ProfilePage() {
         </button>
       </div>
 
-      <ProfileHeaderCard
+      <ProfileCard
         header={data.header}
         level={data.levels.level}
+        bodyrank={data.ranks.bodyrank}
+        standing={data.ranks.standing}
         onEdit={() => go('edit')}
       />
 
@@ -616,9 +618,8 @@ export default function ProfilePage() {
         {editingLayout ? 'Done' : 'Edit profile layout'}
       </Button>
 
-      <div className="flex items-center justify-center gap-2 pt-2 text-xs text-muted-foreground">
-        <Flame size={13} /> Joined {new Date(data.header.joinedAt).toLocaleDateString()}
-      </div>
+      {/* The join date used to live down here as a footnote; it is on the card
+          now, where the rest of who-you-are already was. */}
     </div>
   );
 }

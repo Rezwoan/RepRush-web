@@ -26,7 +26,7 @@ import { EmptyState } from '@/components/ui/display';
 import { Sheet } from '@/components/ui/sheet';
 import { RankChip } from '@/components/art/rank-badge';
 import { BodygraphPair } from '@/components/art/bodygraph';
-import { Mascot, type MascotPose } from '@/components/art/mascot';
+import { UserAvatar } from '@/components/ui/user-avatar';
 
 export const REACTIONS = ['🔥', '💪', '👏', '😤', '🐐'];
 
@@ -66,28 +66,13 @@ interface Comment {
 
 // ── bits ────────────────────────────────────────────────────────────
 
+/**
+ * Kept as a named export because half the social screens import `Avatar` from
+ * here, but the drawing is `UserAvatar`'s now — there were four
+ * photo-or-mascot implementations and they did not agree about the ring.
+ */
 export function Avatar({ user, size = 40 }: { user: PublicUser; size?: number }) {
-  if (user.profileImage) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={user.profileImage}
-        alt=""
-        width={size}
-        height={size}
-        className="shrink-0 rounded-full object-cover"
-        style={{ width: size, height: size }}
-      />
-    );
-  }
-  return (
-    <span
-      className="grid shrink-0 place-items-center rounded-full bg-muted"
-      style={{ width: size, height: size }}
-    >
-      <Mascot pose={(user.avatarId as MascotPose) || 'idle'} size={Math.round(size * 0.8)} />
-    </span>
-  );
+  return <UserAvatar user={user} size={size} ring={0} />;
 }
 
 /** `3h`, `2d`, `Mar 4` — short enough to sit beside a name on a phone. */

@@ -5,6 +5,7 @@ import { GymSession } from '../workouts/gym-session.entity';
 import { WorkoutSet } from '../workouts/workout-set.entity';
 import { BodyWeightLog } from '../body-weight/body-weight-log.entity';
 import { PostReaction } from '../social/post-reaction.entity';
+import { RewardClaim } from '../gamification/claim.entity';
 import { ExercisesModule } from '../exercises/exercises.module';
 import { RanksModule } from '../ranks/ranks.module';
 import { HealthLog } from './health-log.entity';
@@ -20,6 +21,7 @@ import { ProfileController } from './profile.controller';
       WorkoutSet,
       BodyWeightLog,
       PostReaction,
+      RewardClaim,
       HealthLog,
       Routine,
       RoutineFolder,

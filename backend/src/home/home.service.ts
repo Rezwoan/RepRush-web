@@ -12,6 +12,7 @@ import { nextRoutineId } from '../profile/routine-rotation';
 import { RanksService } from '../ranks/ranks.service';
 import { effectiveLoad } from '../ranks/e1rm';
 import { FRESH_BELOW, RecoveryStatus } from '../ranks/recovery';
+import { streakWithFreezes } from '../gamification/rules';
 
 /** The Last-14-Workouts block's window, and the comparison window behind it. */
 const WINDOW_DAYS = 14;
@@ -43,36 +44,20 @@ const round = (n: number, dp = 0) => {
 /**
  * A day counts if a workout was completed on it (SPEC §10).
  *
- * Today not being trained yet does not break the streak — it only breaks once a
- * whole day has been missed, so the count doesn't read as 0 every morning.
- * Freezes are P11's; this is the plain rule underneath them.
+ * Exported because the Home card, the Profile tab and the streak leaderboard
+ * all need the same number — and it is now a thin wrapper over
+ * `streakWithFreezes`, which is the rule the top bar has been showing all
+ * along. Written out longhand here it was *nearly* that rule, minus freezes: a
+ * banked freeze made the flame in the top bar and the Streaks card on the
+ * profile disagree, with no way for the user to tell which was lying. Two
+ * implementations of "how long is your streak" is a bug the user sees before
+ * we do.
  *
- * Exported because P9's streak leaderboard needs the same number the Home card
- * shows. Two implementations of "how long is your streak" is a bug the user
- * sees before we do.
+ * P11 shipped freezes and this is the one caller that never learned. There is
+ * one rule now; this only adapts the arguments.
  */
 export function streaks(completedAt: Date[], now: Date) {
-  const days = Array.from(new Set(completedAt.map(dayKey))).sort();
-  if (!days.length) return { current: 0, best: 0 };
-
-  let best = 1;
-  let run = 1;
-  for (let i = 1; i < days.length; i++) {
-    const gap = (Date.parse(days[i]) - Date.parse(days[i - 1])) / DAY_MS;
-    run = gap === 1 ? run + 1 : 1;
-    if (run > best) best = run;
-  }
-
-  const today = dayKey(now);
-  const yesterday = dayKey(new Date(now.getTime() - DAY_MS));
-  const last = days[days.length - 1];
-  if (last !== today && last !== yesterday) return { current: 0, best };
-
-  let current = 1;
-  for (let i = days.length - 1; i > 0; i--) {
-    if ((Date.parse(days[i]) - Date.parse(days[i - 1])) / DAY_MS !== 1) break;
-    current++;
-  }
+  const { current, best } = streakWithFreezes(completedAt.map(dayKey), dayKey(now));
   return { current, best };
 }
 

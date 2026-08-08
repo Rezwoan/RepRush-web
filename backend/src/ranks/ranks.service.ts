@@ -120,7 +120,9 @@ export interface Bodyrank {
 export interface LeagueRow {
   userId: number;
   name: string;
+  username: string | null;
   avatarId: string | null;
+  profileImage: string | null;
   weeklyLp: number;
   rank: Rank;
   you: boolean;
@@ -460,7 +462,11 @@ export class RanksService implements OnModuleInit {
         return {
           userId: u.id,
           name: u.name ?? u.email,
+          // What the row links to. A standings table where you cannot look at
+          // the person above you is a table of strangers.
+          username: u.username ?? null,
           avatarId: u.avatarId ?? null,
+          profileImage: u.profileImage ?? null,
           weeklyLp: snap.weeklyLp,
           rank: rankFromPercentile(
             snap.exercises.length

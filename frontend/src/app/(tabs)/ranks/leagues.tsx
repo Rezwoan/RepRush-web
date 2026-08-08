@@ -13,7 +13,8 @@ import { rankLabel } from '@/lib/ranks';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/ui/display';
 import { RankBadge } from '@/components/art/rank-badge';
-import { Mascot, type MascotPose } from '@/components/art/mascot';
+import { UserAvatar } from '@/components/ui/user-avatar';
+import { ProfileLink } from '@/components/profile/profile-link';
 import { tierColor, type Leagues } from './types';
 
 /** "2d 4h" until the reset. Coarse on purpose — this is a countdown, not a clock. */
@@ -83,16 +84,20 @@ export function LeaguesPanel() {
               <span className="nums w-6 shrink-0 text-center text-sm font-extrabold text-muted-foreground">
                 {i + 1}
               </span>
-              <Mascot pose={(r.avatarId as MascotPose) || 'idle'} size={34} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-bold">
-                  {r.name}
-                  {r.you && <span className="ml-1.5 text-xs font-extrabold text-primary">YOU</span>}
-                </p>
-                <p className="text-xs font-semibold" style={{ color: tierColor(r.rank) }}>
-                  {rankLabel(r.rank)}
-                </p>
-              </div>
+              {/* The row leads to the person. Standings you cannot look into
+                  are a list of names. */}
+              <ProfileLink username={r.username} className="flex min-w-0 flex-1 items-center gap-3">
+                <UserAvatar user={r} size={34} ring={2} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-bold">
+                    {r.name}
+                    {r.you && <span className="ml-1.5 text-xs font-extrabold text-primary">YOU</span>}
+                  </p>
+                  <p className="text-xs font-semibold" style={{ color: tierColor(r.rank) }}>
+                    {rankLabel(r.rank)}
+                  </p>
+                </div>
+              </ProfileLink>
               {zone === 'promote' && <ChevronsUp size={16} className="shrink-0 text-success" />}
               {zone === 'demote' && <ChevronsDown size={16} className="shrink-0 text-destructive" />}
               <span className="nums shrink-0 text-right text-sm font-extrabold">
