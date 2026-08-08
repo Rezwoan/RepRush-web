@@ -65,6 +65,7 @@ export default function NotificationSettings({ profile, onChanged }: { profile: 
               <p className="text-xs text-muted-foreground">Gentle nudges to train and take your creatine.</p>
             </div>
             <button onClick={toggleMaster} disabled={busy}
+              role="switch" aria-checked={enabled} aria-label="Push notifications"
               className={`relative w-12 h-7 rounded-full transition-colors flex-shrink-0 ${enabled ? 'bg-brand-500' : 'bg-secondary'}`}>
               <span className={`absolute top-1 left-1 w-5 h-5 rounded-full bg-white flex items-center justify-center transition-transform ${enabled ? 'translate-x-5' : ''}`}>
                 {busy && <Loader2 size={12} className="animate-spin text-brand-500" />}

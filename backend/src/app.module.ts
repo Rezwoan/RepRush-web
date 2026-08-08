@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { join } from 'path';
+import { CommonModule } from './common/common.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { WorkoutsModule } from './workouts/workouts.module';
@@ -17,6 +18,12 @@ import { MailModule } from './mail/mail.module';
 import { BodyWeightModule } from './body-weight/body-weight.module';
 import { PushModule } from './push/push.module';
 import { SeedModule } from './seed/seed.module';
+import { RanksModule } from './ranks/ranks.module';
+import { HomeModule } from './home/home.module';
+import { SocialModule } from './social/social.module';
+import { ProfileModule } from './profile/profile.module';
+import { GamificationModule } from './gamification/gamification.module';
+import { FeedbackModule } from './feedback/feedback.module';
 
 @Module({
   imports: [
@@ -37,6 +44,7 @@ import { SeedModule } from './seed/seed.module';
         logging: false,
       }),
     }),
+    CommonModule,
     AuthModule,
     UsersModule,
     WorkoutsModule,
@@ -50,7 +58,13 @@ import { SeedModule } from './seed/seed.module';
     MailModule,
     BodyWeightModule,
     PushModule,
+    RanksModule,
+    HomeModule,
+    SocialModule,
+    ProfileModule,
+    GamificationModule,
     SeedModule,
+    FeedbackModule,
   ],
 })
 export class AppModule {}

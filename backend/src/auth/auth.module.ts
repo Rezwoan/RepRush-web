@@ -6,10 +6,19 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { UsersModule } from '../users/users.module';
+import { RanksModule } from '../ranks/ranks.module';
+import { SocialModule } from '../social/social.module';
 
 @Module({
   imports: [
     UsersModule,
+    // Signup claims a username and a referral code, both of which are P9's
+    // rules — signup is a caller, not a second implementation.
+    SocialModule,
+    // Signup logs the onboarding lift as a real set, so a new account's rank is
+    // there the moment the funnel promised it. Same operation as the
+    // Calculator's Save Rank, so it lives once, in RanksService.
+    RanksModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

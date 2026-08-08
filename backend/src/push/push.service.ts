@@ -8,6 +8,7 @@ import { PushSubscription } from './push-subscription.entity';
 import { User, UserRole } from '../users/user.entity';
 import { CreatineService } from '../creatine/creatine.service';
 import { WorkoutsService } from '../workouts/workouts.service';
+import { dayKey, streakWithFreezes } from '../gamification/rules';
 
 // Cron decorators are evaluated at import time, so the timezone must come from
 // the process env (systemd sets it before launch), not ConfigService.
@@ -84,7 +85,7 @@ export class PushService implements OnModuleInit {
 
   /** Manual confirmation ping when a user turns notifications on. */
   async sendTest(userId: number) {
-    await this.sendToUser(userId, { title: 'RepRush', body: 'Notifications are on — see you in the gym! 💪', url: '/dashboard', tag: 'test' });
+    await this.sendToUser(userId, { title: 'RepRush', body: 'Notifications are on — see you in the gym! 💪', url: '/home', tag: 'test' });
     return { ok: this.enabled };
   }
 
@@ -110,7 +111,27 @@ export class PushService implements OnModuleInit {
       const sessions = await this.workoutsService.getUserSessions(u.id);
       if (sessions.some((s) => new Date(s.startedAt) >= start && new Date(s.startedAt) < end)) continue;
       if (!sessions.some((s) => new Date(s.startedAt) >= threeAgo)) continue; // don't nag dormant users
-      await this.sendToUser(u.id, { title: 'Time to train 💪', body: "You haven't logged a workout today. Keep your streak alive!", url: '/workout', tag: 'workout' });
+
+      // Streak-aware copy (SPEC §10 → Notifications). A separate nightly
+      // "streak at risk" cron would mean two pushes on the same evening for the
+      // same reason — this is that reminder, told properly.
+      const streak = streakWithFreezes(
+        sessions.filter((s) => s.completedAt).map((s) => dayKey(new Date(s.completedAt))),
+        dayKey(new Date()),
+      );
+      await this.sendToUser(
+        u.id,
+        streak.current >= 2
+          ? {
+              title: `${streak.current} day streak at risk 🔥`,
+              body: streak.freezes
+                ? `Train today, or a freeze covers you — you have ${streak.freezes}.`
+                : 'Train today to keep it alive.',
+              url: '/workout',
+              tag: 'workout',
+            }
+          : { title: 'Time to train 💪', body: "You haven't logged a workout today.", url: '/workout', tag: 'workout' },
+      );
     }
   }
 
@@ -123,7 +144,7 @@ export class PushService implements OnModuleInit {
       if (!(await this.hasSubscription(u.id))) continue;
       const { totalGrams } = await this.creatineService.getTodayLogs(u.id);
       if (totalGrams > 0) continue;
-      await this.sendToUser(u.id, { title: 'Creatine reminder 💊', body: "You haven't logged your creatine today.", url: '/dashboard', tag: 'creatine' });
+      await this.sendToUser(u.id, { title: 'Creatine reminder 💊', body: "You haven't logged your creatine today.", url: '/profile?view=consumables', tag: 'creatine' });
     }
   }
 }

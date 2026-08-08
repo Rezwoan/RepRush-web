@@ -22,12 +22,15 @@ function LoginContent() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  /** Where to land after signing in — set by any link that needs a session. */
+  const next = params.get('next');
+  const landing = (role?: string) => next || (role === 'admin' ? '/admin' : '/home');
   const inviteToken = params.get('token');
   const inviteEmail = params.get('email');
   const isActivation = Boolean(inviteToken);
 
   useEffect(() => {
-    if (!loading && user) router.replace(user.role === 'admin' ? '/admin' : '/dashboard');
+    if (!loading && user) router.replace(landing(user.role));
     if (inviteEmail) setEmail(decodeURIComponent(inviteEmail));
   }, [user, loading, inviteEmail, router]);
 
@@ -37,7 +40,7 @@ function LoginContent() {
     setSubmitting(true);
     try {
       const loggedInUser = await login(email, password);
-      router.replace(loggedInUser.role === 'admin' ? '/admin' : '/dashboard');
+      router.replace(landing(loggedInUser.role));
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Login failed. Check your credentials.');
     } finally {
@@ -54,7 +57,7 @@ function LoginContent() {
     try {
       const res = await authApi.activate(inviteToken!, newPassword);
       if (res.data.token) setToken(res.data.token);
-      router.replace('/dashboard');
+      router.replace(next || '/home');
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Activation failed. Link may have expired.');
     } finally {
@@ -145,7 +148,10 @@ function LoginContent() {
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
-          Don&apos;t have an account? Contact your admin.
+          Don&apos;t have an account?{' '}
+          <a href="/welcome" className="font-semibold text-primary hover:underline">
+            Get started
+          </a>
         </p>
       </motion.div>
     </div>

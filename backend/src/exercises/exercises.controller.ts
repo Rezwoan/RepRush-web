@@ -1,14 +1,31 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { Roles, CurrentUser } from '../auth/decorators';
+import { Public, Roles, CurrentUser } from '../auth/decorators';
 import { RolesGuard } from '../auth/roles.guard';
 import { User, UserRole } from '../users/user.entity';
 import { ExercisesService } from './exercises.service';
+import { CatalogService } from './catalog.service';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('exercises')
 export class ExercisesController {
-  constructor(private exercisesService: ExercisesService) {}
+  constructor(
+    private exercisesService: ExercisesService,
+    private catalog: CatalogService,
+  ) {}
+
+  // Catalog — public: the onboarding funnel ranks a lift before the account exists.
+  @Public()
+  @Get('catalog')
+  getCatalog(@Query('q') q?: string, @Query('muscle') muscle?: string, @Query('equipment') equipment?: string) {
+    return this.catalog.list({ q, muscle, equipment });
+  }
+
+  @Public()
+  @Get('catalog/:id')
+  getCatalogExercise(@Param('id') id: string) {
+    return this.catalog.get(id);
+  }
 
   // Plans — admin only
   @Roles(UserRole.ADMIN)

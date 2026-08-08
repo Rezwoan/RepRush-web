@@ -28,6 +28,31 @@ export class AdminService {
     private mailService: MailService,
   ) {}
 
+  /**
+   * Send the v2 relaunch announcement to every account. Sequential, not
+   * `Promise.all`: Resend rate-limits, and a broadcast that half-fails is worse
+   * than a slow one. Returns a per-recipient result so a retry can target the
+   * ones that failed rather than mailing everybody twice.
+   */
+  async announceV2(dryRun = false) {
+    const users = await this.userRepo.find({ order: { id: 'ASC' } });
+    const results: { id: number; email: string; sent: boolean; error?: string }[] = [];
+    for (const u of users) {
+      if (!u.email) continue;
+      if (dryRun) {
+        results.push({ id: u.id, email: u.email, sent: false });
+        continue;
+      }
+      try {
+        await this.mailService.sendV2Welcome(u.email, u.name);
+        results.push({ id: u.id, email: u.email, sent: true });
+      } catch (err) {
+        results.push({ id: u.id, email: u.email, sent: false, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    return { dryRun, total: results.length, sent: results.filter((r) => r.sent).length, results };
+  }
+
   private members() {
     return this.userRepo.find({ where: { role: UserRole.USER }, order: { createdAt: 'DESC' } });
   }

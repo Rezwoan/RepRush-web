@@ -11,5 +11,6 @@ import { BodyWeightModule } from '../body-weight/body-weight.module';
   imports: [TypeOrmModule.forFeature([Goal]), UsersModule, WorkoutsModule, BodyWeightModule],
   providers: [GoalsService],
   controllers: [GoalsController],
+  exports: [GoalsService],
 })
 export class GoalsModule {}

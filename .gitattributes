@@ -1,0 +1,8 @@
+# Shell scripts run on the Pi (Linux). A CRLF here is a `\r: command not found`
+# at deploy time, so pin them regardless of anyone's core.autocrlf setting.
+*.sh text eol=lf
+
+# Same reasoning for anything else executed by a Linux shell or systemd.
+*.service text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf

@@ -10,7 +10,7 @@
  * which fits comfortably, and synchronous access keeps the logging path free of
  * races that a hand-rolled IDB wrapper would invite.
  */
-import { workoutsApi } from './api';
+import { bodyWeightApi, gameApi, socialApi, workoutsApi } from './api';
 
 const QUEUE_KEY = 'reprush_outbox_v1';
 const SESSION_KEY = 'reprush_session_cache_v1';
@@ -22,19 +22,43 @@ export interface CachedSet {
   id?: number;        // server id, once synced
   localId: string;    // stable client id, always present
   exerciseName: string;
+  /** Catalog id. Ranks and recovery key off this, so v2 always sends it. */
+  exerciseId?: string;
   setNumber: number;
   actualReps: number;
   weightKg: number;
   targetReps?: number;
   isWarmup?: boolean;
+  rpe?: number;
   pending?: boolean;  // not yet acknowledged by the server
 }
 
+/** What the finish flow collects (SPEC §5.3), replayed with the completion. */
+export interface FinishPayload {
+  notes?: string;
+  caption?: string;
+  tracked?: boolean;
+  privacy?: 'private' | 'friends' | 'discovery';
+}
+
 type Op =
-  | { id: string; kind: 'startSession'; tempSessionId: number; workoutType: string; workoutPlanId?: number }
+  | {
+      id: string;
+      kind: 'startSession';
+      tempSessionId: number;
+      workoutType: string;
+      workoutPlanId?: number;
+      plan?: unknown;
+      /** Stamps the routine's `lastUsedAt` so a split rotates on its own. */
+      routineId?: number;
+    }
   | { id: string; kind: 'logSet'; sessionId: number; localId: string; payload: Record<string, unknown> }
   | { id: string; kind: 'deleteSet'; sessionId: number; setId: number }
-  | { id: string; kind: 'completeSession'; sessionId: number; notes?: string };
+  | { id: string; kind: 'completeSession'; sessionId: number; finish?: FinishPayload }
+  // P12: the writes outside a workout session that must also survive no signal.
+  | { id: string; kind: 'react'; sessionId: number; emoji: string | null }
+  | { id: string; kind: 'claim'; rewardKey: string }
+  | { id: string; kind: 'bodyWeight'; weightKg: number; date?: string };
 
 // ─── Storage helpers ─────────────────────────────────────────────────────────
 
@@ -94,8 +118,22 @@ interface CachedSession {
   workoutPlanId?: number;
   startedAt?: string;
   completedAt?: string | null;
+  /** The generated plan the user is working from. Parsed, not the JSON string. */
+  plan?: unknown;
+  notes?: string;
   sets: CachedSet[];
 }
+
+/** The server stores the plan as a JSON string; the UI wants the object. */
+const parsePlan = (v: unknown) => {
+  if (!v) return undefined;
+  if (typeof v !== 'string') return v;
+  try {
+    return JSON.parse(v);
+  } catch {
+    return undefined;
+  }
+};
 
 const getCache = (): Record<string, CachedSession> => read(SESSION_KEY, {});
 const setCache = (c: Record<string, CachedSession>) => write(SESSION_KEY, c);
@@ -108,15 +146,21 @@ export function cacheSession(sessionId: number, data: any) {
     workoutPlanId: data?.workoutPlanId,
     startedAt: data?.startedAt,
     completedAt: data?.completedAt ?? null,
+    // Never overwrite a locally-held plan with nothing: a session started
+    // offline has its plan only here until the outbox drains.
+    plan: parsePlan(data?.plan) ?? c[String(sessionId)]?.plan,
+    notes: data?.notes ?? c[String(sessionId)]?.notes,
     sets: (data?.sets || []).map((s: any) => ({
       id: s.id,
       localId: s.localId || `srv-${s.id}`,
       exerciseName: s.exerciseName,
+      exerciseId: s.exerciseId ?? undefined,
       setNumber: s.setNumber,
       actualReps: s.actualReps,
       weightKg: s.weightKg,
       targetReps: s.targetReps,
       isWarmup: !!s.isWarmup,
+      rpe: s.rpe ?? undefined,
     })),
   };
   setCache(c);
@@ -140,11 +184,13 @@ export function materializeSets(sessionId: number): CachedSet[] {
       sets.push({
         localId: op.localId,
         exerciseName: p.exerciseName,
+        exerciseId: p.exerciseId,
         setNumber: p.setNumber,
         actualReps: p.actualReps,
         weightKg: p.weightKg,
         targetReps: p.targetReps,
         isWarmup: !!p.isWarmup,
+        rpe: p.rpe,
         pending: true,
       });
     }
@@ -157,20 +203,41 @@ export function materializeSets(sessionId: number): CachedSet[] {
 
 // ─── Public write API (used by the session page) ─────────────────────────────
 
-export function queueStartSession(workoutType: string, workoutPlanId?: number): number {
+export function queueStartSession(
+  workoutType: string,
+  workoutPlanId?: number,
+  plan?: unknown,
+  routineId?: number,
+): number {
   const tempSessionId = -Date.now();
-  enqueue({ id: uid(), kind: 'startSession', tempSessionId, workoutType, workoutPlanId });
+  enqueue({ id: uid(), kind: 'startSession', tempSessionId, workoutType, workoutPlanId, plan, routineId });
   const c = getCache();
   c[String(tempSessionId)] = {
     id: tempSessionId,
     workoutType,
     workoutPlanId,
+    plan,
     startedAt: new Date().toISOString(),
     completedAt: null,
     sets: [],
   };
   setCache(c);
   return tempSessionId;
+}
+
+/** The plan the session is running, from cache — works offline, by design. */
+export function getSessionPlan(sessionId: number): any {
+  return getCachedSession(resolveSessionId(sessionId))?.plan ?? getCachedSession(sessionId)?.plan ?? null;
+}
+
+/** Notes survive a reload and a dropped connection, like everything else here. */
+export function setSessionNotes(sessionId: number, notes: string) {
+  const c = getCache();
+  const s = c[String(sessionId)];
+  if (s) {
+    s.notes = notes;
+    setCache(c);
+  }
 }
 
 export function queueLogSet(sessionId: number, payload: Record<string, unknown>): string {
@@ -191,11 +258,34 @@ export function queueDeleteSet(sessionId: number, set: CachedSet) {
   enqueue({ id: uid(), kind: 'deleteSet', sessionId, setId: set.id });
 }
 
-export function queueCompleteSession(sessionId: number, notes?: string) {
-  enqueue({ id: uid(), kind: 'completeSession', sessionId, notes });
+export function queueCompleteSession(sessionId: number, finish?: FinishPayload) {
+  enqueue({ id: uid(), kind: 'completeSession', sessionId, finish });
   const c = getCache();
   const s = c[String(sessionId)];
   if (s) { s.completedAt = new Date().toISOString(); setCache(c); }
+}
+
+/**
+ * A reaction, a quest claim and a bodyweight entry (SPEC §10 → Offline).
+ *
+ * All three are queued rather than posted for the same reason sets are: the gym
+ * is where the signal is worst and the app is used most. Every one is safe to
+ * replay — reactions are last-write-wins, claims are unique per (user, key) on
+ * the server, and bodyweight relies on the op id as its idempotency key.
+ */
+export function queueReaction(sessionId: number, emoji: string | null) {
+  // Only the newest reaction to a post matters; an earlier queued one is noise.
+  setQueue(getQueue().filter((op) => !(op.kind === 'react' && op.sessionId === sessionId)));
+  enqueue({ id: uid(), kind: 'react', sessionId, emoji });
+}
+
+export function queueClaim(rewardKey: string) {
+  if (getQueue().some((op) => op.kind === 'claim' && op.rewardKey === rewardKey)) return;
+  enqueue({ id: uid(), kind: 'claim', rewardKey });
+}
+
+export function queueBodyWeight(weightKg: number, date?: string) {
+  enqueue({ id: uid(), kind: 'bodyWeight', weightKg, date });
 }
 
 // ─── Flush ───────────────────────────────────────────────────────────────────
@@ -223,7 +313,13 @@ export async function flushOutbox(): Promise<{ synced: number; failed: number }>
 
       try {
         if (op.kind === 'startSession') {
-          const res = await workoutsApi.startSession(op.workoutType, op.workoutPlanId);
+          const res = await workoutsApi.startSession(
+            op.workoutType,
+            op.workoutPlanId,
+            op.plan,
+            op.id,
+            op.routineId,
+          );
           const realId = res.data.id as number;
           const map = getIdMap();
           map[String(op.tempSessionId)] = realId;
@@ -235,14 +331,20 @@ export async function flushOutbox(): Promise<{ synced: number; failed: number }>
           if (temp) { c[String(realId)] = { ...temp, id: realId }; delete c[String(op.tempSessionId)]; setCache(c); }
         } else if (op.kind === 'logSet') {
           const sid = resolveSessionId(op.sessionId);
-          await workoutsApi.logSet(sid, op.payload);
+          await workoutsApi.logSet(sid, op.payload, op.id);
           touched.add(sid);
         } else if (op.kind === 'deleteSet') {
-          await workoutsApi.deleteSet(op.setId);
+          await workoutsApi.deleteSet(op.setId, op.id);
           touched.add(resolveSessionId(op.sessionId));
         } else if (op.kind === 'completeSession') {
-          await workoutsApi.completeSession(resolveSessionId(op.sessionId), op.notes);
+          await workoutsApi.completeSession(resolveSessionId(op.sessionId), op.finish, op.id);
           touched.add(resolveSessionId(op.sessionId));
+        } else if (op.kind === 'react') {
+          await socialApi.react(resolveSessionId(op.sessionId), op.emoji, op.id);
+        } else if (op.kind === 'claim') {
+          await gameApi.claim(op.rewardKey, op.id);
+        } else if (op.kind === 'bodyWeight') {
+          await bodyWeightApi.log(op.weightKg, undefined, op.date, op.id);
         }
 
         setQueue(getQueue().slice(1));
@@ -294,6 +396,9 @@ export function subscribe(l: Listener): () => void {
 
 let autoSyncStarted = false;
 
+/** How often to retry a non-empty queue when no event has prompted us. */
+const RETRY_MS = 30_000;
+
 /** Flush whenever the browser regains connectivity, and once on load. */
 export function startAutoSync() {
   if (typeof window === 'undefined' || autoSyncStarted) return;
@@ -302,5 +407,11 @@ export function startAutoSync() {
   window.addEventListener('online', run);
   // Coming back to the app after a spell offline is also a good moment to try.
   document.addEventListener('visibilitychange', () => { if (!document.hidden) run(); });
+  // ...and a plain timer, because `online` is not reliable enough to be the only
+  // trigger: gym wifi that stays associated but stops routing never fires it, so
+  // a session finished on a dead connection would sit in localStorage until the
+  // app was next backgrounded and reopened. Idle cost is one `getQueue()` read
+  // every 30s, and nothing at all once the queue is empty.
+  window.setInterval(() => { if (getQueue().length) run(); }, RETRY_MS);
   run();
 }

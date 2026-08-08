@@ -25,6 +25,10 @@ export class UsersService {
     return this.userRepo.findOne({ where: { email } });
   }
 
+  async findByUsername(username: string): Promise<User> {
+    return this.userRepo.findOne({ where: { username } });
+  }
+
   async findByInviteToken(token: string): Promise<User> {
     return this.userRepo.findOne({ where: { inviteToken: token } });
   }
@@ -116,8 +120,111 @@ export class UsersService {
     return Math.round((completed / steps.length) * 100);
   }
 
+  /**
+   * Delete an account and everything keyed to it.
+   *
+   * This used to be `userRepo.delete(userId)` alone, which left every dependent
+   * row behind — and SQLite hands the freed id straight to the next account, so
+   * the orphaned `onboarding_progress` row (unique on `userId`) made the next
+   * signup fail with a 500. P9 found it, but it has been true since v1.
+   *
+   * The sweep is driven by `sqlite_master` rather than a hand-written list of
+   * repositories, because a hand-written list is exactly what went stale: every
+   * new table that keys off `userId` would have to remember to add itself here.
+   * It cannot outrun the schema.
+   */
   async deleteUser(userId: number) {
+    const db = this.userRepo.manager;
+    // Sets hang off the session, not the user, so they go first.
+    await db.query(
+      'DELETE FROM workout_sets WHERE sessionId IN (SELECT id FROM gym_sessions WHERE userId = ?)',
+      [userId],
+    );
+    // …as do post reactions and comments, which key off the session too.
+    for (const table of ['post_reactions', 'post_comments']) {
+      await db.query(
+        `DELETE FROM ${table} WHERE userId = ? OR sessionId IN (SELECT id FROM gym_sessions WHERE userId = ?)`,
+        [userId, userId],
+      );
+    }
+    await db.query('DELETE FROM friendships WHERE requesterId = ? OR addresseeId = ?', [
+      userId,
+      userId,
+    ]);
+    // Whoever they referred keeps their account; they just lose the referrer.
+    await db.query('UPDATE users SET referredByUserId = NULL WHERE referredByUserId = ?', [userId]);
+
+    const tables: { name: string }[] = await db.query(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+    );
+    for (const { name } of tables) {
+      if (name === 'users') continue;
+      const cols: { name: string }[] = await db.query(`PRAGMA table_info(${name})`);
+      if (cols.some((c) => c.name === 'userId')) {
+        await db.query(`DELETE FROM ${name} WHERE userId = ?`, [userId]);
+      }
+    }
+
     await this.userRepo.delete(userId);
+  }
+
+  /**
+   * Sweep rows already orphaned by the old delete (above).
+   *
+   * This is not housekeeping — it is a correctness fix. SQLite hands a deleted
+   * account's id to the next one created, so an orphaned row is not merely
+   * unreachable: it gets **adopted**. On dev a brand-new account turned up
+   * holding a deleted tester's sessions, PRs and Wilks score, which is how this
+   * was found. `onboarding_progress` was only the loudest symptom (it is unique
+   * on `userId`, so it 500s the signup instead of corrupting it quietly).
+   *
+   * Deleting a row whose owner does not exist can lose nothing that any account
+   * can still reach.
+   */
+  async sweepOrphanedRows(): Promise<Record<string, number>> {
+    const db = this.userRepo.manager;
+    const swept: Record<string, number> = {};
+
+    const sweep = async (table: string, where: string) => {
+      const [{ n }] = await db.query(`SELECT COUNT(*) AS n FROM ${table} WHERE ${where}`);
+      if (Number(n) > 0) {
+        await db.query(`DELETE FROM ${table} WHERE ${where}`);
+        swept[table] = Number(n);
+      }
+    };
+
+    const tables: { name: string }[] = await db.query(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+    );
+    const names = tables.map((t) => t.name);
+
+    const columns = new Map<string, string[]>();
+    for (const name of names) {
+      const cols: { name: string }[] = await db.query(`PRAGMA table_info(${name})`);
+      columns.set(name, cols.map((c) => c.name));
+    }
+
+    // Users first, then the rows that hang off a session — in that order, so a
+    // session orphaned in this pass takes its sets with it in the same pass
+    // rather than on the next boot.
+    for (const name of names) {
+      if (name === 'users') continue;
+      if (columns.get(name).includes('userId')) {
+        await sweep(name, 'userId NOT IN (SELECT id FROM users)');
+      }
+    }
+    for (const name of names) {
+      if (columns.get(name).includes('sessionId')) {
+        await sweep(name, 'sessionId NOT IN (SELECT id FROM gym_sessions)');
+      }
+    }
+    if (names.includes('friendships')) {
+      await sweep(
+        'friendships',
+        'requesterId NOT IN (SELECT id FROM users) OR addresseeId NOT IN (SELECT id FROM users)',
+      );
+    }
+    return swept;
   }
 
   async adminResetPassword(userId: number, newPassword: string) {

@@ -38,6 +38,10 @@
     --warning: 38 94% 52%;
     --warning-foreground: 30 85% 9%;
 
+    /* Fatigue / recovery (SPEC §1 warm, #FF8A3D). Used at varying alpha to tint
+       the Recovery Zone Bodygraph: warm = worked, pale = fresh. */
+    --warm: 24 100% 62%;
+
     --destructive: 0 76% 60%;
     --destructive-foreground: 0 0% 100%;
 
@@ -46,6 +50,42 @@
     --ring: 210 92% 56%;
 
     --radius: 0.9rem;
+
+    /* Page-level colour wash, overridden per theme (see lib/themes.ts) */
+    --wash-a: hsl(210 92% 50% / 0.10);
+    --wash-b: hsl(44 96% 51% / 0.05);
+
+    /* ── Rank tiers ────────────────────────────────────────────────
+     * The competitive ladder. These are fixed brand constants and do NOT
+     * change with the theme — a Gold badge must read as gold everywhere,
+     * or the whole ranking system stops being legible at a glance. */
+    --tier-unranked: 220 8% 45%;
+    --tier-bronze:   24 55% 54%;
+    --tier-silver:   210 14% 76%;
+    --tier-gold:     45 88% 58%;
+    --tier-platinum: 166 62% 54%;
+    --tier-diamond:  241 82% 76%;
+    --tier-champion: 318 78% 62%;
+    --tier-titan:    0 74% 56%;
+    --tier-olympian: 196 90% 78%;
+  }
+
+  /* Light mode adjusts the defaults above so an un-hydrated first paint is
+     never a dark page under a light theme. lib/themes.ts refines it after. */
+  :root[data-mode='light'] {
+    --background: 216 24% 98%;
+    --foreground: 216 32% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 216 32% 14%;
+    --elevated: 216 20% 96%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 216 32% 14%;
+    --secondary: 216 20% 94%;
+    --secondary-foreground: 216 28% 18%;
+    --muted: 216 20% 96%;
+    --muted-foreground: 216 16% 40%;
+    --border: 216 18% 88%;
+    --input: 216 20% 96%;
   }
 }
 
@@ -56,13 +96,24 @@
   html {
     -webkit-tap-highlight-color: transparent;
   }
+  /* Kills the 300ms double-tap-to-zoom delay on controls without disabling
+     pinch zoom for the whole document — `user-scalable=no` did both, and the
+     second half of that is an accessibility failure, not a nicety. */
+  button,
+  a,
+  [role='button'],
+  input,
+  select,
+  label {
+    touch-action: manipulation;
+  }
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01';
     /* subtle brand glow anchored top-center, like stage light over the logo */
     background-image:
-      radial-gradient(1100px 520px at 50% -8%, hsl(210 92% 50% / 0.10), transparent 70%),
-      radial-gradient(900px 500px at 100% 0%, hsl(44 96% 51% / 0.05), transparent 60%);
+      radial-gradient(1100px 520px at 50% -8%, var(--wash-a), transparent 70%),
+      radial-gradient(900px 500px at 100% 0%, var(--wash-b), transparent 60%);
     background-attachment: fixed;
   }
   ::selection {
@@ -118,6 +169,12 @@
   .focus-ring:focus-visible {
     @apply ring-2 ring-ring;
   }
+  /* Keyboard focus, everywhere, in one rule rather than on 73 call sites.
+     `:where()` carries zero specificity, so any component that styles its own
+     focus still wins — this is the floor, not an override. */
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
   .field {
     @apply w-full bg-input border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground
            placeholder:text-muted-foreground/70 transition-all duration-200;
@@ -165,6 +222,20 @@
     transition: transform 0.12s cubic-bezier(0.2, 0, 0, 1);
   }
   .press:active { transform: scale(0.96); }
+
+  /* Scroll containers that are their own control (pickers, chip rails) —
+     the scrollbar is chrome the user never needs and it breaks the illusion. */
+  .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+
+  /* Horizontal rail that bleeds to the screen edge but keeps its padding. */
+  .rail {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+  }
+  .rail > * { scroll-snap-align: start; }
 }
 
 /* ── Reduced motion ──────────────────────────────────────────────── */

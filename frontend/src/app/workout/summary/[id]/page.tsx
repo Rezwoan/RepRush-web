@@ -1,165 +1,368 @@
 'use client';
-import { useEffect, useState } from 'react';
+/**
+ * The post-session chain (SPEC §5.3.1) — the payoff of the whole app.
+ *
+ * Steps in order: Summary → Ranking → Streak → Progression. Medals and Level Up
+ * are P11's, which owns the medal engine and the XP ledger; the chain is built
+ * as a list of steps precisely so those drop in without touching the rest.
+ *
+ * The XP figures shown here are computed from the session on the spot, using
+ * SPEC §10's itemised model. They are honest arithmetic over what was logged —
+ * but nothing is *awarded* until P11 has a ledger to award into, so the screen
+ * says "earned" and not "banked", and there is no claim button to press.
+ */
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
-import { Trophy, Dumbbell, Clock, Layers, TrendingUp, TrendingDown, Home, Flame, CloudOff } from 'lucide-react';
-import { workoutsApi } from '@/lib/api';
-import { pendingCount, resolveSessionId, flushOutbox } from '@/lib/offline';
-import { PageTransition, Stagger, Item } from '@/components/ui/motion-primitives';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { AnimatedNumber } from '@/components/ui/animated-number';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Flame, Share2, Star, Timer, Zap } from 'lucide-react';
+import { ranksApi, workoutsApi, homeApi } from '@/lib/api';
+import { flushOutbox, materializeSets, resolveSessionId } from '@/lib/offline';
+import { rankLabel, rankValue, type Rank } from '@/lib/ranks';
 import { spring } from '@/lib/motion';
+import { cue } from '@/lib/feedback';
+import { useUnits } from '@/lib/units';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Bar } from '@/components/ui/display';
+import { Confetti, Rays } from '@/components/ui/celebration';
+import { RankBadge } from '@/components/art/rank-badge';
+import { Mascot } from '@/components/art/mascot';
+import { hhmmss } from '@/components/workout/rest-timer';
 
-const fmtDur = (s?: number | null) => {
-  if (!s) return '—';
-  const m = Math.floor(s / 60);
-  return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
-};
+// ── the XP model (SPEC §10) ──────────────────────────────────────────
 
-export default function SessionSummaryPage() {
+const XP = { workout: 200, perMinute: 1, perRecord: 10, perStreakDay: 4 };
+
+interface Summary {
+  durationSec: number | null;
+  totalVolume: number;
+  totalSets: number;
+  exercises: { name: string; sets: number; topWeight: number; volume: number }[];
+  prsHit: { name: string; weightKg: number }[];
+}
+
+interface ExerciseRank {
+  exerciseId: string;
+  name: string;
+  rank: Rank;
+  sets: number;
+}
+
+type StepId = 'summary' | 'ranking' | 'streak' | 'progression';
+
+// ── page ─────────────────────────────────────────────────────────────
+
+export default function SummaryPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const [d, setD] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [unsynced, setUnsynced] = useState(false);
+  const sessionId = resolveSessionId(parseInt(id, 10));
+
+  const [step, setStep] = useState(0);
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [ranks, setRanks] = useState<ExerciseRank[] | null>(null);
+  const [streak, setStreak] = useState<number | null>(null);
+  const [ready, setReady] = useState(false);
+
+  // The offline copy is what makes this screen work in a basement: it is the
+  // same set list the session screen was rendering a moment ago.
+  const localSets = useMemo(() => materializeSets(sessionId).filter((s) => !s.isWarmup), [sessionId]);
 
   useEffect(() => {
-    const load = () =>
-      workoutsApi.getSessionSummary(resolveSessionId(parseInt(id)))
-        .then((r) => { setD(r.data); setUnsynced(false); })
-        .catch(() => setUnsynced(pendingCount() > 0 || !navigator.onLine))
-        .finally(() => setLoading(false));
+    // Drain first — the summary is a server-side aggregation and it cannot
+    // include sets that are still sitting in the outbox.
+    flushOutbox()
+      .then(() =>
+        Promise.all([
+          workoutsApi.getSessionSummary(sessionId).catch(() => null),
+          ranksApi.exercises().catch(() => null),
+          homeApi.summary().catch(() => null),
+        ]),
+      )
+      .then(([s, r, h]) => {
+        if (s?.data) setSummary(s.data);
+        if (r?.data) setRanks(r.data);
+        if (h?.data) setStreak(h.data.user?.streak ?? null);
+      })
+      .finally(() => setReady(true));
+  }, [sessionId]);
 
-    // A session finished offline has nothing to summarise server-side yet, so
-    // try to drain the outbox first and then read the real summary.
-    void flushOutbox().then(load);
-  }, [id]);
+  const volume = summary?.totalVolume ?? Math.round(localSets.reduce((n, s) => n + s.weightKg * s.actualReps, 0));
+  const setCount = summary?.totalSets ?? localSets.length;
+  const durationSec = summary?.durationSec ?? 0;
+  const records = summary?.prsHit.length ?? 0;
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="loader-ring" /></div>;
+  const xp = useMemo(() => {
+    const minutes = Math.round(durationSec / 60);
+    const items = [
+      { label: 'Workout', value: XP.workout },
+      { label: `Time (${minutes} min)`, value: minutes * XP.perMinute },
+      { label: `Records (${records})`, value: records * XP.perRecord },
+      { label: `Streak (${streak ?? 0} days)`, value: (streak ?? 0) * XP.perStreakDay },
+    ].filter((i) => i.value > 0);
+    return { items, total: items.reduce((n, i) => n + i.value, 0) };
+  }, [durationSec, records, streak]);
 
-  // Completed with no connection: reassure rather than dead-end on "not found".
-  if (!d && unsynced) {
+  /** Exercises trained in this session, with the rank they now hold. */
+  const trained = useMemo(() => {
+    if (!ranks) return [];
+    const ids = new Set(localSets.map((s) => s.exerciseId).filter(Boolean));
+    const names = new Set(localSets.map((s) => s.exerciseName));
+    return ranks
+      .filter((r) => ids.has(r.exerciseId) || names.has(r.name))
+      .sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
+  }, [ranks, localSets]);
+
+  // One flourish for the whole chain, once the numbers are actually on screen —
+  // not four, one per step.
+  useEffect(() => {
+    if (ready) cue('finish', [40, 60, 90]);
+  }, [ready]);
+
+  const steps: StepId[] = ['summary', 'ranking', 'streak', 'progression'];
+  const advance = useCallback(() => {
+    setStep((s) => {
+      if (s + 1 < steps.length) return s + 1;
+      router.replace('/home');
+      return s;
+    });
+  }, [router, steps.length]);
+
+  if (!ready) {
     return (
-      <PageTransition className="max-w-lg mx-auto pb-8">
-        <div className="text-center pt-10">
-          <div className="w-16 h-16 mx-auto rounded-2xl bg-volt-400/15 text-volt-400 flex items-center justify-center mb-3">
-            <CloudOff size={28} />
-          </div>
-          <h1 className="text-xl font-display font-bold">Session saved on this device</h1>
-          <p className="text-sm text-muted-foreground mt-2 max-w-xs mx-auto">
-            You finished this workout offline. Nothing is lost — it uploads automatically
-            the moment you&apos;re back online, and the full summary appears then.
-          </p>
-          <Button className="mt-6" onClick={() => router.push('/workout')}>
-            <Home size={16} /> Back to workouts
-          </Button>
-        </div>
-      </PageTransition>
+      <div className="grid min-h-[100dvh] place-items-center">
+        <Mascot pose="cheer" size={110} float />
+      </div>
     );
   }
-  if (!d) return <div className="text-center py-20 text-muted-foreground">Summary not found.</div>;
+
+  const current = steps[step];
 
   return (
-    <PageTransition className="max-w-lg mx-auto space-y-5 pb-8">
-      {/* Hero */}
-      <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={spring.bouncy} className="text-center pt-4">
+    <div className="relative min-h-[100dvh] overflow-hidden">
+      <AnimatePresence mode="wait">
         <motion.div
-          initial={{ rotate: -12, scale: 0 }} animate={{ rotate: 0, scale: 1 }} transition={{ ...spring.bouncy, delay: 0.1 }}
-          className="w-16 h-16 mx-auto rounded-2xl bg-success/15 text-success flex items-center justify-center mb-3">
-          <Trophy size={30} />
-        </motion.div>
-        <h1 className="text-2xl font-display font-extrabold">Session complete!</h1>
-        <p className="text-sm text-muted-foreground mt-1">{d.workoutType || 'Workout'} · {fmtDur(d.durationSec)}</p>
-      </motion.div>
+          key={current}
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -18 }}
+          transition={spring.soft}
+          className="mx-auto flex min-h-[100dvh] max-w-2xl flex-col px-5 py-8"
+        >
+          {current === 'summary' && (
+            <StepSummary
+              volume={volume}
+              sets={setCount}
+              durationSec={durationSec}
+              records={records}
+              xp={xp.total}
+            />
+          )}
+          {current === 'ranking' && <StepRanking trained={trained} />}
+          {current === 'streak' && <StepStreak streak={streak ?? 0} />}
+          {current === 'progression' && <StepProgression xp={xp} streak={streak ?? 0} />}
 
-      {/* Key stats */}
-      <Stagger className="grid grid-cols-3 gap-3">
-        <Item><Stat icon={<Dumbbell size={16} />} label="Volume" value={<><AnimatedNumber value={d.totalVolume} /><span className="text-xs text-muted-foreground">kg</span></>} accent="volt" /></Item>
-        <Item><Stat icon={<Layers size={16} />} label="Sets" value={<AnimatedNumber value={d.totalSets} />} accent="brand" /></Item>
-        <Item><Stat icon={<Clock size={16} />} label="Duration" value={fmtDur(d.durationSec)} accent="success" small /></Item>
-      </Stagger>
-
-      {/* PRs hit */}
-      {d.prsHit?.length > 0 && (
-        <Item standalone>
-          <Card className="p-5 border-volt-400/30 bg-volt-400/[0.05]">
-            <div className="flex items-center gap-2 mb-3">
-              <Flame size={16} className="text-volt-400" />
-              <h2 className="font-display font-bold text-volt-400">New personal record{d.prsHit.length > 1 ? 's' : ''}! 🎉</h2>
-            </div>
-            <div className="space-y-2">
-              {d.prsHit.map((pr: any, i: number) => (
-                <motion.div key={i} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15 + i * 0.08 }}
-                  className="flex items-center justify-between text-sm">
-                  <span className="font-medium">{pr.name}</span>
-                  <span className="nums font-bold text-volt-400">{pr.weightKg} kg</span>
-                </motion.div>
-              ))}
-            </div>
-          </Card>
-        </Item>
-      )}
-
-      {/* vs last */}
-      {d.vsLast && (
-        <Item standalone>
-          <Card className="p-5">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">vs your last {d.workoutType}</p>
-            <div className="grid grid-cols-2 gap-3">
-              <Delta label="Volume" value={d.vsLast.volumeDelta} unit="kg" />
-              <Delta label="Sets" value={d.vsLast.setsDelta} unit="" />
-            </div>
-          </Card>
-        </Item>
-      )}
-
-      {/* Per-exercise breakdown */}
-      <Item standalone>
-        <Card className="p-5">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Exercises</p>
-          <div className="space-y-2">
-            {d.exercises.map((e: any, i: number) => (
-              <div key={i} className="flex items-center gap-3 text-sm">
-                <span className="flex-1 truncate">{e.name}</span>
-                <span className="text-xs text-muted-foreground nums">{e.sets} sets</span>
-                <span className="text-xs nums w-16 text-right">{e.topWeight}kg top</span>
-                <span className="text-xs text-muted-foreground nums w-20 text-right">{e.volume.toLocaleString()}kg vol</span>
-              </div>
-            ))}
+          <div className="mt-auto pt-8">
+            <Button variant="chunky" size="cta" onClick={advance}>
+              {step === steps.length - 1 ? 'Finish' : 'Continue'}
+            </Button>
           </div>
-        </Card>
-      </Item>
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+}
 
-      <div className="flex gap-2">
-        <Button variant="secondary" className="flex-1" onClick={() => router.push('/achievements')}><TrendingUp size={16} /> View progress</Button>
-        <Button className="flex-1" onClick={() => router.push('/dashboard')}><Home size={16} /> Done</Button>
+// ── 1. Summary ───────────────────────────────────────────────────────
+
+function StepSummary({
+  volume, sets, durationSec, records, xp,
+}: {
+  volume: number;
+  sets: number;
+  durationSec: number;
+  records: number;
+  xp: number;
+}) {
+  const headline = volume > 15000 ? 'Huge Gains!' : volume > 5000 ? 'Strong Work!' : 'Session Logged!';
+  const u = useUnits();
+  return (
+    <>
+      <Confetti />
+      <div className="relative grid place-items-center py-4">
+        <Rays color="hsl(var(--primary))" />
+        <Mascot pose="cheer" size={128} />
       </div>
-    </PageTransition>
-  );
-}
-
-function Stat({ icon, label, value, accent, small }: { icon: React.ReactNode; label: string; value: any; accent: 'brand' | 'volt' | 'success'; small?: boolean }) {
-  const c = accent === 'volt' ? 'text-volt-400' : accent === 'success' ? 'text-success' : 'text-brand-400';
-  return (
-    <div className="rounded-2xl border border-border bg-card p-4 text-center">
-      <div className={`flex justify-center mb-1.5 ${c}`}>{icon}</div>
-      <p className={`font-display font-extrabold nums ${small ? 'text-base' : 'text-2xl'}`}>{value}</p>
-      <p className="text-[11px] text-muted-foreground mt-0.5">{label}</p>
-    </div>
-  );
-}
-
-function Delta({ label, value, unit }: { label: string; value: number; unit: string }) {
-  const up = value > 0, flat = value === 0;
-  const color = flat ? 'text-muted-foreground' : up ? 'text-success' : 'text-destructive';
-  return (
-    <div className="rounded-xl border border-border bg-secondary/30 p-3">
-      <p className="text-[11px] text-muted-foreground mb-1">{label}</p>
-      <p className={`font-display font-bold nums flex items-center gap-1 ${color}`}>
-        {!flat && (up ? <TrendingUp size={15} /> : <TrendingDown size={15} />)}
-        {up ? '+' : ''}{value.toLocaleString()}{unit}
+      <h1 className="text-center text-4xl font-extrabold">{headline}</h1>
+      <p className="nums mt-1 text-center text-muted-foreground">
+        {sets} sets · {u.volume(volume)} moved
       </p>
+
+      <div className="mt-6 grid grid-cols-3 gap-3">
+        <StatCard label="Duration" value={hhmmss(durationSec).replace(/^00:/, '')} icon={<Timer size={18} />} tone="purple" />
+        <StatCard label="Records" value={String(records)} icon={<Star size={18} />} tone="gold" />
+        <StatCard label="XP" value={`+${xp}`} icon={<Zap size={18} />} tone="blue" />
+      </div>
+    </>
+  );
+}
+
+const TONES = {
+  purple: 'bg-tier-diamond/15 text-tier-diamond',
+  gold: 'bg-tier-gold/15 text-tier-gold',
+  blue: 'bg-primary/15 text-primary',
+} as const;
+
+function StatCard({
+  label, value, icon, tone,
+}: {
+  label: string;
+  value: string;
+  icon: React.ReactNode;
+  tone: keyof typeof TONES;
+}) {
+  return (
+    <div className={cn('rounded-2xl p-4 text-center', TONES[tone])}>
+      <span className="grid place-items-center">{icon}</span>
+      <p className="nums mt-1.5 text-xl font-extrabold leading-none">{value}</p>
+      <p className="mt-1 text-[11px] font-bold uppercase tracking-wide opacity-80">{label}</p>
     </div>
+  );
+}
+
+// ── 2. Ranking ───────────────────────────────────────────────────────
+
+function StepRanking({ trained }: { trained: ExerciseRank[] }) {
+  return (
+    <>
+      <h1 className="text-center text-3xl font-extrabold">Ranking</h1>
+      <p className="mt-1 text-center text-muted-foreground">Where today put you on each lift.</p>
+
+      {!trained.length && (
+        <p className="mt-10 text-center text-sm text-muted-foreground">
+          Nothing ranked this session — sets need a catalog exercise to score.
+        </p>
+      )}
+
+      <ul className="mt-6 space-y-2.5">
+        {trained.map((r, i) => (
+          <motion.li
+            key={r.exerciseId}
+            initial={{ opacity: 0, x: -16 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.08 * i, ...spring.soft }}
+            className="surface flex items-center gap-3 p-3"
+          >
+            <RankBadge
+              tier={r.rank.tier}
+              division={r.rank.division}
+              size="md"
+              animated={false}
+              showDivision={false}
+            />
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-bold">{r.name}</p>
+              <Bar value={r.rank.lp / 100} className="mt-1.5" height={6} label="Rank progress" />
+            </div>
+            <p
+              className="nums shrink-0 text-sm font-extrabold"
+              style={{ color: `hsl(var(--tier-${r.rank.tier}))` }}
+            >
+              {rankLabel(r.rank)}
+            </p>
+          </motion.li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+// ── 3. Streak ────────────────────────────────────────────────────────
+
+function StepStreak({ streak }: { streak: number }) {
+  return (
+    <div className="grid flex-1 place-items-center text-center">
+      <div>
+        <motion.div
+          initial={{ scale: 0.6, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={spring.bouncy}
+          className="flex items-center justify-center gap-3"
+        >
+          <span className="nums text-[88px] font-extrabold leading-none">{streak}</span>
+          <Flame size={64} className="text-warm" />
+        </motion.div>
+        <p className="mt-2 text-2xl font-bold">workout streak!</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {streak > 1 ? 'Keep it alive — train again tomorrow.' : 'Day one. Come back tomorrow to build it.'}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── 4. Progression ───────────────────────────────────────────────────
+
+function StepProgression({
+  xp, streak,
+}: {
+  xp: { items: { label: string; value: number }[]; total: number };
+  streak: number;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <div className="grid place-items-center py-2">
+        <Mascot pose="flex" size={104} />
+      </div>
+      <h1 className="text-center text-3xl font-extrabold">Your Progression</h1>
+
+      <div className="mt-5 flex justify-center gap-1.5">
+        {Array.from({ length: 7 }, (_, i) => (
+          <span
+            key={i}
+            className={cn(
+              'grid h-9 w-9 place-items-center rounded-full',
+              i < Math.min(streak, 7) ? 'bg-warm/20 text-warm' : 'bg-secondary text-muted-foreground/40',
+            )}
+          >
+            <Flame size={17} />
+          </span>
+        ))}
+      </div>
+
+      <div className="surface mt-6 p-4">
+        <div className="flex items-baseline justify-between">
+          <p className="font-bold">XP earned</p>
+          <p className="nums text-2xl font-extrabold text-primary">+{xp.total}</p>
+        </div>
+        <Bar value={Math.min(1, xp.total / 1000)} className="mt-3" height={10} label="XP earned" />
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="mt-3 text-sm font-bold text-muted-foreground"
+        >
+          {open ? 'Hide XP breakdown ⌃' : 'Show XP breakdown ⌄'}
+        </button>
+        <AnimatePresence>
+          {open && (
+            <motion.ul
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden"
+            >
+              {xp.items.map((i) => (
+                <li key={i.label} className="nums flex justify-between border-t border-border py-2 text-sm">
+                  <span className="text-muted-foreground">{i.label}</span>
+                  <span className="font-extrabold">+{i.value}</span>
+                </li>
+              ))}
+            </motion.ul>
+          )}
+        </AnimatePresence>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Levels, currency and medals land with the rewards ledger — this is what today was worth.
+        </p>
+      </div>
+    </>
   );
 }

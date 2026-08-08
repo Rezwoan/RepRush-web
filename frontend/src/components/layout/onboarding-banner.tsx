@@ -59,7 +59,7 @@ export default function OnboardingBanner() {
             >
               Complete <ChevronRight size={14} />
             </motion.button>
-            <button onClick={handleDismiss} className="p-1 text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={handleDismiss} aria-label="Dismiss" className="p-1 text-muted-foreground hover:text-foreground transition-colors">
               <X size={14} />
             </button>
           </div>

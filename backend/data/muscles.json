@@ -1,0 +1,149 @@
+[
+ {
+  "id": "neck",
+  "label": "Neck",
+  "group": "core",
+  "view": "both",
+  "size": 1
+ },
+ {
+  "id": "traps",
+  "label": "Traps",
+  "group": "back",
+  "view": "both",
+  "size": 3
+ },
+ {
+  "id": "front_delt",
+  "label": "Front Delt",
+  "group": "shoulders",
+  "view": "front",
+  "size": 2
+ },
+ {
+  "id": "side_delt",
+  "label": "Side Delt",
+  "group": "shoulders",
+  "view": "both",
+  "size": 2
+ },
+ {
+  "id": "rear_delt",
+  "label": "Rear Delt",
+  "group": "shoulders",
+  "view": "back",
+  "size": 2
+ },
+ {
+  "id": "upper_chest",
+  "label": "Upper Chest",
+  "group": "chest",
+  "view": "front",
+  "size": 3
+ },
+ {
+  "id": "mid_chest",
+  "label": "Mid Chest",
+  "group": "chest",
+  "view": "front",
+  "size": 4
+ },
+ {
+  "id": "lower_chest",
+  "label": "Lower Chest",
+  "group": "chest",
+  "view": "front",
+  "size": 2
+ },
+ {
+  "id": "biceps",
+  "label": "Biceps",
+  "group": "arms",
+  "view": "front",
+  "size": 2
+ },
+ {
+  "id": "triceps",
+  "label": "Triceps",
+  "group": "arms",
+  "view": "back",
+  "size": 3
+ },
+ {
+  "id": "forearms",
+  "label": "Forearms",
+  "group": "arms",
+  "view": "both",
+  "size": 2
+ },
+ {
+  "id": "lats",
+  "label": "Lats",
+  "group": "back",
+  "view": "back",
+  "size": 4
+ },
+ {
+  "id": "upper_back",
+  "label": "Upper Back",
+  "group": "back",
+  "view": "back",
+  "size": 3
+ },
+ {
+  "id": "lower_back",
+  "label": "Lower Back",
+  "group": "back",
+  "view": "back",
+  "size": 3
+ },
+ {
+  "id": "abs",
+  "label": "Abs",
+  "group": "core",
+  "view": "front",
+  "size": 2
+ },
+ {
+  "id": "obliques",
+  "label": "Obliques",
+  "group": "core",
+  "view": "front",
+  "size": 2
+ },
+ {
+  "id": "glutes",
+  "label": "Glutes",
+  "group": "legs",
+  "view": "back",
+  "size": 4
+ },
+ {
+  "id": "quads",
+  "label": "Quads",
+  "group": "legs",
+  "view": "front",
+  "size": 5
+ },
+ {
+  "id": "hamstrings",
+  "label": "Hamstrings",
+  "group": "legs",
+  "view": "back",
+  "size": 4
+ },
+ {
+  "id": "adductors",
+  "label": "Adductors",
+  "group": "legs",
+  "view": "front",
+  "size": 2
+ },
+ {
+  "id": "calves",
+  "label": "Calves",
+  "group": "legs",
+  "view": "both",
+  "size": 2
+ }
+]

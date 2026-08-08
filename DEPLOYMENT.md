@@ -164,3 +164,61 @@ sudo ss -tlnp | grep -E ':3100|:3101'
 ```bash
 cp /var/www/reprush/backend/database/reprush.db ~/reprush-backup-$(date +%Y%m%d).db
 ```
+
+---
+
+## Dev / staging stack (the v2 rebuild)
+
+A second, fully isolated RepRush runs on the same Pi for the v2 rebuild. It shares nothing with
+production except the machine, nginx and the Cloudflare tunnel (both of which route by hostname).
+
+```
+dev-reprush.rezwoan.codes → cloudflared → nginx :80 (vhost reprush-dev)
+                                            ├── /api/ → 127.0.0.1:3121   (reprush-dev-backend)
+                                            └── /     → 127.0.0.1:3120   (reprush-dev-frontend)
+```
+
+| | Production | Dev |
+|---|---|---|
+| Branch | `main` | `v2` |
+| Dir | `/var/www/reprush` | `/var/www/reprush-dev` |
+| Ports | 3100 / 3101 | 3120 / 3121 |
+| Services | `reprush-backend`, `reprush-frontend` | `reprush-dev-backend`, `reprush-dev-frontend` |
+| Logs | `/var/log/reprush/` | `/var/log/reprush-dev/` |
+| nginx | `sites-available/reprush` | `sites-available/reprush-dev` |
+| Workflow | `deploy.yml` (push to `main`) | `deploy-dev.yml` (push to `v2`) |
+| Deploy script | `scripts/deploy.sh` | `scripts/deploy-dev.sh` |
+| DB | `backend/database/reprush.db` | its own copy, snapshotted on every deploy |
+
+First-time setup (idempotent, safe to re-run):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Rezwoan/RepRush-web/v2/scripts/pi-setup-dev.sh | bash
+```
+
+It clones `v2` to `/var/www/reprush-dev`, generates its own `.env` (fresh JWT secret, own admin
+account), seeds the dev DB from a copy of production's, builds, installs the two `reprush-dev-*`
+systemd units and the `reprush-dev` nginx vhost, adds the Cloudflare ingress rule and DNS record, and
+restarts `cloudflared`. It refuses to run if 3120/3121 are taken by anything else.
+
+Dev env vars — `/var/www/reprush-dev/backend/.env` and `frontend/.env.local` — mirror production's
+but with `PORT=3121`, `FRONTEND_URL=https://dev-reprush.rezwoan.codes` and
+`NEXT_PUBLIC_API_URL=https://dev-reprush.rezwoan.codes`. Its `JWT_SECRET` is **different**, so dev
+sessions are not valid on production.
+
+```bash
+# Dev operations
+systemctl status reprush-dev-backend reprush-dev-frontend
+tail -f /var/log/reprush-dev/backend.log
+bash /var/www/reprush-dev/scripts/deploy-dev.sh
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3120
+
+# Dev DB snapshots (deploy-dev.sh keeps the last 5)
+ls -1t /var/www/reprush-dev/backend/database/reprush.db.bak-*
+```
+
+> The dev vhost sends `X-Robots-Tag: noindex, nofollow`, so the rebuild stays out of search results.
+
+**Port map on this Pi** (verified 2026-08-06): 3005 AdGuard · 3100/3101 RepRush prod ·
+3110/3111 ClassMate · 3120/3121 RepRush dev · 3200/3201 hbd-samia · 5432 Postgres · 80/8080
+nginx/RaspAP. Never bind anything else.

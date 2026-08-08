@@ -31,6 +31,25 @@ down RepRush **and** affect the other apps on that Pi.
 
 ---
 
+## Code and documentation standard
+
+**All new code follows [`docs/ENGINEERING.md`](docs/ENGINEERING.md).** It is
+written for AI agents and defines how this repository is commented: every file
+header states *why* it exists, every exported symbol states its contract,
+non-obvious lines carry a *why* rather than a *what*, rejected alternatives are
+recorded, and deliberate shortcuts are marked `ponytail:` with their ceiling.
+
+It also carries the rules that keep changes correct here — validate at the trust
+boundary, additive schema changes only, one runnable check per piece of
+non-trivial logic, and **every new writer needs a named reader in the same
+change**. That last one is not style: it is the defect this project has shipped
+four times.
+
+Anything with its own data model or lifecycle also gets a page under `docs/v2/`.
+[`docs/v2/FEEDBACK.md`](docs/v2/FEEDBACK.md) is the reference example.
+
+---
+
 ## The Most Important Rules
 
 ### 1. Do not break the build
@@ -157,3 +176,30 @@ RepRush/  (→ /var/www/reprush on the Pi)
 ├── DEPLOYMENT.md                  ← full deployment guide
 └── AGENTS.md                      ← this file
 ```
+
+---
+
+## The v2 rebuild — read this before touching anything
+
+RepRush is being rebuilt (started 2026-08-06) into a gamified, rank-driven, social training app.
+That work happens on branch **`v2`**, deployed to a **completely separate stack** on the same Pi.
+Production is unaffected until the final cutover.
+
+| | Production | Dev (v2 rebuild) |
+|---|---|---|
+| Branch | `main` | `v2` |
+| URL | reprush.rezwoan.codes | dev-reprush.rezwoan.codes |
+| Dir | `/var/www/reprush` | `/var/www/reprush-dev` |
+| Ports | 3100 / 3101 | **3120 / 3121** |
+| Services | `reprush-backend`, `reprush-frontend` | `reprush-dev-backend`, `reprush-dev-frontend` |
+| nginx vhost | `reprush` | `reprush-dev` |
+| Deploy | `deploy.yml` → `scripts/deploy.sh` | `deploy-dev.yml` → `scripts/deploy-dev.sh` |
+
+Rules:
+- **Never commit v2 work to `main`.** Rule 10 (UI/functionality freeze) still governs `main`.
+- Never point a dev script at `/var/www/reprush` or restart a `reprush-*` (non-`dev`) service.
+- 3110/3111 belong to **ClassMate**, 3200/3201 to **hbd-samia**. Full port map: `MEMORY.md §2`.
+
+If you are working on v2, your entry point is **`SESSION_START.md`** at the repo root. It, plus
+`MEMORY.md`, `PROGRESS.md` and `docs/v2/SPEC.md`, is the complete handoff — you do not need to read
+the `inspiration/` or `more_inspiration/` screenshots.

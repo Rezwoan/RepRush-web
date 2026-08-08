@@ -9,5 +9,7 @@ import { WorkoutsModule } from '../workouts/workouts.module';
   imports: [TypeOrmModule.forFeature([User]), WorkoutsModule],
   providers: [LeaderboardService],
   controllers: [LeaderboardController],
+  // P9 folds these three boards in as extra metrics on `/social/leaderboard`.
+  exports: [LeaderboardService],
 })
 export class LeaderboardModule {}

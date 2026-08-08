@@ -1,11 +1,57 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, Not, IsNull } from 'typeorm';
+import { Repository, Between, Not, IsNull, In } from 'typeorm';
 import { GymSession } from './gym-session.entity';
 import { WorkoutSet } from './workout-set.entity';
 import { PersonalRecord } from './personal-record.entity';
+import { Routine } from '../profile/routine.entity';
+import { User } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
+import { CatalogService } from '../exercises/catalog.service';
+import { RanksService } from '../ranks/ranks.service';
+import { ratioForPercentile, medianRatio, ageFactor } from '../ranks/standards';
+import { e1rm } from '../ranks/e1rm';
+import {
+  Difficulty,
+  GenExercise,
+  GeneratedWorkout,
+  PlannedExercise,
+  LastPerformance,
+  generate,
+  roundLoad,
+} from './generator';
 import { ymd } from '../common/date.util';
+
+const DIFFICULTIES: Difficulty[] = ['beginner', 'intermediate', 'advanced'];
+
+/** Assumed bodyweight when a user has never logged one. Mirrors RanksService. */
+const DEFAULT_BODYWEIGHT_KG = 75;
+
+/** What the user's `experience` answer means to the generator's difficulty chip. */
+const EXPERIENCE_DIFFICULTY: Record<string, Difficulty> = {
+  never: 'beginner',
+  beginner: 'beginner',
+  intermediate: 'intermediate',
+  advanced: 'advanced',
+};
+
+export interface GenerateOptions {
+  durationMin?: number;
+  difficulty?: string;
+  /** Overrides the profile's stored kit — the builder's Equipment chip. */
+  equipment?: string[];
+  muscles?: string[];
+}
+
+const parseJsonArray = (raw: string | null | undefined): string[] | null => {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : null;
+  } catch {
+    return null;
+  }
+};
 
 @Injectable()
 export class WorkoutsService {
@@ -13,22 +59,295 @@ export class WorkoutsService {
     @InjectRepository(GymSession) private sessionRepo: Repository<GymSession>,
     @InjectRepository(WorkoutSet) private setRepo: Repository<WorkoutSet>,
     @InjectRepository(PersonalRecord) private prRepo: Repository<PersonalRecord>,
+    @InjectRepository(User) private userRepo: Repository<User>,
+    @InjectRepository(Routine) private routineRepo: Repository<Routine>,
     private usersService: UsersService,
+    private catalog: CatalogService,
+    private ranks: RanksService,
   ) {}
 
   // ─── Sessions ───────────────────────────────────────────────────────────────
 
-  async startSession(userId: number, workoutType: string, workoutPlanId?: number) {
-    const session = this.sessionRepo.create({ userId, workoutType, workoutPlanId });
+  async startSession(
+    userId: number,
+    workoutType: string,
+    workoutPlanId?: number,
+    plan?: unknown,
+    routineId?: number,
+  ) {
+    const session = this.sessionRepo.create({
+      userId,
+      workoutType,
+      workoutPlanId,
+      plan: plan ? JSON.stringify(plan) : null,
+      tracked: true,
+    });
+    const saved = await this.sessionRepo.save(session);
+    // Best-effort: a session that started is worth more than a rotation stamp.
+    if (routineId) {
+      await this.routineRepo
+        .update({ id: routineId, userId }, { lastUsedAt: new Date() })
+        .catch(() => undefined);
+    }
+    return saved;
+  }
+
+  async completeSession(
+    sessionId: number,
+    userId: number,
+    notes?: string,
+    finish?: { caption?: string; tracked?: boolean; privacy?: string },
+  ) {
+    const session = await this.sessionRepo.findOne({ where: { id: sessionId, userId } });
+    if (!session) throw new NotFoundException('Session not found');
+    // Completing twice must not move the clock — the outbox retries, and a
+    // replayed completion would otherwise stretch the recorded duration.
+    if (!session.completedAt) session.completedAt = new Date();
+    if (notes !== undefined) session.notes = notes;
+    if (finish?.caption !== undefined) session.caption = finish.caption;
+    if (finish?.tracked !== undefined) session.tracked = finish.tracked;
+    if (finish?.privacy !== undefined) session.privacy = finish.privacy;
     return this.sessionRepo.save(session);
   }
 
-  async completeSession(sessionId: number, userId: number, notes?: string) {
-    const session = await this.sessionRepo.findOne({ where: { id: sessionId, userId } });
-    if (!session) throw new NotFoundException('Session not found');
-    session.completedAt = new Date();
-    if (notes) session.notes = notes;
-    return this.sessionRepo.save(session);
+  // ─── The generator (SPEC §5.1) ──────────────────────────────────────────────
+
+  /**
+   * Build a session for this user, right now.
+   *
+   * All the judgement lives in `generator.ts`; this only gathers the inputs —
+   * the profile, what is recovered, what is weakest and what they lifted last
+   * time — and supplies the strength-standard estimate for lifts they have
+   * never performed.
+   */
+  async generateWorkout(userId: number, opts: GenerateOptions = {}): Promise<GeneratedWorkout> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const [recovery, muscleRanks, history] = await Promise.all([
+      this.ranks.recovery(userId),
+      this.ranks.muscleRanks(userId),
+      this.lastPerformances(userId),
+    ]);
+
+    const bw = user.weightKg > 0 ? user.weightKg : DEFAULT_BODYWEIGHT_KG;
+    const age = user.birthDate
+      ? Math.floor((Date.now() - new Date(user.birthDate).getTime()) / (365.25 * 86400000))
+      : null;
+    const percentile = Object.fromEntries(muscleRanks.map((m) => [m.muscleId, m.rank.percentile]));
+
+    const difficulty = DIFFICULTIES.includes(opts.difficulty as Difficulty)
+      ? (opts.difficulty as Difficulty)
+      : (EXPERIENCE_DIFFICULTY[user.experience] ?? 'intermediate');
+
+    const equipment = opts.equipment?.length ? opts.equipment : parseJsonArray(user.equipment);
+
+    return generate({
+      muscles: this.catalog.muscles.map((m) => ({ id: m.id, label: m.label, group: m.group, size: m.size })),
+      fatigue: recovery.fatigue,
+      percentile,
+      catalog: this.catalog.list() as unknown as GenExercise[],
+      equipment,
+      limitations: parseJsonArray(user.limitations) ?? [],
+      durationMin: Math.max(10, Math.min(180, Number(opts.durationMin) || 60)),
+      difficulty,
+      history,
+      onlyMuscles: opts.muscles,
+      estimate: (ex, reps) => this.estimateLoad(ex, reps, percentile, bw, user.sex, age),
+    });
+  }
+
+  /**
+   * Turn a saved routine into a session plan.
+   *
+   * The counterpart to `generateWorkout`, returning the *same* `GeneratedWorkout`
+   * shape on purpose: the session screen, the outbox and `gym_sessions.plan` all
+   * consume that shape already, so a routine-started session and a generated one
+   * are indistinguishable downstream. A routine is a prescription of which
+   * exercises and how many sets; the numbers still come from the user's own last
+   * performance, or from the same estimate a generated session would use — never
+   * from whatever was stored when the routine was written, which would go stale
+   * the first time they got stronger.
+   */
+  async planFromRoutineId(userId: number, routineId: number) {
+    const row = await this.routineRepo.findOne({ where: { id: routineId, userId } });
+    if (!row) throw new NotFoundException('Routine not found');
+    let exercises: any[] = [];
+    try {
+      exercises = JSON.parse(row.exercises) ?? [];
+    } catch {
+      exercises = [];
+    }
+    const plan = await this.fromRoutine(userId, { name: row.name, exercises });
+    // Stamped here rather than at session start: the tab loads a plan the
+    // moment you pick a day, and a split that rotates on *opening* a day is
+    // wrong. `startSession` is where it counts — see the controller.
+    return { ...plan, routineId: row.id };
+  }
+
+  async fromRoutine(userId: number, routine: { name: string; exercises: any[] }) {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const [muscleRanks, history] = await Promise.all([
+      this.ranks.muscleRanks(userId),
+      this.lastPerformances(userId),
+    ]);
+    const percentile = Object.fromEntries(muscleRanks.map((m) => [m.muscleId, m.rank.percentile]));
+    const bw = user.weightKg > 0 ? user.weightKg : DEFAULT_BODYWEIGHT_KG;
+    const age = user.birthDate
+      ? Math.floor((Date.now() - new Date(user.birthDate).getTime()) / (365.25 * 86400000))
+      : null;
+
+    const exercises: PlannedExercise[] = [];
+    let estimatedSec = 0;
+    const focusCount: Record<string, number> = {};
+
+    for (const item of routine.exercises ?? []) {
+      const cat = this.catalog.find(item.exerciseId);
+      // A routine can outlive an exercise (a custom one deleted, a catalog id
+      // that no longer resolves). Skip it rather than fail the whole session.
+      if (!cat) continue;
+
+      const restSec = Number(item.restSec) || cat.restSec || 90;
+      const last = history[item.exerciseId];
+      const rows: { weightKg: number | null; reps: number | null }[] =
+        Array.isArray(item.sets) && item.sets.length ? item.sets : [{ weightKg: null, reps: null }];
+
+      const planned = rows.map((row, i) => {
+        // Precedence, and it matters: what the routine prescribes wins, because
+        // the user wrote it down on purpose. A blank falls back to their own
+        // last performance, and only then to the standards estimate — the v1
+        // rule that a ghost value is a lookup, never a projection.
+        const reps = row?.reps ?? last?.reps ?? Math.round((cat.repMin + cat.repMax) / 2);
+        const weightKg =
+          row?.weightKg ??
+          last?.weightKg ??
+          this.estimateLoad(cat as unknown as GenExercise, reps, percentile, bw, user.sex, age);
+        return { setNumber: i + 1, isWarmup: false, targetReps: reps, weightKg };
+      });
+
+      exercises.push({
+        exerciseId: item.exerciseId,
+        name: cat.name,
+        primaryMuscle: cat.primary[0],
+        equipment: cat.equipment,
+        mechanic: cat.mechanic,
+        restSec,
+        sets: planned,
+        // True when the *user's history* filled anything in — a routine that
+        // prescribes its own numbers is not "from history".
+        fromHistory: !!last && rows.some((r) => r?.weightKg == null),
+      });
+
+      focusCount[cat.primary[0]] = (focusCount[cat.primary[0]] ?? 0) + planned.length;
+      estimatedSec += planned.length * (45 + restSec) + 60;
+    }
+
+    const totalSets = Object.values(focusCount).reduce((a, b) => a + b, 0) || 1;
+    const focus = Object.entries(focusCount)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([muscleId, n]) => ({
+        muscleId,
+        label: this.catalog.muscle(muscleId)?.label ?? muscleId,
+        share: n / totalSets,
+      }));
+
+    return {
+      title: routine.name,
+      durationMin: Math.round(estimatedSec / 60),
+      estimatedSec,
+      focus,
+      exercises,
+    };
+  }
+
+  /**
+   * What to put in the weight field for a lift the user has never done.
+   *
+   * Their muscle's current percentile, run backwards through the same standards
+   * curve the rank engine uses — i.e. "whatever on this exercise would rank you
+   * where you already rank". Null when there is nothing to go on, because a
+   * blank field is honest and an invented number is not.
+   */
+  private estimateLoad(
+    ex: GenExercise,
+    reps: number,
+    percentile: Record<string, number>,
+    bodyweightKg: number,
+    sex: string | null,
+    age: number | null,
+  ): number | null {
+    // Bodyweight movements have no load to suggest — the bar is your own mass,
+    // and the field is for *added* weight.
+    if (ex.equipment === 'bodyweight') return 0;
+    const p = percentile[ex.primary[0]] ?? 0;
+    if (!(p > 0)) return null;
+
+    const group = this.catalog.muscle(ex.primary[0])?.group ?? null;
+    const median = medianRatio(ex, sex, group);
+    const requiredE1rm = (ratioForPercentile(p, median) * bodyweightKg) / ageFactor(age);
+    const load = roundLoad(requiredE1rm / (1 + Math.min(reps, 12) / 30));
+    return load > 0 ? load : null;
+  }
+
+  /**
+   * The last working set the user performed on each exercise, keyed by catalog
+   * id. This is the PREV column and the pre-filled numbers — a lookup of what
+   * actually happened, never a projection of what should happen next (v1 rule).
+   */
+  async lastPerformances(userId: number): Promise<Record<string, LastPerformance>> {
+    const rows = await this.setRepo
+      .createQueryBuilder('s')
+      .innerJoin('gym_sessions', 'g', 'g.id = s.sessionId')
+      .where('g.userId = :userId', { userId })
+      .andWhere('s.exerciseId IS NOT NULL')
+      .andWhere('s.isWarmup = :warmup', { warmup: false })
+      .orderBy('s.loggedAt', 'ASC')
+      .getMany();
+
+    // Group by exercise *and* session so "sets" is how many they did that day,
+    // not how many they have ever done.
+    const bySession = new Map<string, { sessionId: number; sets: WorkoutSet[] }>();
+    for (const s of rows) {
+      const key = `${s.exerciseId}#${s.sessionId}`;
+      const entry = bySession.get(key) ?? { sessionId: s.sessionId, sets: [] };
+      entry.sets.push(s);
+      bySession.set(key, entry);
+    }
+
+    const out: Record<string, LastPerformance> = {};
+    for (const [key, entry] of Array.from(bySession.entries())) {
+      const exerciseId = key.split('#')[0];
+      const top = entry.sets.reduce((b, s) => (s.weightKg > b.weightKg ? s : b), entry.sets[0]);
+      // Iteration follows the loggedAt ordering above, so the last write wins.
+      out[exerciseId] = { weightKg: top.weightKg, reps: top.actualReps, sets: entry.sets.length };
+    }
+    return out;
+  }
+
+  /** The PREV column for one exercise: last session's sets, in order. */
+  async previousSets(userId: number, exerciseId: string) {
+    const rows = await this.setRepo
+      .createQueryBuilder('s')
+      .innerJoin('gym_sessions', 'g', 'g.id = s.sessionId')
+      .where('g.userId = :userId', { userId })
+      .andWhere('s.exerciseId = :exerciseId', { exerciseId })
+      .andWhere('s.isWarmup = :warmup', { warmup: false })
+      .orderBy('s.loggedAt', 'DESC')
+      .getMany();
+    if (!rows.length) return { exerciseId, sessionId: null, sets: [] as unknown[] };
+
+    const sessionId = rows[0].sessionId;
+    return {
+      exerciseId,
+      sessionId,
+      sets: rows
+        .filter((s) => s.sessionId === sessionId)
+        .sort((a, b) => a.setNumber - b.setNumber)
+        .map((s) => ({ setNumber: s.setNumber, weightKg: s.weightKg, reps: s.actualReps })),
+    };
   }
 
   async resetSession(sessionId: number, userId: number) {
@@ -208,6 +527,110 @@ export class WorkoutsService {
     return points;
   }
 
+  /**
+   * One exercise, every session, every set.
+   *
+   * The question this answers is the one a person actually asks mid-set — *what
+   * did I do last time, and the time before?* — so it returns the sets
+   * themselves rather than a summary of them. v1 had `getExerciseHistory`, but
+   * it keyed on the free-text `exerciseName` and collapsed each session to a
+   * single top-weight point, which cannot tell you that last week's 100 was a
+   * single and this week's is a triple.
+   *
+   * Keyed on `exerciseId`, so it covers the v1 history P2 backfilled as well as
+   * everything logged since.
+   */
+  async exerciseProgress(userId: number, exerciseId: string) {
+    const rows = await this.setRepo
+      .createQueryBuilder('s')
+      .innerJoin('gym_sessions', 'g', 'g.id = s.sessionId')
+      .addSelect('g.startedAt', 'g_startedAt')
+      .where('g.userId = :userId', { userId })
+      .andWhere('s.exerciseId = :exerciseId', { exerciseId })
+      .orderBy('s.loggedAt', 'ASC')
+      .getMany();
+
+    const cat = this.catalog.find(exerciseId);
+    if (!rows.length) {
+      return { exerciseId, name: cat?.name ?? exerciseId, sessions: [], best: null, totals: null };
+    }
+
+    const bySession = new Map<number, WorkoutSet[]>();
+    for (const r of rows) {
+      const list = bySession.get(r.sessionId) ?? [];
+      list.push(r);
+      bySession.set(r.sessionId, list);
+    }
+
+    const sessionRows = await this.sessionRepo.find({
+      where: { id: In(Array.from(bySession.keys())) },
+    });
+    const dateOf = new Map(sessionRows.map((s) => [s.id, s.completedAt ?? s.startedAt]));
+
+    let runningBestE1rm = 0;
+    const sessions = Array.from(bySession.entries())
+      .map(([sessionId, sets]) => {
+        const working = sets.filter((s) => !s.isWarmup);
+        const scored = working.length ? working : sets;
+        const best = scored.reduce(
+          (b, s) => (e1rm(s.weightKg, s.actualReps) > e1rm(b.weightKg, b.actualReps) ? s : b),
+          scored[0],
+        );
+        return {
+          sessionId,
+          date: dateOf.get(sessionId) ?? null,
+          sets: sets
+            .sort((a, b) => a.setNumber - b.setNumber)
+            .map((s) => ({
+              setNumber: s.setNumber,
+              weightKg: s.weightKg,
+              reps: s.actualReps,
+              isWarmup: !!s.isWarmup,
+              rpe: s.rpe ?? null,
+            })),
+          topWeightKg: Math.max(...scored.map((s) => s.weightKg)),
+          e1rm: Math.round(e1rm(best.weightKg, best.actualReps) * 10) / 10,
+          volumeKg: Math.round(scored.reduce((a, s) => a + s.weightKg * s.actualReps, 0)),
+          totalReps: scored.reduce((a, s) => a + s.actualReps, 0),
+          workingSets: working.length,
+          isPR: false,
+        };
+      })
+      .sort((a, b) => new Date(a.date ?? 0).getTime() - new Date(b.date ?? 0).getTime());
+
+    // A PR is a session that beat every session before it, so it has to be
+    // marked in chronological order — then the list is reversed for display.
+    for (const s of sessions) {
+      if (s.e1rm > runningBestE1rm) {
+        s.isPR = true;
+        runningBestE1rm = s.e1rm;
+      }
+    }
+
+    const allWorking = rows.filter((r) => !r.isWarmup);
+    const heaviest = allWorking.reduce(
+      (b, s) => (s.weightKg > b.weightKg ? s : b),
+      allWorking[0] ?? rows[0],
+    );
+
+    return {
+      exerciseId,
+      name: cat?.name ?? rows[0].exerciseName ?? exerciseId,
+      sessions: sessions.reverse(), // newest first — that is what gets read
+      best: {
+        weightKg: heaviest.weightKg,
+        reps: heaviest.actualReps,
+        e1rm: Math.round(runningBestE1rm * 10) / 10,
+      },
+      totals: {
+        sessions: sessions.length,
+        sets: allWorking.length,
+        reps: allWorking.reduce((a, s) => a + s.actualReps, 0),
+        volumeKg: Math.round(allWorking.reduce((a, s) => a + s.weightKg * s.actualReps, 0)),
+      },
+    };
+  }
+
   async getHeatmapData(userId: number, year?: number) {
     const y = year || new Date().getFullYear();
     const start = new Date(`${y}-01-01`);
@@ -238,13 +661,36 @@ export class WorkoutsService {
     weightKg: number,
     targetReps?: number,
     isWarmup = false,
+    exerciseId?: string,
+    rpe?: number,
   ) {
     // Verify session belongs to user
     const session = await this.sessionRepo.findOne({ where: { id: sessionId, userId } });
     if (!session) throw new NotFoundException('Session not found');
 
+    // Resolve the catalog id here, not in the callers. Ranks and the recovery
+    // model key off `exerciseId` and ignore rows without one, so a set logged
+    // without it is invisible to both — it would silently not count. P2's
+    // backfill fixed the historical rows; this stops new ones being written the
+    // same way. Null stays legitimate for names with no catalog equivalent.
+    //
+    // A caller that knows the id (everything in v2 does — the picker and the
+    // generator both work in catalog ids) passes it and skips the name lookup,
+    // which is a fuzzy match and the weaker of the two paths.
+    const resolved = exerciseId && this.catalog.find(exerciseId)
+      ? exerciseId
+      : this.catalog.resolveLegacyName(exerciseName);
+
     const set = this.setRepo.create({
-      sessionId, exerciseName, setNumber, actualReps, weightKg, targetReps, isWarmup,
+      sessionId,
+      exerciseName,
+      exerciseId: resolved,
+      setNumber,
+      actualReps,
+      weightKg,
+      targetReps,
+      isWarmup,
+      rpe: typeof rpe === 'number' && rpe >= 1 && rpe <= 10 ? rpe : null,
     });
     const saved = await this.setRepo.save(set);
 

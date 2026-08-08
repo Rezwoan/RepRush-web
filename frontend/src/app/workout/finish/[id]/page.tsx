@@ -1,0 +1,306 @@
+'use client';
+/**
+ * The finish flow (SPEC §5.3).
+ *
+ * Its own route rather than a sheet on the session screen, so the browser back
+ * button means "back to the session" — which is exactly what someone who tapped
+ * Finish by accident wants, and what a sheet would have to reimplement.
+ *
+ * Completion goes through the outbox like everything else. `Add Media` and
+ * `Tag Friends` are deliberately absent: both need P9's posts, and a control
+ * that opens nothing is worse than one that is not there yet.
+ */
+import { useEffect, useMemo, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { Check, ChevronRight, Pill, X } from 'lucide-react';
+import {
+  flushOutbox, getCachedSession, materializeSets, queueBodyWeight, queueCompleteSession,
+  resolveSessionId,
+} from '@/lib/offline';
+import { profileApi } from '@/lib/api';
+import { hhmmss } from '@/components/workout/rest-timer';
+import { Button } from '@/components/ui/button';
+import { Sheet } from '@/components/ui/sheet';
+import { Toggle } from '@/components/ui/controls';
+import { useUnits } from '@/lib/units';
+import { getPrefs } from '@/lib/feedback';
+import { cn } from '@/lib/utils';
+
+type Privacy = 'private' | 'friends' | 'discovery';
+
+export default function FinishPage() {
+  const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  const sessionId = resolveSessionId(parseInt(id, 10));
+
+  const [caption, setCaption] = useState('');
+  const [bodyweight, setBodyweight] = useState('');
+  const u = useUnits();
+  const [tracked, setTracked] = useState(true);
+  const [discovery, setDiscovery] = useState(false);
+  const [privacyOpen, setPrivacyOpen] = useState(false);
+  const [privacy, setPrivacy] = useState<Privacy>('friends');
+
+  // Seed from the Auto-share preference. In an effect, never during render:
+  // preferences come from localStorage, which the server pass cannot see, so
+  // reading during render makes the first client pass disagree (P13's rule).
+  // It is a default, not a lock — the toggle below still wins for this session.
+  useEffect(() => {
+    if (getPrefs().autoShare) setDiscovery(true);
+  }, []);
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+
+  const sets = useMemo(() => materializeSets(sessionId), [sessionId]);
+  const working = sets.filter((s) => !s.isWarmup);
+
+  const [savingRoutine, setSavingRoutine] = useState(false);
+  const [savedRoutine, setSavedRoutine] = useState(false);
+  const [routineError, setRoutineError] = useState('');
+  const routineName = getCachedSession(sessionId)?.workoutType || 'Workout';
+
+  /**
+   * Today's session, as a routine.
+   *
+   * Built from the **logged sets**, not from the plan it started with: the plan
+   * is what was prescribed, and the point of this button is to keep what was
+   * actually done. Each set becomes a row carrying its own weight and reps,
+   * which is the shape a routine stores.
+   */
+  const saveAsRoutine = async () => {
+    if (savingRoutine || savedRoutine) return;
+    setSavingRoutine(true);
+    setRoutineError('');
+    try {
+      type Entry = {
+        exerciseId: string;
+        name: string;
+        sets: { weightKg: number | null; reps: number | null }[];
+      };
+      const byExercise = new Map<string, Entry>();
+      for (const s of working) {
+        const id = (s as any).exerciseId as string | undefined;
+        if (!id) continue;
+        const entry: Entry = byExercise.get(id) ?? {
+          exerciseId: id,
+          name: (s as any).exerciseName ?? id,
+          sets: [],
+        };
+        entry.sets.push({ weightKg: s.weightKg ?? null, reps: s.actualReps ?? null });
+        byExercise.set(id, entry);
+      }
+      const exercises = Array.from(byExercise.values());
+      if (!exercises.length) {
+        setRoutineError('Nothing logged to save yet.');
+        return;
+      }
+      await profileApi.saveRoutine({ name: routineName, exercises } as any);
+      setSavedRoutine(true);
+    } catch (e: any) {
+      setRoutineError(e?.response?.data?.message ?? 'Could not save that as a routine.');
+    } finally {
+      setSavingRoutine(false);
+    }
+  };
+
+  useEffect(() => {
+    const cached = getCachedSession(sessionId);
+    if (cached?.startedAt) {
+      setElapsed(Math.floor((Date.now() - new Date(cached.startedAt).getTime()) / 1000));
+    }
+  }, [sessionId]);
+
+  const finish = async () => {
+    if (busy) return;
+    setBusy(true);
+
+    const kg = u.wkg(parseFloat(bodyweight));
+    // Queued like everything else here. It used to be a fire-and-forget POST,
+    // which quietly dropped the entry for anyone finishing a session offline —
+    // the exact user this whole screen is built for.
+    if (kg > 0) queueBodyWeight(kg);
+
+    queueCompleteSession(sessionId, {
+      caption: caption.trim() || undefined,
+      tracked,
+      privacy: discovery ? 'discovery' : privacy,
+    });
+    void flushOutbox();
+    router.replace(`/workout/summary/${sessionId}`);
+  };
+
+  return (
+    <div className="min-h-[100dvh] pb-32">
+      <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-border bg-background/90 px-4 py-3 backdrop-blur-xl">
+        <button
+          onClick={() => router.back()}
+          aria-label="Back to session"
+          className="press grid h-9 w-9 place-items-center rounded-full"
+        >
+          <X size={20} />
+        </button>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Duration</p>
+          <p className="nums text-xl font-extrabold leading-none">{hhmmss(elapsed)}</p>
+        </div>
+        <p className="nums shrink-0 text-sm font-bold text-muted-foreground">
+          {working.length} sets
+        </p>
+      </header>
+
+      <main className="mx-auto max-w-2xl space-y-3 px-4 py-4">
+        <label className="surface block p-4">
+          <span className="mb-1.5 block text-sm font-semibold text-muted-foreground">Caption</span>
+          <textarea
+            rows={3}
+            value={caption}
+            onChange={(e) => setCaption(e.target.value)}
+            placeholder="How did it go?"
+            className="w-full resize-none bg-transparent outline-none"
+          />
+        </label>
+
+        <a
+          href="/profile?view=consumables"
+          className="surface press flex items-center gap-3 p-4 font-bold"
+        >
+          <Pill size={20} className="text-primary" />
+          <span className="flex-1">Consumables</span>
+          <ChevronRight size={18} className="text-muted-foreground" />
+        </a>
+
+        <label className="surface flex items-center gap-3 p-4">
+          <span className="flex-1 font-bold">Bodyweight</span>
+          <input
+            inputMode="decimal"
+            value={bodyweight}
+            onChange={(e) => setBodyweight(e.target.value)}
+            placeholder="—"
+            className="nums w-24 rounded-xl border-2 border-border bg-card px-3 py-2 text-right text-lg font-extrabold outline-none focus:border-primary"
+          />
+          <span className="text-sm font-semibold text-muted-foreground">{u.w}</span>
+        </label>
+
+        {/* What you actually did, kept. Mid-session you swap an exercise, drop
+            a set, add fifteen kilos — and all of that used to evaporate the
+            moment the session closed, leaving the routine describing a workout
+            you no longer do. */}
+        <div className="surface p-4">
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="font-bold">Save as a routine</p>
+              <p className="text-xs text-muted-foreground">
+                Keep today&apos;s exercises, sets and weights to start again.
+              </p>
+            </div>
+            <Button
+              variant="chunkyOutline"
+              className="w-auto px-4 py-2 text-sm"
+              disabled={savingRoutine || savedRoutine}
+              onClick={saveAsRoutine}
+            >
+              {savedRoutine ? (
+                <>
+                  <Check size={15} /> Saved
+                </>
+              ) : savingRoutine ? (
+                'Saving…'
+              ) : (
+                'Save'
+              )}
+            </Button>
+          </div>
+          {savedRoutine && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              In Profile → Routines as &ldquo;{routineName}&rdquo;.
+            </p>
+          )}
+          {routineError && <p className="mt-2 text-xs font-bold text-destructive">{routineError}</p>}
+        </div>
+
+        <div className="surface flex items-center gap-3 p-4">
+          <div className="min-w-0 flex-1">
+            <p className="font-bold">Tracker</p>
+            <p className="text-xs text-muted-foreground">Count this session toward stats, streak and ranks.</p>
+          </div>
+          <Toggle checked={tracked} onChange={setTracked} label="Count toward stats" />
+        </div>
+
+        <div className="surface flex items-center gap-3 p-4">
+          <div className="min-w-0 flex-1">
+            <p className="font-bold">Post in Discovery</p>
+            <p className="text-xs text-muted-foreground">
+              {discovery ? 'Anyone on RepRush can see this post.' : 'Only friends can see your post.'}
+            </p>
+          </div>
+          <Toggle checked={discovery} onChange={setDiscovery} label="Post in Discovery" />
+        </div>
+
+        <button
+          onClick={() => setPrivacyOpen(true)}
+          className="surface press flex w-full items-center gap-3 p-4 text-left font-bold"
+        >
+          <span className="flex-1">Privacy settings</span>
+          <span className="text-sm capitalize text-muted-foreground">{discovery ? 'discovery' : privacy}</span>
+          <ChevronRight size={18} className="text-muted-foreground" />
+        </button>
+      </main>
+
+      <div className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-2xl px-4 pb-4 safe-bottom">
+        <Button variant="chunky" size="cta" onClick={() => setConfirm(true)}>
+          Finish Workout
+        </Button>
+      </div>
+
+      <Sheet open={privacyOpen} onOpenChange={setPrivacyOpen} title="Who can see this?">
+        <div className="space-y-2 pb-2">
+          {(['private', 'friends', 'discovery'] as Privacy[]).map((p) => (
+            <button
+              key={p}
+              onClick={() => {
+                setPrivacy(p);
+                setDiscovery(p === 'discovery');
+                setPrivacyOpen(false);
+              }}
+              className={cn(
+                'press w-full rounded-xl border-2 p-3.5 text-left font-bold capitalize',
+                (discovery ? 'discovery' : privacy) === p ? 'border-primary bg-primary/10' : 'border-border bg-card',
+              )}
+            >
+              {p}
+              <span className="block text-xs font-normal text-muted-foreground">
+                {{
+                  private: 'Only you.',
+                  friends: 'People you have added.',
+                  discovery: 'Everyone on RepRush.',
+                }[p]}
+              </span>
+            </button>
+          ))}
+        </div>
+      </Sheet>
+
+      <Sheet
+        open={confirm}
+        onOpenChange={setConfirm}
+        title="🏁 Finish Workout"
+        description="Are you ready to finish this workout session and post it?"
+        footer={
+          <div className="flex gap-3">
+            <Button variant="chunkyOutline" size="cta" onClick={() => setConfirm(false)}>
+              Cancel
+            </Button>
+            <Button variant="chunky" size="cta" disabled={busy} onClick={finish}>
+              {busy ? 'Finishing…' : 'Yes'}
+            </Button>
+          </div>
+        }
+      >
+        <p className="pb-2 text-sm text-muted-foreground">
+          {working.length} working sets logged over {hhmmss(elapsed)}.
+        </p>
+      </Sheet>
+    </div>
+  );
+}

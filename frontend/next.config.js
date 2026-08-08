@@ -4,9 +4,17 @@ const withPWA = require('next-pwa')({
   register: true,
   skipWaiting: true,
   disable: process.env.NODE_ENV === 'development',
-  // Any navigation we haven't cached falls back to the dashboard shell, which
-  // then renders from local state — better than the browser's offline error.
-  fallbacks: { document: '/dashboard' },
+  // Any navigation we haven't cached falls back to a page that says what is
+  // safe rather than the browser's error screen. `/home` was the previous
+  // fallback and was wrong in one specific way: it renders a *stale* dashboard
+  // as though it were live.
+  fallbacks: { document: '/offline' },
+  // Precache the five tab routes rather than waiting for each to be visited
+  // once. Someone who installs the app and walks into a basement gym has
+  // typically opened two of them.
+  additionalManifestEntries: ['/home', '/workout', '/ranks', '/friends', '/profile', '/offline'].map(
+    (url) => ({ url, revision: process.env.NEXT_PUBLIC_BUILD_ID || String(Date.now()) }),
+  ),
   runtimeCaching: [
     // API reads: serve fresh when possible, fall back to the last good response
     // so the app still has plans, history and profile data with no connection.

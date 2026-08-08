@@ -19,12 +19,27 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+/**
+ * Routes that are legitimately used while signed out. A 401 on these is the
+ * expected state, not a session expiry, so the interceptor must not bounce.
+ *
+ * Onboarding is the reason this exists: the whole funnel runs before an account
+ * exists and still talks to the API, so a blanket redirect would throw the user
+ * out of signup the moment anything 401s.
+ */
+// `/routine/:code` is a shared-program link. It needs a session to *claim*, but
+// it must not be hijacked by the global 401 bounce — that would throw the code
+// away. The page sends the visitor to `/login?next=…` itself and comes back.
+const PUBLIC_ROUTES = ['/login', '/onboarding', '/welcome', '/kitchen-sink', '/u', '/routine'];
+
+const isPublicRoute = (path: string) =>
+  PUBLIC_ROUTES.some((r) => path === r || path.startsWith(`${r}/`));
+
 api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401 && typeof window !== 'undefined') {
-      const isLoginPage = window.location.pathname === '/login';
-      if (!isLoginPage) window.location.href = '/login';
+      if (!isPublicRoute(window.location.pathname)) window.location.href = '/login';
     }
     return Promise.reject(err);
   },
@@ -34,6 +49,8 @@ api.interceptors.response.use(
 export const authApi = {
   login: (email: string, password: string) =>
     api.post('/auth/login', { email, password }),
+  /** Signup at the end of the onboarding funnel — the whole payload in one call. */
+  register: (payload: Record<string, unknown>) => api.post('/auth/register', payload),
   activate: (token: string, newPassword: string) =>
     api.post('/auth/activate', { token, newPassword }),
   logout: () => api.post('/auth/logout'),
@@ -53,22 +70,47 @@ export const usersApi = {
 };
 
 // ─── Workouts ─────────────────────────────────────────────────────────────────
+/**
+ * Header the outbox stamps on every queued write, so a retry after a lost
+ * response cannot write twice. See `common/idempotency.interceptor.ts`.
+ */
+export const idem = (key?: string) =>
+  key ? { headers: { 'X-Idempotency-Key': key } } : undefined;
+
 export const workoutsApi = {
-  startSession: (workoutType: string, workoutPlanId?: number) =>
-    api.post('/workouts/sessions', { workoutType, workoutPlanId }),
+  startSession: (
+    workoutType: string,
+    workoutPlanId?: number,
+    plan?: unknown,
+    key?: string,
+    routineId?: number,
+  ) =>
+    api.post('/workouts/sessions', { workoutType, workoutPlanId, plan, routineId }, idem(key)),
+  /** A saved routine as a startable plan — same shape as `generate`. */
+  fromRoutine: (routineId: number) => api.get(`/workouts/from-routine/${routineId}`),
+  generate: (params: {
+    durationMin?: number;
+    difficulty?: string;
+    equipment?: string;
+    muscles?: string;
+  }) => api.get('/workouts/generate', { params }),
+  /** Last session's actual sets for one exercise — the tracker's PREV column. */
+  /** One exercise's whole history, per session and per set. */
+  progress: (exerciseId: string) => api.get(`/workouts/progress/${encodeURIComponent(exerciseId)}`),
+  getPrevious: (exerciseId: string) => api.get(`/workouts/previous/${encodeURIComponent(exerciseId)}`),
   getSessions: () => api.get('/workouts/sessions'),
   getSessionHistory: () => api.get('/workouts/sessions/history'),
   getSession: (id: number) => api.get(`/workouts/sessions/${id}`),
   getSessionSummary: (id: number) => api.get(`/workouts/sessions/${id}/summary`),
   getExercises: () => api.get('/workouts/exercises'),
   getExerciseHistory: (name: string) => api.get('/workouts/exercises/history', { params: { name } }),
-  completeSession: (id: number, notes?: string) =>
-    api.patch(`/workouts/sessions/${id}/complete`, { notes }),
+  completeSession: (id: number, finish?: object, key?: string) =>
+    api.patch(`/workouts/sessions/${id}/complete`, finish ?? {}, idem(key)),
   resetSession: (id: number) =>
     api.delete(`/workouts/sessions/${id}`),
-  logSet: (sessionId: number, data: any) =>
-    api.post(`/workouts/sessions/${sessionId}/sets`, data),
-  deleteSet: (id: number) => api.delete(`/workouts/sets/${id}`),
+  logSet: (sessionId: number, data: any, key?: string) =>
+    api.post(`/workouts/sessions/${sessionId}/sets`, data, idem(key)),
+  deleteSet: (id: number, key?: string) => api.delete(`/workouts/sets/${id}`, idem(key)),
   getHeatmap: (year?: number) =>
     api.get('/workouts/heatmap', { params: { year } }),
   getPRs: () => api.get('/workouts/prs'),
@@ -79,8 +121,8 @@ export const workoutsApi = {
 
 // ─── Body Weight ──────────────────────────────────────────────────────────────
 export const bodyWeightApi = {
-  log: (weightKg: number, note?: string, date?: string) =>
-    api.post('/body-weight', { weightKg, note, date }),
+  log: (weightKg: number, note?: string, date?: string, key?: string) =>
+    api.post('/body-weight', { weightKg, note, date }, idem(key)),
   getHistory: (days?: number) =>
     api.get('/body-weight/history', { params: { days } }),
   getLatest: () => api.get('/body-weight/latest'),
@@ -124,11 +166,114 @@ export const supplementsApi = {
 
 // ─── Exercises ────────────────────────────────────────────────────────────────
 export const exercisesApi = {
+  /** The 873-exercise catalog. Public, and cached by the picker. */
+  catalog: (params?: { q?: string; muscle?: string; equipment?: string }) =>
+    api.get('/exercises/catalog', { params }),
+  catalogExercise: (id: string) => api.get(`/exercises/catalog/${encodeURIComponent(id)}`),
   getMyPlans: () => api.get('/exercises/my-plans'),
   getAllPlans: () => api.get('/exercises/plans'),
   getPlan: (id: number) => api.get(`/exercises/plans/${id}`),
   updateWeights: (planId: number, customWeights: Record<string, number>) =>
     api.patch(`/exercises/my-plans/${planId}/weights`, { customWeights }),
+};
+
+// ─── Home ─────────────────────────────────────────────────────────────────────
+export const homeApi = {
+  /** Everything the Home tab renders, in one call. */
+  summary: () => api.get('/home/summary'),
+};
+
+// ─── Ranks ────────────────────────────────────────────────────────────────────
+export const ranksApi = {
+  me: () => api.get('/ranks/me'),
+  exercises: () => api.get('/ranks/exercises'),
+  bodygraph: () => api.get('/ranks/bodygraph'),
+  exercise: (id: string) => api.get(`/ranks/exercise/${encodeURIComponent(id)}`),
+  leagues: () => api.get('/ranks/leagues'),
+  /** Calculator's `Save Rank` — logs the lift, because ranks derive from sets. */
+  record: (body: { exerciseId: string; weightKg: number; reps: number }) =>
+    api.post('/ranks/record', body),
+  /** Public — onboarding ranks a lift before the account exists. */
+  calculate: (body: {
+    exerciseId: string;
+    weightKg: number;
+    reps: number;
+    bodyweightKg: number;
+    sex?: string;
+    age?: number;
+  }) => api.post('/ranks/calculate', body),
+};
+
+// ─── Profile (SPEC §9, §12.2, §12.3) ──────────────────────────────────────────
+export const profileApi = {
+  /** Everything the Profile tab renders, in one call. */
+  me: (window?: number) => api.get('/profile/me', { params: { window } }),
+  update: (body: Record<string, unknown>) => api.patch('/profile', body),
+  statistics: () => api.get('/profile/statistics'),
+  publicProfile: (username: string) => api.get(`/profile/u/${encodeURIComponent(username)}`),
+
+  health: (metric: string) => api.get('/profile/health', { params: { metric } }),
+  logHealth: (metric: string, value: number, date?: string) =>
+    api.post('/profile/health', { metric, value, date }),
+  deleteHealth: (metric: string, id: number) => api.delete(`/profile/health/${metric}/${id}`),
+
+  routines: () => api.get('/profile/routines'),
+  saveRoutine: (body: Record<string, unknown>) => api.post('/profile/routines', body),
+  deleteRoutine: (id: number) => api.delete(`/profile/routines/${id}`),
+  createFolder: (name: string) => api.post('/profile/folders', { name }),
+  deleteFolder: (id: number) => api.delete(`/profile/folders/${id}`),
+  /** Which program the Workout tab opens on. `null` clears it. */
+  setDefaultFolder: (folderId: number | null) => api.post('/profile/folders/default', { folderId }),
+  /** Allocate (or re-read) a folder's share link. */
+  shareFolder: (id: number) => api.post(`/profile/folders/${id}/share`),
+  unshareFolder: (id: number) => api.delete(`/profile/folders/${id}/share`),
+  sharedFolder: (code: string) => api.get(`/profile/shared/${code}`),
+  claimSharedFolder: (code: string) => api.post(`/profile/shared/${code}/claim`),
+  routinePackages: () => api.get('/profile/routine-packages'),
+  claimPackage: (id: string) => api.post(`/profile/routine-packages/${id}/claim`),
+
+  exercises: () => api.get('/profile/exercises'),
+  createExercise: (body: Record<string, unknown>) => api.post('/profile/exercises', body),
+  deleteExercise: (id: number) => api.delete(`/profile/exercises/${id}`),
+
+  store: () => api.get('/profile/store'),
+  buy: (id: string) => api.post('/profile/store/buy', { id }),
+};
+
+// ─── Gamification (SPEC §10) ──────────────────────────────────────────────────
+export const gameApi = {
+  /** Level, currency, streak, quests and medals — one call for every screen. */
+  me: () => api.get('/gamification/me'),
+  claim: (key: string, opId?: string) => api.post('/gamification/claim', { key }, idem(opId)),
+  equipMedals: (ids: string[]) => api.post('/gamification/medals/equip', { ids }),
+};
+
+// ─── Social (SPEC §8) ─────────────────────────────────────────────────────────
+export const socialApi = {
+  friends: () => api.get('/social/friends'),
+  search: (q: string) => api.get('/social/search', { params: { q } }),
+  addFriend: (id: number) => api.post(`/social/friends/${id}`),
+  accept: (id: number) => api.post(`/social/friends/${id}/accept`),
+  decline: (id: number) => api.post(`/social/friends/${id}/decline`),
+  removeFriend: (id: number) => api.delete(`/social/friends/${id}`),
+
+  referral: () => api.get('/social/referral'),
+  claimReferral: (code: string) => api.post('/social/referral/claim', { code }),
+
+  /** A post is a completed session with a `friends` / `discovery` privacy. */
+  feed: (scope: 'friends' | 'discovery', before?: string) =>
+    api.get('/social/feed', { params: { scope, before } }),
+  post: (sessionId: number) => api.get(`/social/posts/${sessionId}`),
+  myReactions: () => api.get('/social/reactions/mine'),
+  react: (sessionId: number, emoji: string | null, key?: string) =>
+    api.post(`/social/posts/${sessionId}/react`, { emoji }, idem(key)),
+  comments: (sessionId: number) => api.get(`/social/posts/${sessionId}/comments`),
+  comment: (sessionId: number, text: string) =>
+    api.post(`/social/posts/${sessionId}/comments`, { text }),
+  deleteComment: (id: number) => api.delete(`/social/comments/${id}`),
+
+  leaderboard: (scope: 'friends' | 'global', metric: string) =>
+    api.get('/social/leaderboard', { params: { scope, metric } }),
 };
 
 // ─── Leaderboard ──────────────────────────────────────────────────────────────
@@ -181,3 +326,30 @@ export const adminApi = {
 };
 
 export default api;
+
+// ─── Feedback (docs/v2/FEEDBACK.md) ──────────────────────────────────────────
+/**
+ * Every route is authenticated — there is no anonymous submission path, because
+ * an open form writing files to the Pi is a spam funnel.
+ *
+ * `create` posts images as base64 data URLs inside the JSON body rather than as
+ * multipart. That avoids adding multer for one form; the ~33% encoding overhead
+ * is affordable because `lib/image-compress.ts` has already downscaled each
+ * image to ~200-400 KB, leaving the whole report well inside nginx's 12 MB cap.
+ */
+export const feedbackApi = {
+  /** Topic and status lists plus the image limit, so the client hardcodes none. */
+  meta: () => api.get('/feedback/meta'),
+  create: (body: {
+    message: string;
+    topic?: string | null;
+    images?: string[];
+    context?: string | null;
+  }) => api.post('/feedback', body),
+  /** The reporter's own history. */
+  mine: () => api.get('/feedback/mine'),
+  /** Admin only; the server enforces it, not this client. */
+  all: () => api.get('/feedback/all'),
+  setStatus: (id: number, status: string) => api.patch(`/feedback/${id}/status`, { status }),
+  remove: (id: number) => api.delete(`/feedback/${id}`),
+};
