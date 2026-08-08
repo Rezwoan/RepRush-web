@@ -155,10 +155,17 @@ export function SocialButtons({
   );
 }
 
-export function FacebookIcon({ size = 20 }: { size?: number }) {
+/**
+ * The bare "f", white on the button's blue — not the f-in-a-circle mark.
+ *
+ * The circle version is one path whose counter only reads as a hole under
+ * `evenodd`; filled the ordinary way it renders as a solid blob, which is
+ * exactly what shipped for one deploy.
+ */
+export function FacebookIcon({ size = 18 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.09 10.13 24v-8.44H7.08v-3.49h3.05V9.41c-3.02 0-4.54 1.49-4.54 4.48v2.18h3.05V24C19.61 23.09 24 18.1 24 12.07z" />
+    <svg width={size * 0.625} height={size} viewBox="0 0 320 512" fill="currentColor" aria-hidden>
+      <path d="M279.14 288l14.22-92.66h-88.91v-60.13c0-25.35 12.42-50.06 52.24-50.06h40.42V6.26S260.43 0 225.36 0c-73.22 0-121.08 44.38-121.08 124.72v70.62H22.89V288h81.39v224h100.17V288z" />
     </svg>
   );
 }
