@@ -62,17 +62,20 @@ export function useClerkAppearance(): Appearance {
       cardBox: 'w-full shadow-none',
       card: 'bg-transparent shadow-none border-0 p-0',
       // Hidden: the page has its own "Don't have an account? Get started".
+      // Clerk's footer is a full-width grey band under the primary button with
+      // its own rounded corners — a box inside our box, which is what made the
+      // card's bottom edge read as broken. Hidden entirely; the page renders a
+      // small "Secured by Clerk" line of its own instead.
+      footer: 'hidden',
       footerAction: 'hidden',
-      footer: 'bg-transparent',
 
-      // COLOURS ONLY, deliberately. The first version of this file also forced
-      // `h-12` and `border-2` onto Clerk's buttons and inputs — geometry, on top
-      // of a component that already has a tested responsive box model. Fixed
-      // heights against Clerk's own padding is what makes a control clip its
-      // label or spill its border on a narrow screen. Anything to do with size,
-      // spacing or wrapping is Clerk's job; ours stops at the palette.
-      socialButtonsBlockButton: 'border-border bg-secondary/60 text-foreground hover:bg-secondary',
-      socialButtonsBlockButtonText: 'text-foreground',
+      // Social buttons: stacked and full width rather than a two-up grid. Two
+      // side by side on a 390px phone leaves each about 130px for an icon plus
+      // a word, which is where the cramped, mis-shaped look came from.
+      socialButtons: 'flex w-full flex-col gap-2',
+      socialButtonsBlockButton:
+        'w-full justify-center border-border bg-secondary/70 text-foreground hover:bg-secondary',
+      socialButtonsBlockButtonText: 'text-foreground font-semibold',
       dividerLine: 'bg-border',
       dividerText: 'text-muted-foreground',
       formFieldLabel: 'text-muted-foreground',
