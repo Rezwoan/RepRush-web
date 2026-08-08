@@ -57,6 +57,47 @@ export class AuthController {
     return result;
   }
 
+  /**
+   * Exchange a verified Clerk session for a RepRush session.
+   *
+   * Clerk owns the *proof of identity*; this app keeps owning the session,
+   * because the outbox, the idempotency interceptor, the offline boot and every
+   * guard already run on the RepRush JWT. Swapping that out would be a rewrite
+   * of the offline story for no user-visible gain.
+   *
+   * Returns `{ needsSignup: true }` (200, not an error) when the verified email
+   * matches no account — the frontend sends those people into `/welcome`.
+   */
+  @Public()
+  @Post('clerk')
+  @HttpCode(200)
+  async clerk(
+    @Body() body: { token: string },
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.loginWithClerk(body?.token);
+    if (!result.needsSignup) {
+      res.cookie('reprush_token', result.token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: SESSION_MAX_AGE_MS,
+      });
+    }
+    return result;
+  }
+
+  /**
+   * Which sign-in doors this deployment actually has. The frontend asks before
+   * offering a Clerk button, so a server without Clerk keys shows the password
+   * form alone rather than a button that 503s.
+   */
+  @Public()
+  @Get('providers')
+  providers() {
+    return this.authService.providers();
+  }
+
   @Public()
   @Post('activate')
   @HttpCode(200)

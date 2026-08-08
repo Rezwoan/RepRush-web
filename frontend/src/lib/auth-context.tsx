@@ -2,6 +2,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { authApi } from './api';
 import { setToken, clearToken, getToken } from './token';
+import { clerkSignOut } from './clerk-signout';
 
 const USER_CACHE_KEY = 'reprush_user_v1';
 
@@ -100,6 +101,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // Offline logout still clears local credentials.
     }
+    // End the Clerk session too, when there is one. Clearing only the RepRush
+    // token would leave Clerk signed in, and the bridge would immediately
+    // exchange a fresh session and sign the user straight back in — so the
+    // button would appear to do nothing.
+    await clerkSignOut();
     clearToken();
     cacheUser(null);
     setUser(null);

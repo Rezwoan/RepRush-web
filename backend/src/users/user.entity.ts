@@ -78,6 +78,27 @@ export class User {
   @Column({ nullable: true })
   referralCode: string;
 
+  /**
+   * The Clerk user id this account is linked to, once someone has signed in
+   * through Clerk at least once. Null for accounts that have only ever used the
+   * legacy password login — which is every account that predates Clerk, and is
+   * why this is nullable rather than required.
+   *
+   * It is a *cache of the link*, not the identity. **Email is the identity**
+   * (`AuthService.loginWithClerk`): the first Clerk sign-in for a known email
+   * finds the existing row by email and stamps this column, so a returning user
+   * lands on their own history instead of a new empty account. After that this
+   * column is just the fast path.
+   *
+   * Unique index rather than a unique *column*, for the same reason as
+   * `username` and `referralCode` — a unique column rebuilds the whole users
+   * table under `synchronize`. SQLite permits many NULLs in a unique index, so
+   * every unlinked account coexists happily.
+   */
+  @Index({ unique: true })
+  @Column({ nullable: true })
+  clerkUserId: string;
+
   /** Whose code this account claimed. Set once, never changed. */
   @Column({ nullable: true })
   referredByUserId: number;

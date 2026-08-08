@@ -2,13 +2,14 @@
 import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertCircle, ArrowRight } from 'lucide-react';
+import { AlertCircle, ArrowRight, Sparkles } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { authApi } from '@/lib/api';
 import { setToken } from '@/lib/token';
 import { Logo } from '@/components/ui/logo';
 import { Button } from '@/components/ui/button';
 import { spring } from '@/lib/motion';
+import { clerkEnabled } from '@/components/auth/clerk-gate';
 
 function LoginContent() {
   const { login, user, loading } = useAuth();
@@ -102,6 +103,34 @@ function LoginContent() {
           <h2 className="text-lg font-display font-semibold mb-5">
             {isActivation ? 'Create your password' : 'Sign in'}
           </h2>
+
+          {/* The Clerk door, offered above the password form rather than instead
+              of it. Two reasons it is not a replacement: a server with no Clerk
+              keys must still have a way in, and every existing account was made
+              with a password — taking that away on the same day the new door
+              appears would turn any Clerk misconfiguration into a lockout. */}
+          {!isActivation && clerkEnabled && (
+            <div className="mb-5">
+              <Button
+                type="button"
+                variant="chunky"
+                size="cta"
+                onClick={() => router.push(`/sign-in${next ? `?next=${encodeURIComponent(next)}` : ''}`)}
+              >
+                <Sparkles size={16} />
+                Continue with email or Google
+              </Button>
+              <p className="text-[11px] text-muted-foreground mt-2 text-center leading-relaxed">
+                Been here before? Use the same email address and you&apos;ll land back on your own
+                workouts, ranks and streak.
+              </p>
+              <div className="flex items-center gap-3 mt-5" aria-hidden>
+                <span className="h-px flex-1 bg-border" />
+                <span className="text-[10px] uppercase tracking-widest text-muted-foreground">or</span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+            </div>
+          )}
 
           <AnimatePresence>
             {error && (

@@ -5,6 +5,7 @@ import { AuthProvider } from '@/lib/auth-context';
 import { ThemeProvider, themeBootScript } from '@/lib/theme-context';
 import { Toaster } from '@/components/ui/toaster';
 import OutboxSync from '@/components/layout/outbox-sync';
+import { ClerkGate } from '@/components/auth/clerk-gate';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
 const sora = Sora({ subsets: ['latin'], variable: '--font-display', display: 'swap', weight: ['500', '600', '700', '800'] });
@@ -42,9 +43,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={inter.className}>
         <ThemeProvider>
           <AuthProvider>
-            <OutboxSync />
-            {children}
-            <Toaster />
+            {/* Clerk sits inside AuthProvider: the bridge that trades a Clerk
+                session for a RepRush one needs `useAuth`. Renders nothing at all
+                when no publishable key is configured. */}
+            <ClerkGate>
+              <OutboxSync />
+              {children}
+              <Toaster />
+            </ClerkGate>
           </AuthProvider>
         </ThemeProvider>
       </body>

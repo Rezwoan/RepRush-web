@@ -30,7 +30,10 @@ api.interceptors.request.use((config) => {
 // `/routine/:code` is a shared-program link. It needs a session to *claim*, but
 // it must not be hijacked by the global 401 bounce — that would throw the code
 // away. The page sends the visitor to `/login?next=…` itself and comes back.
-const PUBLIC_ROUTES = ['/login', '/onboarding', '/welcome', '/kitchen-sink', '/u', '/routine'];
+// `/sign-in` and `/sign-up` are Clerk's screens. They are signed-out by
+// definition, and the bridge calls the API from them the moment Clerk finishes —
+// so a 401 there is the expected state, not an expired session to bounce on.
+const PUBLIC_ROUTES = ['/login', '/onboarding', '/welcome', '/kitchen-sink', '/u', '/routine', '/sign-in', '/sign-up'];
 
 const isPublicRoute = (path: string) =>
   PUBLIC_ROUTES.some((r) => path === r || path.startsWith(`${r}/`));
@@ -55,6 +58,15 @@ export const authApi = {
     api.post('/auth/activate', { token, newPassword }),
   logout: () => api.post('/auth/logout'),
   me: () => api.get('/auth/me'),
+  /**
+   * Trade a verified Clerk session for a RepRush one. The backend matches the
+   * verified email against an existing account, so a user who signed up with a
+   * password months ago and now signs in with Google lands on their own history.
+   * Answers `{ needsSignup: true }` when the address is genuinely new.
+   */
+  clerk: (token: string) => api.post('/auth/clerk', { token }),
+  /** Which sign-in doors this server has, so /login only offers real ones. */
+  providers: () => api.get('/auth/providers'),
   changePassword: (oldPassword: string, newPassword: string) =>
     api.post('/auth/change-password', { oldPassword, newPassword }),
 };

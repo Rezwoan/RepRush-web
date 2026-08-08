@@ -16,6 +16,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, Check, Eye, EyeOff, Share2 } from 'lucide-react';
 import { authApi, ranksApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
+import { useClerkSignup } from '@/components/auth/clerk-gate';
 import { setToken } from '@/lib/token';
 import { spring } from '@/lib/motion';
 import { cn } from '@/lib/utils';
@@ -859,18 +860,29 @@ function SignupStep({ a, onDone }: { a: Answers; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  // When the funnel was entered from Clerk (`/welcome?clerk=1`), the identity is
+  // already proven: the address comes from the verified session and there is no
+  // password to choose, because Clerk holds the credential from here on.
+  const clerk = useClerkSignup();
+
   const handleOk = !username || USERNAME_RE.test(username);
-  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && password.length >= 8 && handleOk;
+  const valid = clerk.active
+    ? handleOk
+    : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && password.length >= 8 && handleOk;
 
   const submit = async () => {
     if (!valid || busy) return;
     setBusy(true);
     setError('');
     try {
+      const clerkToken = clerk.active ? await clerk.getToken() : null;
       const res = await authApi.register({
+        // The backend ignores both of these when a clerkToken is present — the
+        // address is taken from the verified session, never from the client.
         email: email.trim(),
         password,
-        name: a.name.trim() || 'Athlete',
+        clerkToken: clerkToken || undefined,
+        name: a.name.trim() || clerk.name || 'Athlete',
         // Blank is fine — the backend derives one from the name. Friends search
         // by username, so nobody may leave without a handle.
         username: username || undefined,
@@ -909,14 +921,25 @@ function SignupStep({ a, onDone }: { a: Answers; onDone: () => void }) {
       pose="cheer"
       title="A stronger you is closer than you think."
     >
-      <input
-        type="email"
-        autoComplete="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="Email"
-        className="w-full rounded-2xl border-2 border-border bg-card px-4 py-4 font-semibold outline-none transition-colors focus:border-primary"
-      />
+      {clerk.active ? (
+        // Verified by Clerk, so it is shown rather than asked for. Editable would
+        // be a lie — the backend takes the address off the session either way.
+        <div className="rounded-2xl border-2 border-border bg-card px-4 py-3.5">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+            Signed in as
+          </p>
+          <p className="font-semibold truncate">{clerk.email}</p>
+        </div>
+      ) : (
+        <input
+          type="email"
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Email"
+          className="w-full rounded-2xl border-2 border-border bg-card px-4 py-4 font-semibold outline-none transition-colors focus:border-primary"
+        />
+      )}
       <div>
         <div className="flex items-center rounded-2xl border-2 border-border bg-card px-4 focus-within:border-primary">
           <span className="font-bold text-muted-foreground">@</span>
@@ -935,25 +958,27 @@ function SignupStep({ a, onDone }: { a: Answers; onDone: () => void }) {
           </p>
         )}
       </div>
-      <div className="relative">
-        <input
-          type={show ? 'text' : 'password'}
-          autoComplete="new-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Password (8+ characters)"
-          onKeyDown={(e) => e.key === 'Enter' && submit()}
-          className="w-full rounded-2xl border-2 border-border bg-card px-4 py-4 pr-12 font-semibold outline-none transition-colors focus:border-primary"
-        />
-        <button
-          type="button"
-          onClick={() => setShow((s) => !s)}
-          aria-label={show ? 'Hide password' : 'Show password'}
-          className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground"
-        >
-          {show ? <EyeOff size={18} /> : <Eye size={18} />}
-        </button>
-      </div>
+      {!clerk.active && (
+        <div className="relative">
+          <input
+            type={show ? 'text' : 'password'}
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password (8+ characters)"
+            onKeyDown={(e) => e.key === 'Enter' && submit()}
+            className="w-full rounded-2xl border-2 border-border bg-card px-4 py-4 pr-12 font-semibold outline-none transition-colors focus:border-primary"
+          />
+          <button
+            type="button"
+            onClick={() => setShow((s) => !s)}
+            aria-label={show ? 'Hide password' : 'Show password'}
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground"
+          >
+            {show ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+        </div>
+      )}
       {error && <p className="text-sm font-semibold text-destructive">{error}</p>}
       <Button variant="chunky" size="cta" disabled={!valid || busy} onClick={submit}>
         {busy ? 'Creating account…' : 'Create account'}
