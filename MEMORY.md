@@ -1011,3 +1011,32 @@ Two rules that fall out of it:
 - Next 14 uses **`middleware.ts`; `proxy.ts` is the Next 16 name** and is simply never loaded here —
   the failure is a silent no-op, not an error. Clerk 7 requires Next ≥15.2.8, so this app is pinned
   to **`@clerk/nextjs@6`**, which has `<SignedIn>`/`<SignedOut>` and no `<Show>`.
+
+**UX pass · 2026-08-08**
+
+- **Percentage padding resolves against the containing block's *width* on every side, top and
+  bottom included.** `RulerPicker`'s vertical track (`h-56 w-24`) used `paddingTop: calc(50% - 7px)`,
+  which computed 41px where centring needed 105px — the ruler sat 4.6 ticks out, so picking 170 cm
+  parked the indicator past the 170 mark while the readout said 170. Vertical centring must be
+  pixels derived from a known height; `TRACK_V` is now that single source and the height class was
+  removed so the two cannot drift. Asserted in `pickers.__selfcheck`, which also refuses the old
+  96px-derived value.
+- **`Rays` drew wedges to r=160 inside a 200×200 viewBox**, and SVG clips to its viewBox, so the
+  burst was sliced into a hard-edged square that met the avatar as a visible straight edge. r=100
+  ends exactly where the gradient reaches zero. This is the same class of mistake as the P1 note
+  about ornaments leaving the box — check the geometry against the viewBox, not against how it looks.
+- **A funnel step that is a full-bleed early return escapes the shell's `max-w-lg`.** Splash and
+  carousel rendered edge to edge, so the CTA was 910px on a laptop and then snapped to a 512px
+  column at the first question. Any new full-bleed step needs the width applied to itself.
+- **Check a funnel for one-way doors from the *second* screen, not the first.** `/welcome`'s splash
+  has always carried "I already have an account", but the carousel that follows it had no back
+  button — so pressing Get started removed every route to sign-in. The back affordance has to exist
+  on every screen between the entry point and the first irreversible action.
+- **`DELETE /workouts/sessions/:id` shipped in v1 and nothing ever called it.** Starting a workout
+  by accident had no undo. Same failure mode as P13's six dead settings and P15's routines: check
+  from the reader's side — for any endpoint, ask what calls it.
+- **A session in progress is app-wide state and needs an app-wide affordance.** It lived only in
+  Home's Today's Workout card, so every other tab pretended nothing was happening. The record is
+  localStorage written by `lib/offline.ts` (the only place a session can start or complete), so the
+  bar is instant and correct offline — and it must be remapped when the outbox swaps a negative
+  temp id for the real one, or Resume navigates to a session the server never had.

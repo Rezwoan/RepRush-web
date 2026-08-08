@@ -126,7 +126,7 @@ export function ClerkGate({ children }: { children: React.ReactNode }) {
   if (!clerkEnabled) return <>{children}</>;
   return (
     <ClerkProvider
-      signInUrl={process.env.NEXT_PUBLIC_CLERK_SIGN_IN_URL || '/sign-in'}
+      signInUrl={process.env.NEXT_PUBLIC_CLERK_SIGN_IN_URL || '/login'}
       signUpUrl={process.env.NEXT_PUBLIC_CLERK_SIGN_UP_URL || '/sign-up'}
     >
       <ClerkBridge />

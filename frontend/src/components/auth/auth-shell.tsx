@@ -58,7 +58,7 @@ export function AuthShell({
 }
 
 /**
- * Shown when someone reaches `/sign-in` on a deployment with no Clerk keys.
+ * Shown when someone reaches `/sign-up` on a deployment with no Clerk keys.
  *
  * A blank screen here would read as a broken app; this says what is true and
  * points at the door that does work.

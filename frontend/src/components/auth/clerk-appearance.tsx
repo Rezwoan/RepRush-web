@@ -1,44 +1,79 @@
+'use client';
+
+import { useEffect, useState } from 'react';
 import type { Appearance } from '@clerk/types';
 
 /**
- * Paint Clerk's components with this app's own tokens instead of Clerk's
- * defaults.
+ * Clerk's appearance, painted with this app's live theme.
  *
- * Everything here resolves to a CSS variable rather than a literal colour,
- * because the theme is chosen at runtime — 34 of them, plus light and dark, set
- * by the pre-paint boot script in the root layout. Hard-coding even the brand
- * blue would leave the sign-in card stuck in one theme while the page around it
- * changed, which looks like a bug in whichever theme you are actually using.
+ * **Clerk's `variables` need real colour values, not `var()` references.** It
+ * parses each colour to derive a whole scale from it (hover, active, borders,
+ * alpha overlays), and a `var(--primary)` string is not parseable — so the first
+ * version of this file silently got Clerk's *defaults*, which are built for a
+ * light background. On our dark card that rendered the Google and Facebook
+ * buttons as dark-grey text on a dark surface: present, clickable, and to the
+ * eye simply not there.
  *
- * `--primary-fill` rather than `--primary` on the button is deliberate and is
- * the same rule the rest of the app follows: white on the brand cobalt is
- * 3.87:1 and AA wants 4.5, so the fill is a separately derived token
- * (`lib/themes.ts`).
+ * So the values are *resolved* from the document at runtime. That also keeps
+ * Clerk in step with the theme picker — 34 themes plus light and dark, chosen
+ * client-side after paint, which is exactly why they cannot be baked in.
  */
-export const clerkAppearance: Appearance = {
-  variables: {
-    colorPrimary: 'hsl(var(--primary-fill))',
-    colorText: 'hsl(var(--foreground))',
-    colorTextSecondary: 'hsl(var(--muted-foreground))',
-    colorBackground: 'hsl(var(--card))',
-    colorInputBackground: 'hsl(var(--background))',
-    colorInputText: 'hsl(var(--foreground))',
-    colorDanger: 'hsl(var(--destructive))',
-    borderRadius: '0.85rem',
-    fontFamily: 'var(--font-inter)',
-  },
-  elements: {
-    // The page already carries the logo lockup and the headline.
-    header: 'hidden',
-    rootBox: 'w-full',
-    cardBox: 'w-full shadow-none',
-    card: 'bg-transparent shadow-none border-0 p-0',
-    footer: 'bg-transparent',
-    formButtonPrimary:
-      'font-semibold tracking-tight normal-case text-[0.95rem] shadow-lift',
-    socialButtonsBlockButton:
-      'border border-border bg-background/60 hover:bg-background transition-colors',
-    dividerLine: 'bg-border',
-    formFieldInput: 'border border-border',
-  },
-};
+
+/** `--foreground: 210 30% 96%` → `hsl(210 30% 96%)`. */
+function readHsl(styles: CSSStyleDeclaration, name: string, fallback: string) {
+  const raw = styles.getPropertyValue(name).trim();
+  return raw ? `hsl(${raw})` : fallback;
+}
+
+export function useClerkAppearance(): Appearance {
+  const [vars, setVars] = useState<Appearance['variables']>();
+
+  useEffect(() => {
+    const read = () => {
+      const s = getComputedStyle(document.documentElement);
+      setVars({
+        colorPrimary: readHsl(s, '--primary-fill', '#0a80f5'),
+        colorText: readHsl(s, '--foreground', '#e8edf3'),
+        colorTextSecondary: readHsl(s, '--muted-foreground', '#8a97a8'),
+        colorBackground: readHsl(s, '--card', '#11151e'),
+        colorInputBackground: readHsl(s, '--background', '#0b0f17'),
+        colorInputText: readHsl(s, '--foreground', '#e8edf3'),
+        colorDanger: readHsl(s, '--destructive', '#e5484d'),
+        colorNeutral: readHsl(s, '--foreground', '#e8edf3'),
+        borderRadius: '0.85rem',
+        fontFamily: 'var(--font-inter)',
+      });
+    };
+    read();
+
+    // The theme is swapped by writing `data-theme` on <html>, so re-read when it
+    // does — otherwise the sign-in card keeps the palette it mounted with.
+    const obs = new MutationObserver(read);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] });
+    return () => obs.disconnect();
+  }, []);
+
+  return {
+    variables: vars,
+    elements: {
+      // The page already carries the logo lockup and the headline.
+      header: 'hidden',
+      rootBox: 'w-full',
+      cardBox: 'w-full shadow-none',
+      card: 'bg-transparent shadow-none border-0 p-0',
+      footer: 'bg-transparent',
+      formButtonPrimary: 'font-semibold tracking-tight normal-case text-[0.95rem] h-12 shadow-lift',
+      // Explicit foreground: this is the element that was invisible, and it is
+      // the one place Clerk's own default text colour used to win.
+      socialButtonsBlockButton:
+        'border-2 border-border bg-secondary/60 text-foreground hover:bg-secondary h-12 font-semibold normal-case transition-colors',
+      socialButtonsBlockButtonText: 'text-foreground font-semibold',
+      dividerLine: 'bg-border',
+      dividerText: 'text-muted-foreground',
+      formFieldLabel: 'text-muted-foreground font-semibold',
+      formFieldInput: 'border-2 border-border bg-card h-12',
+      footerActionText: 'text-muted-foreground',
+      footerActionLink: 'text-primary font-semibold hover:underline',
+    },
+  };
+}
