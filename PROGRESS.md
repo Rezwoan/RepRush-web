@@ -23,7 +23,7 @@ https://dev-reprush.rezwoan.codes, and its exit check below is verified in the b
 | P12 | Offline & PWA hardening | **DONE** |
 | P13 | Polish pass | **DONE** |
 | P15 | Owner feedback pass | **IN PROGRESS** |
-| P14 | Cutover to production | ON HOLD |
+| P14 | Cutover to production | **DONE** |
 
 **P8 was the Nutrition tab and has been removed** — the owner cut nutrition from the product
 entirely. The number is left unused rather than renumbering P9–P14, which are cited all over the
@@ -1069,12 +1069,11 @@ All three land on the same mistake, and it was mine: **the data model, not the s
 
 ---
 
-## P14 — Cutover to production · `ON HOLD`
+## P14 — Cutover to production · `DONE` (2026-08-08)
 
-Held on 2026-08-08 at the owner's request pending review, then superseded for the
-moment by P15's feedback pass. The groundwork below stands and does not expire —
-but note the DB backup predates P15's schema additions, which are additive and
-therefore still safe to roll forward onto.
+**reprush.rezwoan.codes runs v2.** Merge commit `aaf1435`, deployed by CI run 31237094408 in
+2m16s. Every account kept its full history; nothing was migrated by hand because nothing needed
+to be — see the cutover record at the bottom of this section.
 
 
 Only start when P0–P13 are all `DONE`. They are.
@@ -1127,28 +1126,74 @@ Only start when P0–P13 are all `DONE`. They are.
       (which works because the v2 schema is purely additive — a v1 build reads a v2 database and
       ignores the columns it does not know), and a full restore that does not. Plus what a rollback
       does *not* undo, and why restoring the nginx change would be a mistake.
-- [ ] **Carry P1's document-cache fix to the prod vhost** — production still serves
-      `s-maxage=31536000, stale-while-revalidate` on documents. **Staged, not run:**
-      `scripts/prod-cache-headers.sh` — backs the vhost up, asserts it is editing the one frontend
-      `location` block, inserts the two lines, `nginx -t`, reloads, and prints the resulting
-      headers. Idempotent. Run it *before* the merge, so the revalidation it triggers happens
-      against unchanged v1 content and the deploy that follows is picked up on the first load.
-      ```bash
-      ssh reezz@blackbox.local 'bash -s' < scripts/prod-cache-headers.sh
-      ```
-- [ ] Merge `v2` → `main` — **staged, not run.** Triggers the production deploy.
-      ```bash
-      git checkout main && git merge --no-ff v2 && git push origin main
-      # GitHub's push-event delivery for this repo lags up to 30 min (MEMORY §8);
-      # the fast path is:
-      ssh reezz@blackbox.local 'bash /var/www/reprush/scripts/deploy.sh'
-      ```
-      Held on 2026-08-08 at the owner's request, to be reviewed before it runs. Everything it
-      depends on is verified: backup, dry run, rollback procedure.
-- [ ] Watch the prod deploy; verify login, an existing user's history, and a full session
-- [ ] Keep the dev stack alive as the ongoing staging environment
-- [ ] **Exit check:** reprush.rezwoan.codes runs v2, every existing account still works with its full
-      history, and rollback is documented and tested
+- [x] **Second backup, taken immediately before the merge** —
+      `reezz@blackbox.local:~/reprush-prod-backup-precutover-20260808.db`, 942,080 bytes, md5
+      `a490d373b806c7fc9014e2c18b35c72a` — **byte-identical to the 05:36 one**, i.e. production had
+      not been written to since the dry run, so the rehearsal covered exactly the data that migrated.
+- [x] **Carried P1's document-cache fix to the prod vhost.** `scripts/prod-cache-headers.sh` ran
+      clean: vhost backed up to `reprush.bak-precutover-20260808`, `nginx -t` ok, reloaded.
+      `curl -sI https://reprush.rezwoan.codes/login` → `cache-control: no-cache`, and **no
+      `X-Robots-Tag`** (that header is dev-only, and its absence on prod is the thing to check).
+      Note: the script's own trailing curl printed the *old* header — `systemctl reload` had not
+      finished. Re-probe rather than believing that line.
+- [x] **`scripts/deploy.sh` gained `flock` and a pre-deploy DB snapshot** (keeps 10), ported from
+      `deploy-dev.sh`. Prod had neither, and prod is where a `synchronize: true` boot happens against
+      the only copy of the data that matters. Landed *in* the merge, so the cutover deploy itself ran
+      under the old script; every deploy after it snapshots.
+- [x] **Merged `v2` → `main`** — `aaf1435`, 187 files, +31,901/−1,831. CI picked the push up
+      immediately this time (no 30-minute lag) — run **31237094408 green in 2m16s**. Because the
+      runner was already busy, no manual `deploy.sh` was run: racing CI is exactly the failure P6
+      documented, and the flock that would have prevented it was still one deploy away.
+- [x] **Watched the deploy and verified the migration.** Boot log clean, zero ERROR lines:
+      catalog 873 exercises, `e1rm ok, standards ok, recovery ok, generator ok`, `handles ok`,
+      `cosmetics ok, xp ok, calendar windows ok, routine packages ok, routine shape ok, rotation ok`,
+      `streaks ok, medals ok, quests ok`, `attachments ok`, web push enabled, handles backfilled for
+      3 accounts, **821/827 sets mapped** (the 6 misses are `Core Exercise (User Choice)`), and the
+      P9 orphan sweep removed 18 rows belonging to long-deleted accounts
+      (`onboarding_progress` 3, `user_plans` 15) — the same numbers the dry run predicted.
+
+      Database, backup vs live, after the migration:
+
+      | | before | after |
+      |---|---|---|
+      | tables | 14 | 24 (**+10**, 0 dropped) |
+      | columns dropped anywhere | — | **none** (`users` 15 → 35) |
+      | users / sessions / sets / PRs | 3 / 51 / 827 / 31 | **identical** |
+      | body weight / goals / supplements / supplement logs / creatine | 37 / 1 / 10 / 45 / 51 | **identical** |
+      | user 5 · user 6 | 26 s / 433 sets / 16 PRs · 25 / 394 / 15 | **identical** |
+
+- [x] **Every derived number recomputed from the newest data, verified over the live API**
+      (JWTs minted from prod's own `JWT_SECRET` — read-only, no password resets, no mail):
+
+      | | user 5 (Rezwoan) | user 6 (Sowad) |
+      |---|---|---|
+      | sessions, newest | 26, **2026-08-07** | 25, **2026-08-06** |
+      | Bodyrank | **Silver II, p32**, 10/10 placements, `predicted: false` | Bronze II, p12.8, 10/10 |
+      | ranked exercises | 27 | 29 |
+      | latest rank-up | **2026-08-07** | 2026-08-06 |
+      | streak | **5 current / 5 best** | 0 current / 6 best (last trained the 6th) |
+      | level · XP · Spark | 8 · 8,706 · 650 | 8 · 8,851 · 500 |
+      | last 14 days | 8 workouts, 32,893 kg, bodyweight logged **2026-08-07** | 4 workouts, 19,337 kg, logged 2026-08-06 |
+      | weekly LP | 436 | 380 |
+
+      `/profile/me` 14 memories and 26 activity weeks for both; `/profile/u/rezwoan` 200 without a
+      token. Live routes all answer: `/`, `/home`, `/login`, `/welcome` **200**, `/api/auth/me`
+      **401**, `/api/exercises/catalog` **200**.
+- [x] **The owner's reported bug was the dev database, not the app.** Dev's copy was taken at P0 on
+      2026-08-06 and never refreshed, so it stopped at session 55 (2026-08-05) and was missing
+      sessions 57/58/59 — which is exactly "it says I have not been to the gym for two days". Prod
+      carries its own database forward untouched, so the cutover fixed it by construction: streak 5,
+      newest session the 7th, bodyweight logged the 7th.
+- [x] **Welcome mail sent to all 3 accounts**, `MailService.sendV2Welcome` via
+      `POST /api/admin/announce` (`?dryRun=1` lists recipients without sending). All three accepted
+      by Resend with ids. Copy leads with *"every workout, set, PR and bodyweight entry is exactly
+      where you left it"* before it lists a single feature — these accounts have months of history,
+      and a relaunch mail that opens with features reads as "is my log gone?".
+- [x] Dev stack stays alive as the ongoing staging environment. **Its database is now stale by
+      three sessions** — refresh it from prod's before judging anything data-dependent there.
+- [x] **Exit check:** reprush.rezwoan.codes runs v2, all three accounts carry their full history and
+      correctly recomputed ranks/streaks/XP, and `docs/v2/ROLLBACK.md` pins the code-only revert
+      (`82f2a1317921c8d6a3c872b0c7ad409cad9e19c5`) plus the two backups.
 
 ---
 
@@ -1821,3 +1866,41 @@ now survives it.
 
 **Next:** unchanged — the admin panel, still v1's 501-line page in v1's shell, and the dead-end sweep.
 **Blockers:** none.
+
+### 2026-08-08 — P14 complete · v2 is live on reprush.rezwoan.codes
+Cutover done. `v2` → `main` as `aaf1435`, deployed by CI run 31237094408 in 2m16s, and production
+now runs the rebuild. Full record in the P14 section above.
+
+**Nothing was migrated, and that is the point.** The v2 schema is purely additive over v1's — 10 new
+tables, 20 new columns on `users`, nothing dropped or renamed — so production's own database was
+carried forward in place and `synchronize: true` grew it on boot. Ranks, streaks, XP, levels, Spark,
+medals, quests and leagues are all *derived* from `workout_sets` (a decision made in P3 and held to
+ever since), so there was no state to recalculate: the first read after the restart reflects every
+set, including ones logged an hour earlier. Counts before and after are identical down to the
+supplement logs, and the only rows that disappeared were 18 orphans belonging to accounts deleted
+long ago — the P9 bug fix doing what it was carried across to do.
+
+**The owner's reported bug — "it says I have not been to the gym for two days" — was the dev
+database, not the app.** Dev's copy was taken at P0 on 2026-08-06 and never refreshed; it stopped at
+session 55 and had never seen sessions 57, 58 and 59. Prod has had them all along. Post-cutover the
+live API returns streak **5**, newest session **2026-08-07**, bodyweight logged **2026-08-07**,
+latest rank-up **2026-08-07**, Bodyrank Silver II p32 over 27 ranked exercises. Nothing to fix; the
+lesson is that a stale staging copy is indistinguishable from a data bug, so refresh dev's database
+from prod's before judging anything data-dependent on it.
+
+Two things landed alongside the merge because prod deserved them and dev already had them:
+`scripts/deploy.sh` now takes `flock` and snapshots the live database before every deploy (it had
+neither, and prod is the one place a `synchronize` boot runs against the only copy that matters),
+and P1's document `Cache-Control` fix finally reached the prod vhost — production had been serving
+`s-maxage=31536000, stale-while-revalidate` since v1, which is what makes every returning visitor
+one deploy behind. Ran before the merge so the revalidation happened against unchanged v1 content.
+
+Then the relaunch mail: `MailService.sendV2Welcome` and `POST /admin/announce`, sent to all three
+accounts, all accepted by Resend. It opens by saying the history is intact and only then lists what
+is new — these are accounts with months of training in them, and a rebuild announcement that leads
+with features reads as a question about whether the log survived.
+
+**Next:** P15 continues on `v2` — the admin panel is still v1's 501-line page in v1's shell, and the
+dead-end sweep is unfinished. `main` and `v2` are identical as of this commit; keep working on `v2`
+and merge when a batch is verified on dev.
+**Blockers:** none. Dev's database is stale by three sessions — refresh it from prod's next session.
