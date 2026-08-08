@@ -50,18 +50,18 @@ cd "$APP_DIR/backend"
 npm ci --no-audit --no-fund
 npm run build
 
-# ── 3. Frontend ───────────────────────────────────────────
+# ── 4. Frontend ───────────────────────────────────────────
 echo "[4/6] Building frontend..."
 cd "$APP_DIR/frontend"
 npm ci --no-audit --no-fund
 npm run build
 
-# ── 4. Restart services ───────────────────────────────────
+# ── 5. Restart services ───────────────────────────────────
 echo "[5/6] Restarting services..."
 sudo systemctl restart reprush-backend.service
 sudo systemctl restart reprush-frontend.service
 
-# ── 5. Health check ───────────────────────────────────────
+# ── 6. Health check ───────────────────────────────────────
 echo "[6/6] Health check..."
 # `curl -w %{http_code}` already prints 000 when it cannot connect, so the old
 # `|| echo 000` appended a *second* 000 and a dead service read as "000000" —
