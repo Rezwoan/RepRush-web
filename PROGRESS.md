@@ -873,6 +873,44 @@ not the symptom, and one was structural enough to be the phase's centre.
       reference, and relative strength / Wilks / progress rate are **ours**, folded in from v1 in P9.
       All eight still work server-side — this is a UI narrowing, not a deletion.
 
+### Round two — routine editing and sharing (2026-08-08)
+
+- [x] **A real routine editor** (`profile/routine-editor.tsx`). You could create a routine with
+      `sets: 3` hardcoded and no rep range, or delete a whole one — that was the entire surface, and
+      the rows said "5 exercises" with no way to see which five. Now: sets, rep range, rest,
+      reorder, add and remove per exercise; rows in the library expand to their contents; the
+      Workout tab's day cards list their exercises instead of a bare count; and every day has an
+      `Edit this day` action. The old create-sheet and its ad-hoc catalog search are deleted —
+      the editor reuses the Workout tab's `ExercisePicker`, so there is one picker again.
+- [x] **The trap it had to avoid, and nearly did not.** Package days carry `repMin` / `repMax` /
+      `restSec`, and the panel's `RoutineExercise` type only knew `{ exerciseId, name, sets }`. An
+      edit button bolted onto that type would have round-tripped every ULPPL day through it and
+      silently flattened the rep ranges of the whole program. The editor holds the full shape, and
+      `withDefaults` fills anything a legacy row is missing so an old routine opens whole.
+- [x] **`saveRoutine` validates instead of trusting.** It was `JSON.stringify(whatever)` because
+      only our own picker ever wrote it; sets, reps and rest are user input now. The boundary clamps
+      (sets 1–20, reps 1–100 with the max pushed up to the min rather than left inverted, rest
+      0–600), drops unknown keys, and requires the exercise id to name something real — catalog or
+      the user's own. A bad row is dropped, not fatal.
+- [x] **Editing no longer pulls a day out of its program.** `folderId` was `dto.folderId ?? null`,
+      so a save that did not resend it moved the routine to the root — which is exactly what
+      editing a package day's sets would have done.
+- [x] **Shareable folders, as a fork.** A `shareCode` on the folder (unique *index*, same reasoning
+      as `User.referralCode`), `POST /profile/folders/:id/share` to allocate it, `/routine/<code>`
+      to preview the whole program before deciding, and a claim that copies it in. Their copy is
+      theirs: no `lastUsedAt`, no share code, and editing it never touches the original. Shared
+      mutable ownership was rejected — one person's edit rewriting someone else's training week is
+      not what "make their own" asks for.
+- [x] **Login learned `?next=`.** A forwarded share link needs a session, and the global 401 bounce
+      would have thrown the code away; `/routine` joins `PUBLIC_ROUTES` so the page can send the
+      visitor to `/login?next=…` and get them back.
+- [x] **Exit check — verified on dev, two accounts:** the ULPPL Upper day edited to `5×3–5, rest
+      240s` kept its folder and left the other four exercises' ranges untouched; junk input clamped
+      (`sets: 999` → 20, `repMin 50 / repMax 2` → 50–50, `restSec −10` → 0) and two unusable rows
+      dropped without failing the save; A shared the folder, B previewed it (6 days, owner named),
+      forked it and got A's edit; B renaming their copy left A's untouched; claiming your own
+      program **400**, a junk code **404**, `/routine/<code>` **200**. Test accounts deleted.
+
 ### Still open — resume here
 
 - [ ] **Rebuild the admin panel in the v2 shell.** `app/admin/page.tsx` is still v1's 501-line page
@@ -1605,3 +1643,39 @@ a repair, and the last of the thirteen. Then the dead-end sweep the owner actual
 the *rest* of the routine-shaped disconnections instead of waiting to be told. `/achievements` and
 `/progress` are the two already known.
 **Blockers:** none. P14's cutover is still held pending the owner's review.
+
+### 2026-08-08 — P15 round two: routine editing and sharing
+Three asks: edit a routine down to its reps and sets, see what is inside one from the library, and
+share a folder with friends who can then use it, edit it and make it their own.
+
+**The editing gap was bigger than it looked.** The library could create a routine — with `sets: 3`
+hardcoded and no rep range at all — and delete a whole one. Nothing else. The rows said "5 exercises"
+and there was no way to see which five, which is the owner's point exactly: you cannot edit what you
+cannot see.
+
+**And there was a trap in the obvious fix.** Package days carry `repMin`, `repMax` and `restSec`,
+while the panel's `RoutineExercise` type knew only `{ exerciseId, name, sets }`. Bolting an edit
+button onto that type would have round-tripped every ULPPL day through a three-field shape and
+silently flattened the rep ranges of the entire program — a data-loss bug introduced by the feature
+meant to fix a usability one. Worth remembering as a shape: **before making something editable, check
+that the edit path can carry everything the write path stores.**
+
+That also made `saveRoutine`'s `JSON.stringify(whatever)` untenable. It was fine while only our own
+picker wrote that column; sets, reps and rest are user input now, so the boundary clamps them, drops
+unknown keys and requires the exercise id to name something real. The verification is the part that
+matters: `sets: 999` comes back 20, an inverted `50–2` range comes back `50–50` rather than
+prescribing nothing, and a made-up exercise id is dropped rather than saved as a row that would hand
+someone an empty tracker.
+
+**Sharing is a fork, deliberately.** "Friends can use it, edit it, make their own" is a copy, and the
+alternative — shared mutable ownership — would mean one person's edit silently rewriting someone
+else's training week, plus a permission model nothing else in this app has. So: a share code on the
+folder, a page that shows the whole program before asking for a decision, and a claim that copies it
+in. Verified by having B fork A's program, rename their copy, and confirming A's was untouched.
+
+One incidental fix with a wider reach: **login learned `?next=`**. A forwarded link needs a session,
+and the global 401 bounce would have thrown the share code away. Any future link that needs sign-in
+now survives it.
+
+**Next:** unchanged — the admin panel, still v1's 501-line page in v1's shell, and the dead-end sweep.
+**Blockers:** none.

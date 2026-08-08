@@ -846,3 +846,21 @@ Two rules that fall out of it:
   them" rather than "exactly one".
 - `Routine.lastUsedAt` is stamped at **session start**, not when a day is opened — browsing your
   program must not reorder it. That stamp is the whole rotation mechanism; there is no schedule.
+
+**P15 round two · 2026-08-08**
+
+- **Before making something editable, check the edit path carries everything the write path stores.**
+  Routine days carry `repMin`/`repMax`/`restSec`; the library's type knew three fields. An edit
+  button on that type would have flattened every rep range in the ULPPL program — a data-loss bug
+  introduced by a usability fix. `withDefaults` in `routine-editor.tsx` is what fills a legacy row.
+- **A column written only by our own UI is not validated, and stops being safe the moment a user can
+  type into it.** `saveRoutine` was `JSON.stringify(dto.exercises)`. It clamps now (sets 1–20, reps
+  1–100 with max pushed up to min, rest 0–600) and requires the exercise id to resolve.
+- `folderId: dto.folderId ?? null` collapsed "not being changed" into "move it to the root".
+  **`undefined` and `null` mean different things in a partial update** — a save that omitted the
+  field pulled the day out of its program.
+- **Sharing a routine folder is a fork, not shared ownership** (`shareCode` on the folder, unique
+  *index* like `User.referralCode`). The copy carries no `lastUsedAt` and no share code. Shared
+  mutable ownership would need a permission model nothing else here has.
+- `/routine/<code>` is in `PUBLIC_ROUTES` so the global 401 bounce cannot eat the code, and
+  **`/login?next=<path>`** now exists — any link that needs a session can round-trip through sign-in.
