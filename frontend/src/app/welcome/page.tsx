@@ -16,7 +16,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, Check, Eye, EyeOff, Share2 } from 'lucide-react';
 import { authApi, ranksApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
-import { useClerkSignup } from '@/components/auth/clerk-gate';
+import { clerkEnabled, useClerkSignup } from '@/components/auth/clerk-gate';
 import { setToken } from '@/lib/token';
 import { spring } from '@/lib/motion';
 import { cn } from '@/lib/utils';
@@ -137,7 +137,7 @@ function Screen({
 function Splash({ onStart }: { onStart: () => void }) {
   const router = useRouter();
   return (
-    <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-8 px-6 text-center">
+    <div className="mx-auto flex min-h-[100dvh] w-full max-w-lg flex-col items-center justify-center gap-8 px-6 text-center">
       <Logo size="lg" />
       <div>
         <h1 className="text-4xl font-extrabold leading-tight">Train. Track. Rush.</h1>
@@ -221,18 +221,35 @@ function CarouselArt({ art }: { art: (typeof CAROUSEL)[number]['art'] }) {
   );
 }
 
-function Carousel({ onDone }: { onDone: () => void }) {
+function Carousel({ onDone, onBack }: { onDone: () => void; onBack: () => void }) {
   const [i, setI] = useState(0);
   const slide = CAROUSEL[i];
   const last = i === CAROUSEL.length - 1;
   return (
-    <div className="flex min-h-[100dvh] flex-col px-6 pb-8 pt-14">
-      <button
-        onClick={onDone}
-        className="self-end text-sm font-semibold text-muted-foreground hover:text-foreground"
-      >
-        Skip
-      </button>
+    // `mx-auto max-w-lg`, like the question steps. Without it this screen ran
+    // the full width of the window and the CTA stretched to 910px on a laptop,
+    // so the funnel went from a full-bleed page to a narrow column the moment
+    // the first question appeared.
+    <div className="mx-auto flex min-h-[100dvh] w-full max-w-lg flex-col px-6 pb-8 pt-14">
+      <div className="flex items-center justify-between">
+        {/* Back existed on every question step but not here, and the carousel is
+            the step *after* the splash — which is the only screen carrying
+            "I already have an account". So pressing Get started stranded you in
+            the funnel with no route back to sign-in. */}
+        <button
+          onClick={i === 0 ? onBack : () => setI(i - 1)}
+          aria-label="Back"
+          className="-ml-2 grid h-9 w-9 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        >
+          <ArrowLeft size={20} />
+        </button>
+        <button
+          onClick={onDone}
+          className="text-sm font-semibold text-muted-foreground hover:text-foreground"
+        >
+          Skip
+        </button>
+      </div>
       <div className="flex flex-1 flex-col items-center justify-center gap-8 text-center">
         <AnimatePresence mode="wait">
           <motion.div key={slide.art} {...screenAnim} className="w-full">
@@ -851,6 +868,7 @@ const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
 
 function SignupStep({ a, onDone }: { a: Answers; onDone: () => void }) {
   const { refresh } = useAuth();
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState(() =>
@@ -958,6 +976,32 @@ function SignupStep({ a, onDone }: { a: Answers; onDone: () => void }) {
           </p>
         )}
       </div>
+      {/* Clerk, offered *first* and by default.
+          The funnel used to end in an email-and-password form with no mention
+          of Clerk anywhere, so the only door a new user was ever shown was the
+          one we are moving away from — Clerk existed on /login and nowhere in
+          signup. The answers are already in localStorage (`saveProgress`), so
+          leaving for /sign-up and coming back to /welcome?clerk=1 resumes this
+          exact step with everything intact and `clerk.active` true. */}
+      {!clerk.active && clerkEnabled && (
+        <>
+          <Button
+            type="button"
+            variant="chunky"
+            size="cta"
+            onClick={() => router.push('/sign-up')}
+          >
+            Continue with Google or email
+          </Button>
+          <div className="flex items-center gap-3" aria-hidden>
+            <span className="h-px flex-1 bg-border" />
+            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              or use a password
+            </span>
+            <span className="h-px flex-1 bg-border" />
+          </div>
+        </>
+      )}
       {!clerk.active && (
         <div className="relative">
           <input
@@ -986,6 +1030,17 @@ function SignupStep({ a, onDone }: { a: Answers; onDone: () => void }) {
       <p className="text-center text-xs text-muted-foreground">
         Everything you just answered is saved to this account.
       </p>
+      {/* The last chance to realise you already have an account. Signing in
+          with the same email lands you on your existing history either way
+          (the backend matches on it), but saying so beats letting someone
+          wonder whether they have just made a duplicate. */}
+      <button
+        type="button"
+        onClick={() => router.push('/login')}
+        className="text-center text-xs font-semibold text-primary hover:underline"
+      >
+        Already have an account? Sign in
+      </button>
     </Screen>
   );
 }
@@ -1160,7 +1215,7 @@ export default function WelcomePage() {
 
   // Full-bleed screens own their whole viewport and skip the funnel chrome.
   if (step.id === 'splash') return <Splash onStart={next} />;
-  if (step.id === 'carousel') return <Carousel onDone={next} />;
+  if (step.id === 'carousel') return <Carousel onDone={next} onBack={back} />;
 
   const body = (() => {
     switch (step.kind) {

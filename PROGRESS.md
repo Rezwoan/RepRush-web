@@ -1904,3 +1904,55 @@ with features reads as a question about whether the log survived.
 dead-end sweep is unfinished. `main` and `v2` are identical as of this commit; keep working on `v2`
 and merge when a batch is verified on dev.
 **Blockers:** none. Dev's database is stale by three sessions — refresh it from prod's next session.
+
+### 2026-08-08 — Clerk sign-in, matching existing accounts by email
+Live on production. Clerk owns the sign-in screen; **the RepRush JWT is still the session**, because
+the outbox, the idempotency interceptor, every guard and the offline boot already run on it and
+replacing that would have been a rewrite of the offline story for nothing anyone can see. So
+`POST /auth/clerk` verifies a Clerk session token and hands back exactly what `login` hands back.
+
+**Email is the identity**, which was the actual ask. `clerk-resolve.ts` decides, and it is asserted at
+boot beside the rank and recovery checks: linked `clerkUserId` → **verified email** → new signup, with
+a linked account beating a stale email match and a conflict refused rather than re-pointed. So an
+account created with a password months ago is found by its address the first time its owner signs in
+with Google, gets linked, and lands on its own workouts, ranks and streak.
+
+The email is a trust boundary, so it is taken from Clerk's API rather than off the token (a stock
+session token carries no email, and a claim that can be configured away is not something to key
+account matching on) and an **unverified address is refused outright** — otherwise claiming
+`someone@example.com` would inherit that person's entire history.
+
+Password login is kept, deliberately: every account predates Clerk, and a misconfiguration would
+otherwise be a total lockout. `GET /auth/providers` tells the login screen which doors exist.
+
+Three deviations from the Clerk quickstart, which targets Next 16 + Clerk 7 while this app is on
+**Next 14.2.35** — each recorded in `MEMORY.md`:
+- **`middleware.ts`, not `proxy.ts`.** `proxy.ts` is the Next 16 name; on Next 14 it is never loaded,
+  so the failure is a silent no-op rather than an error.
+- **`@clerk/nextjs@6.39.6`, not 7**, which requires Next ≥15.2.8. Upgrading drags in React 19 and
+  `next-pwa`, unmaintained since 2022 and the thing that serves offline gym logging.
+- **`<SignedIn>`/`<SignedOut>`**, because `<Show>` does not exist in Clerk 6 (checked against the
+  installed package, not assumed).
+
+Two real bugs, one of them mine:
+- **`findByEmail` was case-sensitive** and SQLite collates BINARY, so a provider returning
+  `Rezwoan@Gmail.com` would not have matched `frezwoan@gmail.com` — no error, just a second empty
+  account and the history stranded on the first. Fixed in the shared lookup, where login and the
+  duplicate check route through too.
+- **The first deploy took production down for about four minutes.** `clerkMiddleware()` needs
+  `CLERK_SECRET_KEY` in the *frontend* process and I had only put it in the backend's `.env`; every
+  route returned 500 with `Missing secretKey`. The deploy's health check caught it and failed the
+  run, but only after the restart. The middleware now requires **both** keys before enabling itself,
+  so a half-configured deployment degrades to password login the way push and mail already do, and
+  `.env.local.example` says why.
+
+Infra: the Clerk production instance needs five **DNS-only** CNAMEs (`clerk`, `accounts`, `clkmail`,
+`clk._domainkey`, `clk2._domainkey`); the owner had already added them, and all five verify —
+`https://clerk.reprush.rezwoan.codes/v1/client` answers 200 with a clean TLS verification, which only
+happens when they are unproxied. Data intact across the schema change: `users` gained `clerkUserId`
+(nullable, unique index, no table rebuild), 3 users / 827 sets / 31 PRs unchanged.
+
+**Next:** the owner signs in with Google on `frezwoan@gmail.com` and confirms it lands on user 5 with
+the streak of 5 — the one step that needs a real Google account. Dev stays password-only until it
+gets its own Clerk development instance (`pk_live_` is bound to the production domain).
+**Blockers:** none. The `sk_live_` key was shared in plaintext and should be rotated.

@@ -96,6 +96,12 @@ export function RulerPicker({
 }: RulerPickerProps) {
   const horizontal = orientation === 'horizontal';
   const TICK = 14;
+  /**
+   * The vertical track's height, in pixels rather than a Tailwind class.
+   * The centring padding below is derived from it, and a class the padding
+   * could not see is exactly how the two fell out of step in the first place.
+   */
+  const TRACK_V = 224;
   const count = Math.round((max - min) / step) + 1;
   const index = clampToRange(value, min, max, step);
   const { ref, onScroll } = useSnapScroll({
@@ -158,12 +164,26 @@ export function RulerPicker({
             'no-scrollbar relative overflow-auto focus-ring',
             horizontal
               ? 'flex h-20 snap-x snap-mandatory items-end'
-              : 'flex h-56 w-24 snap-y snap-mandatory flex-col items-start',
+              : 'flex w-24 snap-y snap-mandatory flex-col items-start',
           )}
           style={
             horizontal
-              ? { paddingLeft: 'calc(50% - 7px)', paddingRight: 'calc(50% - 7px)' }
-              : { paddingTop: 'calc(50% - 7px)', paddingBottom: 'calc(50% - 7px)' }
+              ? // Horizontal is fine as a percentage: `paddingLeft: 50%` resolves
+                // against the containing block's width, which *is* the axis being
+                // centred, and the track's width is fluid so a pixel value could
+                // not work.
+                { paddingLeft: `calc(50% - ${TICK / 2}px)`, paddingRight: `calc(50% - ${TICK / 2}px)` }
+              : // Vertical must be pixels. **Percentage padding resolves against
+                // the containing block's width on every side, including top and
+                // bottom** — so `paddingTop: 50%` on this 96px-wide, 224px-tall
+                // track computed 48px where centring needs 112px. The ruler sat
+                // 64px (≈4.5 ticks) out, which is why picking 170 cm parked the
+                // indicator past the 170 mark while the readout said 170.
+                {
+                  height: TRACK_V,
+                  paddingTop: TRACK_V / 2 - TICK / 2,
+                  paddingBottom: TRACK_V / 2 - TICK / 2,
+                }
           }
         >
           {ticks.map((t, i) => (
@@ -272,4 +292,43 @@ export function WheelPicker<T extends string | number>({
       </div>
     </div>
   );
+}
+
+/**
+ * Ruler geometry, asserted rather than eyeballed.
+ *
+ * The centring rule is: with the track padded by `track/2 - tick/2` on both
+ * ends, scrolling to `i * tick` must put tick `i` exactly under the centre
+ * indicator. That held for the horizontal ruler and silently did not for the
+ * vertical one, because percentage padding resolves against *width* on every
+ * side — so the assertion below is written in terms of the resolved pixel
+ * padding, which is the thing that was wrong.
+ *
+ * Runs on `/kitchen-sink` with the rest of the frontend checks.
+ */
+export function __selfcheck() {
+  const TICK = 14;
+  const TRACK_V = 224;
+  const pad = TRACK_V / 2 - TICK / 2;
+
+  // Centre of tick i, in content coordinates, is pad + i*TICK + TICK/2.
+  // With scrollTop = i*TICK the viewport centre is i*TICK + TRACK_V/2.
+  for (const i of [0, 1, 50, 110]) {
+    const tickCentre = pad + i * TICK + TICK / 2;
+    const viewportCentre = i * TICK + TRACK_V / 2;
+    if (Math.abs(tickCentre - viewportCentre) > 0.001) {
+      throw new Error(`RulerPicker: vertical tick ${i} sits ${(tickCentre - viewportCentre).toFixed(1)}px off centre`);
+    }
+  }
+
+  // The regression itself: a percentage would have resolved against the 96px
+  // track width, not its 224px height.
+  const wrongPad = 96 / 2 - TICK / 2;
+  if (Math.abs(wrongPad - pad) < 1) throw new Error('RulerPicker: self-check no longer distinguishes the old bug');
+
+  // 120–230 cm at step 1 is 111 ticks, and 170 must be index 50.
+  const index = Math.round((170 - 120) / 1);
+  if (index !== 50) throw new Error(`RulerPicker: 170cm mapped to index ${index}`);
+
+  return 'ruler ok';
 }
