@@ -14,32 +14,55 @@ APP_DIR="/var/www/reprush"
 BACKEND_PORT=3101
 FRONTEND_PORT=3100
 
+# ── 0. One deploy at a time ───────────────────────────────
+# Same reason as deploy-dev.sh: GitHub's push-event delivery for this repo can
+# lag by tens of minutes, so a CI run routinely lands while a manual run is
+# mid-`npm ci`, and two npm processes rewriting one node_modules is what
+# produced the ENOTEMPTY failures behind "sh: 1: nest: not found". CI's
+# concurrency group only serialises CI against itself.
+exec 9>/tmp/reprush-deploy.lock
+if ! flock -w 1200 9; then
+  echo "[deploy] another deploy is holding the lock — giving up"
+  exit 1
+fi
+
 echo "[deploy] $(date) — starting"
 
 # ── 1. Pull latest ────────────────────────────────────────
-echo "[1/5] Fetching latest main..."
+echo "[1/6] Fetching latest main..."
 git -C "$APP_DIR" fetch origin main
 git -C "$APP_DIR" reset --hard origin/main
 
-# ── 2. Backend (full install — nest build needs devDeps) ──
-echo "[2/5] Building backend..."
+# ── 2. Snapshot the production DB before a build that may migrate it ──
+# TypeORM runs synchronize:true, so a schema change lands on service start.
+# This is the live database; keep the last 10 snapshots.
+echo "[2/6] Snapshotting production database..."
+DB="$APP_DIR/backend/database/reprush.db"
+if [ -f "$DB" ]; then
+  cp "$DB" "$DB.bak-$(date +%Y%m%d%H%M%S)"
+  ls -1t "$DB".bak-* 2>/dev/null | tail -n +11 | xargs -r rm --
+  echo "  snapshot taken"
+fi
+
+# ── 3. Backend (full install — nest build needs devDeps) ──
+echo "[3/6] Building backend..."
 cd "$APP_DIR/backend"
 npm ci --no-audit --no-fund
 npm run build
 
 # ── 3. Frontend ───────────────────────────────────────────
-echo "[3/5] Building frontend..."
+echo "[4/6] Building frontend..."
 cd "$APP_DIR/frontend"
 npm ci --no-audit --no-fund
 npm run build
 
 # ── 4. Restart services ───────────────────────────────────
-echo "[4/5] Restarting services..."
+echo "[5/6] Restarting services..."
 sudo systemctl restart reprush-backend.service
 sudo systemctl restart reprush-frontend.service
 
 # ── 5. Health check ───────────────────────────────────────
-echo "[5/5] Health check..."
+echo "[6/6] Health check..."
 # `curl -w %{http_code}` already prints 000 when it cannot connect, so the old
 # `|| echo 000` appended a *second* 000 and a dead service read as "000000" —
 # which is not equal to "000", so the check passed and the deploy reported
