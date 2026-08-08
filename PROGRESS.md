@@ -22,7 +22,8 @@ https://dev-reprush.rezwoan.codes, and its exit check below is verified in the b
 | P11 | Gamification glue | **DONE** |
 | P12 | Offline & PWA hardening | **DONE** |
 | P13 | Polish pass | **DONE** |
-| P14 | Cutover to production | TODO |
+| P15 | Owner feedback pass | **IN PROGRESS** |
+| P14 | Cutover to production | ON HOLD |
 
 **P8 was the Nutrition tab and has been removed** — the owner cut nutrition from the product
 entirely. The number is left unused rather than renumbering P9–P14, which are cited all over the
@@ -817,7 +818,84 @@ went nowhere: every screen printed kg, and signing up in pounds silently made yo
 
 ---
 
-## P14 — Cutover to production · `IN PROGRESS`
+## P15 — Owner feedback pass · `IN PROGRESS` (2026-08-08)
+
+Thirteen items of owner feedback, all real. Several had a root cause that was
+not the symptom, and one was structural enough to be the phase's centre.
+
+### Shipped
+
+- [x] **Routines you can actually run.** The Workout tab called `generate()` on mount and the word
+      "routine" appeared **zero times** in it, while `routines` / `routine_folders` carried full
+      CRUD only Profile could reach — so a routine could be written and never run — and the six-day
+      split both real accounts train (`exercise_plans`, 6 rows, all 48 sessions) was invisible
+      everywhere in v2. Now: the tab opens on your program, days are cards, the day gone longest
+      without is marked `Next up`, and generating is one of the choices rather than the only path.
+      **Routine packages** are a catalog file (`backend/src/workouts/routine-packages.ts`) carrying
+      their own price, like cosmetics; the free starter is the real Upper/Lower/Push/Pull/Leg/Arms
+      program transcribed from the rows the users train off. Claiming writes real routines they own
+      and can edit. `GET /workouts/from-routine/:id` returns the *same* `GeneratedWorkout` shape the
+      generator does, so the session screen, the outbox and `gym_sessions.plan` cannot tell them
+      apart, and the numbers still come from the user's own last performance.
+- [x] **Push.** Root cause was infra, not code: dev's `.env` had **no VAPID keys at all**, so
+      `setVapidDetails` never ran and the granted permission could never become a subscription.
+      Prod has a pair. Dev now has its own, generated on the Pi. `worker/index.js` also still
+      deep-linked to `/dashboard` — a fifth v1 leftover past the four P13c caught.
+- [x] **The top bar's numbers.** `(tabs)/layout.tsx` passed only `streak`, on a comment saying level
+      and currency "arrive with P11". P11 shipped, so the app had been showing a level and a balance
+      **nowhere at all**. Both come from `/gamification/me` now.
+- [x] **The streak explains itself.** The flame was a `<span>` with a `title` — a tooltip no phone
+      shows. It is a button opening a sheet that states the streak rules (including freezes, which
+      were explained nowhere). On app open the count reveals itself once and retracts, leaving an
+      icon whose heat scales with the streak; `sessionStorage` keyed, gated on `use-idle-motion`, and
+      with reduced motion the number simply stays visible instead.
+- [x] **Spark has a name and one face.** It had three — a `Globe` icon in the top bar, a 🥚 emoji in
+      four screens, and the word only in backend source. One `components/ui/spark.tsx` now, and the
+      balance in the top bar taps through to the store.
+- [x] **One Store.** Store and Inventory were always the same component behind a `mode` prop, shown
+      as two tiles. One tile, Shop / Owned tabs with the owned count. Quests and the Store point at
+      each other — Spark is earned in one and spent in the other, and nothing said so.
+- [x] **Themes are priced.** `Theme.price` sat unused in `lib/themes.ts` since P1 while SPEC §9
+      showed them priced. They are a fourth cosmetic kind; ownership is server-side, but the
+      *applied* theme stays a client preference because the pre-paint boot script has to choose one
+      before any request could answer and it has to work offline. Light and Dark stay free.
+- [x] **Settings back navigation.** `setScreen(...)` rows returned to Settings correctly;
+      `onView(...)` rows — Profile, Statistics, Health log, exactly three — pushed a `?view=` panel
+      whose back was hardcoded to `/profile`. A `from` param carries the origin, and survives a
+      refresh in a way `router.back()` would not.
+- [x] **The Edit-profile avatar overlapped the name.** The avatar is `absolute -top-9` at 74px and
+      its clearance was reserved by the height of the "Edit profile" button — which the edit
+      screen's own live preview does not render, so the row collapsed to 8px. Reserved explicitly.
+- [x] **Auto-share.** Discovery's empty state told people to turn on "Post in Discovery" when they
+      finish, which was per-session only. `autoShare` is a real preference seeding the finish flow.
+- [x] **Leaderboard narrowed.** Rank (default), Streak and Relative strength; the other five behind
+      `More`. The owner's instinct about provenance was right: SPEC §8 took five metrics from the
+      reference, and relative strength / Wilks / progress rate are **ours**, folded in from v1 in P9.
+      All eight still work server-side — this is a UI narrowing, not a deletion.
+
+### Still open — resume here
+
+- [ ] **Rebuild the admin panel in the v2 shell.** `app/admin/page.tsx` is still v1's 501-line page
+      with four tabs (Overview / Members / Plans / Insights), rendering v1 chrome and dropping the
+      user out of the tab bar; Settings → Admin routes there. It works, so this is a re-housing, not
+      a repair. The endpoints are unchanged (`/api/admin/*`: stats, activity, users, invite,
+      reset-password, delete, compare, report). Suggested shape: a `?view=admin` panel beside the
+      other Profile panels, reusing `Panel`/`Group`/`Row`, admin-gated the way the Settings row
+      already is. **Note for whoever does it:** `POST /admin/users/:id/reset-password` takes no
+      password — it generates one and emails it. Do not call it while testing.
+- [ ] **Finish the dead-end sweep.** The routine case was the template — data written by one screen
+      and read by none. Known remaining: `/achievements` and `/progress` still render in v1's shell
+      (open since P13). Audit for the same shape rather than waiting to be told.
+
+---
+
+## P14 — Cutover to production · `ON HOLD`
+
+Held on 2026-08-08 at the owner's request pending review, then superseded for the
+moment by P15's feedback pass. The groundwork below stands and does not expire —
+but note the DB backup predates P15's schema additions, which are additive and
+therefore still safe to roll forward onto.
+
 
 Only start when P0–P13 are all `DONE`. They are.
 
@@ -1481,3 +1559,49 @@ written and ready to apply.
 and watch the deploy. Both are prepared and both are waiting on approval.
 **Blockers:** the permission layer declined the two prod-touching commands; they need the owner's
 go-ahead rather than a workaround.
+
+### 2026-08-08 — P15: the owner feedback pass, and what most of it turned out to be
+Thirteen items of feedback. Eleven are shipped and verified on dev; two remain and are written up
+under the phase above.
+
+**The one that mattered was the routine journey, and it was worse than "the tabs don't talk".**
+The Workout tab called `generate()` on mount — the word *routine* did not appear in that file — while
+`routines` and `routine_folders` carried entities, CRUD and a Profile screen to write them, and
+nothing anywhere could ever run one. A write-only feature. Underneath that sat the six-day
+upper/lower/push/pull/leg/arms split both real accounts have trained since v1, all 48 sessions of it,
+sitting in `exercise_plans` and surfaced by no v2 screen at all.
+
+So the fix was not a link between two tabs. The tab opens on your program now, the day gone longest
+without is marked `Next up`, and generating became one of the choices instead of the only path.
+Packages are a catalog file carrying their own price — the same call cosmetics and the exercise
+catalog made — and the free starter is that real split, transcribed from the rows the users train
+off rather than invented. Claiming it writes routines they own outright, because a program should be
+a starting point and not a subscription. All 31 of its exercise names resolve through the same alias
+table that mapped v1's history in P2, asserted at boot, so a package can never ship a day that
+claims fine and then hands over an empty tracker.
+
+**Three of the rest were the same bug in different clothes: something built, and then not connected.**
+Push has been dead on dev since P0 because dev's `.env` never had VAPID keys — the client handles it
+correctly and even says so, which is why it read as broken rather than unconfigured. The top bar has
+been passing only `streak` since P5 on a comment saying level and currency arrive with P11; P11
+shipped in November and the app has shown a level and a balance nowhere since. And Spark had three
+faces — a Globe, a 🥚 in four screens, and its actual name only in backend source. P13 found six
+settings nothing read; this is the same shape one layer up, and the lesson repeats: **grep from the
+reader's side, not the writer's.**
+
+**The small ones were small, and two were one-liners with a real cause.** The Edit-profile avatar
+overlapped the name because its clearance was borrowed from the height of a button that screen does
+not render. Settings' back button worked for eight rows and broke for exactly three — the ones that
+open a `?view=` panel rather than swapping local state.
+
+**One judgement call worth recording.** The owner asked whether the reference really had eight
+leaderboard metrics. It did not: SPEC §8 lists five, and relative strength, Wilks and progress rate
+are ours, folded in from v1 during P9. Rank leads now with Streak and Relative strength beside it and
+the other five behind `More` — narrowed in the UI, all eight still valid server-side, because they
+work and `LEADERBOARD_METRICS` validates the input either way.
+
+**Next:** the admin panel, which is still v1's 501-line page in v1's shell — a re-housing rather than
+a repair, and the last of the thirteen. Then the dead-end sweep the owner actually asked for: find
+the *rest* of the routine-shaped disconnections instead of waiting to be told. `/achievements` and
+`/progress` are the two already known.
+**Blockers:** none. P14's cutover is still held pending the owner's review.

@@ -818,3 +818,31 @@ Two rules that fall out of it:
 - Running `node -e` with nested quotes over ssh is fragile and gets blocked; write the script with
   the Write tool, pipe it in with `ssh … 'cat > /tmp/x.js && …'`, and set
   `NODE_PATH=<checkout>/node_modules` or the require resolves from `/tmp` and fails.
+
+**P15 · 2026-08-08**
+
+- **The failure mode this codebase keeps producing: built, then not connected.** P13 found six
+  settings nothing read. P15 found a whole feature (routines: entities + CRUD + a UI to create,
+  and no way to run one), a subsystem dead on dev for want of a config key (push/VAPID), and two
+  numbers passed nowhere (level, currency — left out on a "arrives with P11" comment that outlived
+  P11). **Check from the reader's side.** For any table, ask what reads it; for any prop, ask who
+  passes it; for any `.env` key, ask which environments have it.
+- **A stale TODO comment is a bug with an alibi.** `(tabs)/layout.tsx` said level and currency
+  "arrive with P11's XP ledger" for four phases after P11 shipped. A comment naming a future phase
+  should be grepped for when that phase closes.
+- **Dev and prod `.env` files drift, and dev is where things get tested.** Dev had no `VAPID_*` at
+  all while prod had a pair, so push was disabled on exactly the stack being used to judge it.
+  Compare the two key sets when a feature "does not work on dev".
+- **`POST /admin/users/:id/reset-password` takes no password — it generates one and emails it**
+  via the Resend key in whatever `.env` is loaded. Do not call it while testing.
+- Routine packages live in `backend/src/workouts/routine-packages.ts` as names, not catalog ids,
+  resolved through `CatalogService.resolveLegacyName` — the same table P2 used to map v1's history.
+  `ProfileController.onModuleInit` asserts every name still resolves; that check is the reason a
+  package cannot ship a day that claims successfully and then renders empty.
+- **Themes are owned server-side but applied client-side.** Ownership is a cosmetic in
+  `cosmetics.ts`; the *applied* theme stays a client preference, because the pre-paint boot script
+  has to pick one before any request could answer and it has to work offline. Light and Dark are
+  both free, which is why the per-kind self-check is "at least one free, and the default is among
+  them" rather than "exactly one".
+- `Routine.lastUsedAt` is stamped at **session start**, not when a day is opened — browsing your
+  program must not reorder it. That stamp is the whole rotation mechanism; there is no schedule.
