@@ -1065,3 +1065,11 @@ Two rules that fall out of it:
   account's hash is ours, not Clerk's, and its owner cannot tell the two apart.
 - **An abandoned funnel now leaves a real but sparse account.** `app/page.tsx` routes anyone with
   saved funnel progress (`setupInProgress()`) back to `/welcome` instead of `/home`.
+
+**Clerk instance settings · 2026-08-08**
+
+- **Read the instance, don't assume it.** `curl -s "https://clerk.reprush.rezwoan.codes/v1/environment?__clerk_api_version=2021-02-05&_clerk_js_version=5.35.0"` is public and returns `user_settings` — which providers are on, and which attributes are enabled/required. It is how the three facts below were established rather than guessed.
+- **Google *and* Facebook are both enabled** on the production instance. Both lead `/login` and `/sign-up` as full-width keys; email is a text link that reveals the fields.
+- **`username` is *required*** on the instance. A custom flow that sends only an email and a password comes back `missing_requirements` and never completes, and OAuth hits the same wall after the provider returns — which is why `/sign-up` has `fillRequiredFields` (derives a handle from the address, retries with a suffix on `form_identifier_exists`) and `/sso-callback` passes `continueSignUpUrl`. Turning Username off in the dashboard would make all of that dead code.
+- **First and last name are enabled but not required**, which is what makes dropping those fields safe.
+- **A background browser tab throttles rAF, so framer-motion entrances freeze part-way.** A screenshot of a just-loaded page can show the whole screen at ~20% opacity and look like a rendering bug. Take a second screenshot before believing the first.

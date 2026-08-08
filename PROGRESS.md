@@ -2010,3 +2010,32 @@ fallbacks and the funnel gate could be exercised here). If Clerk's dashboard has
 turning it off under Configure → User & Authentication → Personal information removes the
 placeholder-name step entirely.
 **Blockers:** none.
+
+### 2026-08-08 — shipped to production, and the auth screens lead with Google and Facebook
+
+Owner: *"I am using the actual production app and you did work on the dev. What impact does that
+even have on my experience?"* — fair. `v2` merged to `main` (`a0bed88`, then `794aa55`), both
+deploys green, reprush.rezwoan.codes serving the new flow. Rollback pin: `main` was
+`205049e` beforehand; DB snapshot `~/reprush-prod-backup-preauth-20260808.db`
+(md5 `5a3e3f5c1c995d7d2ae52e81f3726c00`). Procedure: `docs/v2/ROLLBACK.md`.
+
+Also owner: *"give more priority and preference to the Google and Facebook login"*. Both are
+**already enabled** on the live Clerk instance — established by reading
+`/v1/environment` rather than assuming — so both now lead the sign-in and signup screens as
+full-width keys, and email is a text link that reveals two fields.
+
+That same read caught a bug this custom flow would otherwise have shipped: the instance marks
+**`username` required**, so `signUp.create({email, password})` returns `missing_requirements` and
+never completes, and an OAuth signup stalls the same way after the provider hands control back.
+`fillRequiredFields` now derives a handle from the address (retrying with a suffix when Clerk says
+it is taken) instead of putting another field on screen, and `/sso-callback` passes
+`continueSignUpUrl` so a transferred signup has somewhere to finish. First and last name are
+enabled but *not* required there — which is what makes dropping them safe.
+
+**Dev stays password-only.** A `pk_live_` key is bound to its domain, so dev-reprush cannot run
+Clerk without the *development* instance's `pk_test_`/`sk_test_` from the dashboard; the owner
+chose to test on production instead.
+
+**Next:** the owner runs a real Google or Facebook signup end to end — the one step that needs a
+real provider account.
+**Blockers:** none.
