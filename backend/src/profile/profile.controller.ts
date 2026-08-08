@@ -19,19 +19,40 @@ import { HEALTH_METRICS, PROFILE_CARDS, ProfileService } from './profile.service
 import { __selfcheck as cosmeticsSelfCheck } from './cosmetics';
 import { __selfcheck as xpSelfCheck } from './xp';
 import { __selfcheck as windowsSelfCheck } from './profile.service';
+import { __selfcheck as packagesSelfCheck, ROUTINE_PACKAGES } from '../workouts/routine-packages';
+import { CatalogService } from '../exercises/catalog.service';
 
 @UseGuards(JwtAuthGuard)
 @Controller('profile')
 export class ProfileController implements OnModuleInit {
   private readonly logger = new Logger(ProfileController.name);
 
-  constructor(private profile: ProfileService) {}
+  constructor(
+    private profile: ProfileService,
+    private catalog: CatalogService,
+  ) {}
 
   onModuleInit() {
     cosmeticsSelfCheck();
     xpSelfCheck();
     windowsSelfCheck();
-    this.logger.log('ProfileService: cosmetics ok, xp ok, calendar windows ok');
+    packagesSelfCheck();
+    // The resolution check lives here rather than in the package file because
+    // it needs the catalog. It is the one that matters: a package whose names
+    // no longer map is a program that claims fine and then hands the user an
+    // empty day, which looks like a bug in the tracker.
+    const unresolved: string[] = [];
+    for (const pkg of ROUTINE_PACKAGES) {
+      for (const day of pkg.days) {
+        for (const ex of day.exercises) {
+          if (!this.catalog.resolveLegacyName(ex.name)) unresolved.push(`${pkg.id}/${day.name}/${ex.name}`);
+        }
+      }
+    }
+    if (unresolved.length) {
+      throw new Error(`routine packages: unresolved exercises — ${unresolved.join(', ')}`);
+    }
+    this.logger.log('ProfileService: cosmetics ok, xp ok, calendar windows ok, routine packages ok');
   }
 
   /** Everything the Profile tab renders (SPEC §9), in one round trip. */
@@ -112,6 +133,24 @@ export class ProfileController implements OnModuleInit {
   @Delete('folders/:id')
   deleteFolder(@CurrentUser() user: User, @Param('id', ParseIntPipe) id: number) {
     return this.profile.deleteFolder(user.id, id);
+  }
+
+  /** Which program the Workout tab opens on. Pass `null` to clear it. */
+  @Post('folders/default')
+  setDefaultFolder(@CurrentUser() user: User, @Body('folderId') folderId: number | null) {
+    return this.profile.setDefaultFolder(user.id, folderId ?? null);
+  }
+
+  // ── routine packages ──────────────────────────────────────────────
+
+  @Get('routine-packages')
+  routinePackages(@CurrentUser() user: User) {
+    return this.profile.routinePackages(user.id);
+  }
+
+  @Post('routine-packages/:id/claim')
+  claimPackage(@CurrentUser() user: User, @Param('id') id: string) {
+    return this.profile.claimPackage(user.id, id);
   }
 
   // ── user-authored exercises ───────────────────────────────────────

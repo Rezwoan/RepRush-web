@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
-  ChevronDown, GripVertical, MoreVertical, Play, Plus, RefreshCw, Repeat, Trash2, X,
+  ChevronDown, ChevronLeft, GripVertical, MoreVertical, Play, Plus, RefreshCw, Repeat, Trash2, X,
 } from 'lucide-react';
 import { workoutsApi, ranksApi } from '@/lib/api';
 import { queueStartSession, flushOutbox, resolveSessionId } from '@/lib/offline';
@@ -24,6 +24,7 @@ import { Chip } from '@/components/ui/controls';
 import { EmptyState } from '@/components/ui/display';
 import { Sheet } from '@/components/ui/sheet';
 import { Bodygraph } from '@/components/art/bodygraph';
+import { RoutineChooser } from './chooser';
 import {
   ExercisePicker,
   Thumb,
@@ -206,10 +207,16 @@ export default function WorkoutBuilderPage() {
   const router = useRouter();
   const { byId } = useCatalog();
 
+  /**
+   * `choose` is the tab's front door. It used to go straight to `generated` on
+   * mount, which is why routines had nowhere to be started from.
+   */
+  const [mode, setMode] = useState<'choose' | 'generated' | 'routine'>('choose');
+  const [routineId, setRoutineId] = useState<number | null>(null);
   const [durationMin, setDurationMin] = useState(60);
   const [difficulty, setDifficulty] = useState<(typeof DIFFICULTIES)[number] | null>(null);
   const [plan, setPlan] = useState<GeneratedWorkout | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [starting, setStarting] = useState(false);
   const [ranks, setRanks] = useState<PickerContext['ranks']>();
@@ -234,9 +241,34 @@ export default function WorkoutBuilderPage() {
     }
   }, [durationMin, difficulty]);
 
+  // Only regenerate while actually in the generator. Guarded, or changing a
+  // duration chip would fire a request from the chooser too.
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (mode === 'generated') void load();
+  }, [mode, load]);
+
+  const openRoutine = useCallback(async (id: number) => {
+    setMode('routine');
+    setRoutineId(id);
+    setLoading(true);
+    setPlan(null);
+    try {
+      const r = await workoutsApi.fromRoutine(id);
+      setPlan(r.data);
+      setError(false);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const backToChoose = () => {
+    setMode('choose');
+    setPlan(null);
+    setRoutineId(null);
+    setError(false);
+  };
 
   useEffect(() => {
     ranksApi
@@ -286,7 +318,7 @@ export default function WorkoutBuilderPage() {
     setStarting(true);
     // Always through the outbox — a session started on gym wifi that half
     // works must not lose the first three sets while an axios call retries.
-    const tempId = queueStartSession(plan.title, undefined, plan);
+    const tempId = queueStartSession(plan.title, undefined, plan, routineId ?? undefined);
     void flushOutbox();
     // Give the flush a moment to swap in the real id, but never block on it.
     setTimeout(() => router.push(`/workout/session/${resolveSessionId(tempId)}`), 350);
@@ -297,25 +329,45 @@ export default function WorkoutBuilderPage() {
     [plan],
   );
 
+  if (mode === 'choose') {
+    return (
+      <RoutineChooser
+        onPickRoutine={openRoutine}
+        onGenerate={() => setMode('generated')}
+        onManage={() => router.push('/profile?view=routines')}
+      />
+    );
+  }
+
   return (
     <div className="pb-28">
-      {/* Filter chips */}
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 pt-1">
-        {DURATIONS.map((d) => (
-          <Chip key={d} active={durationMin === d} onClick={() => setDurationMin(d)}>
-            {d >= 60 && d % 60 === 0 ? `${d / 60}h` : `${d}m`}
+      <button
+        onClick={backToChoose}
+        className="press -ml-1 mb-1 flex items-center gap-1 text-sm font-bold text-primary"
+      >
+        <ChevronLeft size={16} /> Routines
+      </button>
+
+      {/* Duration and difficulty belong to the generator — a routine already
+          says how long it is and how many sets it wants. */}
+      {mode === 'generated' && (
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 pt-1">
+          {DURATIONS.map((d) => (
+            <Chip key={d} active={durationMin === d} onClick={() => setDurationMin(d)}>
+              {d >= 60 && d % 60 === 0 ? `${d / 60}h` : `${d}m`}
+            </Chip>
+          ))}
+          <span className="w-px shrink-0 self-stretch bg-border" />
+          {DIFFICULTIES.map((d) => (
+            <Chip key={d} active={difficulty === d} onClick={() => setDifficulty(difficulty === d ? null : d)}>
+              <span className="capitalize">{d}</span>
+            </Chip>
+          ))}
+          <Chip onClick={() => void load()}>
+            <RefreshCw size={14} /> Regenerate
           </Chip>
-        ))}
-        <span className="w-px shrink-0 self-stretch bg-border" />
-        {DIFFICULTIES.map((d) => (
-          <Chip key={d} active={difficulty === d} onClick={() => setDifficulty(difficulty === d ? null : d)}>
-            <span className="capitalize">{d}</span>
-          </Chip>
-        ))}
-        <Chip onClick={() => void load()}>
-          <RefreshCw size={14} /> Regenerate
-        </Chip>
-      </div>
+        </div>
+      )}
 
       {loading && !plan && (
         <p className="py-16 text-center text-sm text-muted-foreground">Building your session…</p>
@@ -327,7 +379,11 @@ export default function WorkoutBuilderPage() {
           title="Couldn't build a session"
           description="The generator needs the server. Your logged sets are safe — try again when you're back online."
           action={
-            <Button variant="chunkyOutline" size="cta" onClick={() => void load()}>
+            <Button
+              variant="chunkyOutline"
+              size="cta"
+              onClick={() => (mode === 'routine' && routineId ? void openRoutine(routineId) : void load())}
+            >
               Try again
             </Button>
           }

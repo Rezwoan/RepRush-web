@@ -44,6 +44,15 @@ export class WorkoutsController {
     });
   }
 
+  /**
+   * A saved routine, as a startable session plan. Same shape as `generate`, so
+   * the builder renders either without knowing which it got.
+   */
+  @Get('from-routine/:id')
+  fromRoutine(@CurrentUser() user: User, @Param('id', ParseIntPipe) id: number) {
+    return this.workoutsService.planFromRoutineId(user.id, id);
+  }
+
   /** Last session's actual sets for one exercise — the tracker's PREV column. */
   @Get('previous/:exerciseId')
   previous(@CurrentUser() user: User, @Param('exerciseId') exerciseId: string) {
@@ -54,9 +63,17 @@ export class WorkoutsController {
   @Post('sessions')
   startSession(
     @CurrentUser() user: User,
-    @Body() body: { workoutType: string; workoutPlanId?: number; plan?: unknown },
+    @Body() body: { workoutType: string; workoutPlanId?: number; plan?: unknown; routineId?: number },
   ) {
-    return this.workoutsService.startSession(user.id, body.workoutType, body.workoutPlanId, body.plan);
+    // `routineId` is what makes a split rotate: stamped on *start*, not on
+    // opening the day, so browsing your program does not reorder it.
+    return this.workoutsService.startSession(
+      user.id,
+      body.workoutType,
+      body.workoutPlanId,
+      body.plan,
+      body.routineId,
+    );
   }
 
   @Get('sessions')

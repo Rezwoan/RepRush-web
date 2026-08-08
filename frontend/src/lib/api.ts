@@ -75,9 +75,16 @@ export const idem = (key?: string) =>
   key ? { headers: { 'X-Idempotency-Key': key } } : undefined;
 
 export const workoutsApi = {
-  startSession: (workoutType: string, workoutPlanId?: number, plan?: unknown, key?: string) =>
-    api.post('/workouts/sessions', { workoutType, workoutPlanId, plan }, idem(key)),
-  /** Build a session (SPEC §5.1). Reads and writes nothing until Start Workout. */
+  startSession: (
+    workoutType: string,
+    workoutPlanId?: number,
+    plan?: unknown,
+    key?: string,
+    routineId?: number,
+  ) =>
+    api.post('/workouts/sessions', { workoutType, workoutPlanId, plan, routineId }, idem(key)),
+  /** A saved routine as a startable plan — same shape as `generate`. */
+  fromRoutine: (routineId: number) => api.get(`/workouts/from-routine/${routineId}`),
   generate: (params: {
     durationMin?: number;
     difficulty?: string;
@@ -210,6 +217,10 @@ export const profileApi = {
   deleteRoutine: (id: number) => api.delete(`/profile/routines/${id}`),
   createFolder: (name: string) => api.post('/profile/folders', { name }),
   deleteFolder: (id: number) => api.delete(`/profile/folders/${id}`),
+  /** Which program the Workout tab opens on. `null` clears it. */
+  setDefaultFolder: (folderId: number | null) => api.post('/profile/folders/default', { folderId }),
+  routinePackages: () => api.get('/profile/routine-packages'),
+  claimPackage: (id: string) => api.post(`/profile/routine-packages/${id}/claim`),
 
   exercises: () => api.get('/profile/exercises'),
   createExercise: (body: Record<string, unknown>) => api.post('/profile/exercises', body),

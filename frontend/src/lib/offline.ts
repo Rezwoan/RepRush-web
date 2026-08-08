@@ -49,6 +49,8 @@ type Op =
       workoutType: string;
       workoutPlanId?: number;
       plan?: unknown;
+      /** Stamps the routine's `lastUsedAt` so a split rotates on its own. */
+      routineId?: number;
     }
   | { id: string; kind: 'logSet'; sessionId: number; localId: string; payload: Record<string, unknown> }
   | { id: string; kind: 'deleteSet'; sessionId: number; setId: number }
@@ -201,9 +203,14 @@ export function materializeSets(sessionId: number): CachedSet[] {
 
 // ─── Public write API (used by the session page) ─────────────────────────────
 
-export function queueStartSession(workoutType: string, workoutPlanId?: number, plan?: unknown): number {
+export function queueStartSession(
+  workoutType: string,
+  workoutPlanId?: number,
+  plan?: unknown,
+  routineId?: number,
+): number {
   const tempSessionId = -Date.now();
-  enqueue({ id: uid(), kind: 'startSession', tempSessionId, workoutType, workoutPlanId, plan });
+  enqueue({ id: uid(), kind: 'startSession', tempSessionId, workoutType, workoutPlanId, plan, routineId });
   const c = getCache();
   c[String(tempSessionId)] = {
     id: tempSessionId,
@@ -306,7 +313,13 @@ export async function flushOutbox(): Promise<{ synced: number; failed: number }>
 
       try {
         if (op.kind === 'startSession') {
-          const res = await workoutsApi.startSession(op.workoutType, op.workoutPlanId, op.plan, op.id);
+          const res = await workoutsApi.startSession(
+            op.workoutType,
+            op.workoutPlanId,
+            op.plan,
+            op.id,
+            op.routineId,
+          );
           const realId = res.data.id as number;
           const map = getIdMap();
           map[String(op.tempSessionId)] = realId;

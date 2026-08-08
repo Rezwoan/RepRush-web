@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { GymSession } from './gym-session.entity';
 import { WorkoutSet } from './workout-set.entity';
 import { PersonalRecord } from './personal-record.entity';
+import { Routine } from '../profile/routine.entity';
 import { WorkoutsService } from './workouts.service';
 import { WorkoutsController } from './workouts.controller';
 import { User } from '../users/user.entity';
@@ -12,7 +13,10 @@ import { RanksModule } from '../ranks/ranks.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([GymSession, WorkoutSet, PersonalRecord, User]),
+    // `Routine` is registered here as a repository, not by importing
+    // ProfileModule — starting a routine only needs to read its rows, and a
+    // module edge between these two would be a cycle waiting to happen.
+    TypeOrmModule.forFeature([GymSession, WorkoutSet, PersonalRecord, User, Routine]),
     UsersModule,
     // For the catalog lookup in logSet — a set without an exerciseId is
     // invisible to the rank engine and the recovery model.

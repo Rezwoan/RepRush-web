@@ -26,7 +26,7 @@ const ex = (
   notes: string,
 ) => ({ name, warmUpSets, sets, reps, estimatedLoad, baselineWeight: parseBaseline(estimatedLoad), bwMultiplier, rest, notes });
 
-const ULPPL_PLANS = [
+export const ULPPL_PLANS = [
   {
     name: 'Upper Power',
     exercises: {

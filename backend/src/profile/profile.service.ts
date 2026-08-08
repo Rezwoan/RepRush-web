@@ -17,6 +17,7 @@ import { USERNAME_RE } from '../social/social.service';
 import { PostReaction } from '../social/post-reaction.entity';
 import { HealthLog } from './health-log.entity';
 import { Routine, RoutineFolder, UserExercise } from './routine.entity';
+import { ROUTINE_PACKAGES, packageById } from '../workouts/routine-packages';
 import { COSMETIC_BY_ID, COSMETICS, DEFAULT_COSMETIC, freeIds, type CosmeticKind } from './cosmetics';
 import { XP, levelFromXp } from './xp';
 
@@ -565,15 +566,138 @@ export class ProfileService {
       folderId: r.folderId ?? null,
       exercises: parseJson<unknown[]>(r.exercises, []),
       updatedAt: r.updatedAt,
+      // What the Workout tab rotates on — the day gone longest without.
+      lastUsedAt: r.lastUsedAt ?? null,
     });
     return {
       folders: folders.map((f) => ({
         id: f.id,
         name: f.name,
-        routines: routines.filter((r) => r.folderId === f.id).map(shape),
+        isDefault: !!f.isDefault,
+        packageId: f.packageId ?? null,
+        routines: routines
+          .filter((r) => r.folderId === f.id)
+          .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+          .map(shape),
       })),
       loose: routines.filter((r) => !r.folderId).map(shape),
+      /** Total across folders and loose — the one number the Workout tab branches on. */
+      total: routines.length,
     };
+  }
+
+  // ── routine packages ──────────────────────────────────────────────
+
+  /**
+   * The package catalog, with what the user already has.
+   *
+   * `owned` is by `packageId` on the folder rather than a separate ledger: a
+   * claimed package *is* the folder it created, so there is nothing else that
+   * could disagree with it. Re-claiming is allowed for a free package (people
+   * delete things), which is why this reports `owned` rather than blocking.
+   */
+  async routinePackages(userId: number) {
+    const [user, folders] = await Promise.all([
+      this.users.findOne({ where: { id: userId } }),
+      this.folders.find({ where: { userId } }),
+    ]);
+    const ownedPackages = new Set(folders.map((f) => f.packageId).filter(Boolean));
+    return {
+      currency: user?.currency ?? 0,
+      packages: ROUTINE_PACKAGES.map((p) => ({
+        id: p.id,
+        name: p.name,
+        tagline: p.tagline,
+        description: p.description,
+        price: p.price,
+        level: p.level,
+        owned: ownedPackages.has(p.id),
+        days: p.days.map((d) => ({
+          name: d.name,
+          focus: d.focus,
+          exercises: d.exercises.map((x) => x.name),
+        })),
+      })),
+    };
+  }
+
+  /**
+   * Adopt a package: charge it if it costs anything, then write one real
+   * routine per day into a folder the user owns outright.
+   *
+   * They are ordinary routines from that moment on — editable, deletable, and
+   * startable — which is the whole point. A package is a starting point, not a
+   * subscription.
+   */
+  async claimPackage(userId: number, packageId: string) {
+    const pkg = packageById(packageId);
+    if (!pkg) throw new NotFoundException('No such routine package');
+
+    const user = await this.users.findOne({ where: { id: userId } });
+    const already = await this.folders.findOne({ where: { userId, packageId } });
+
+    if (!already && pkg.price > 0) {
+      const balance = user?.currency ?? 0;
+      if (balance < pkg.price) throw new BadRequestException('Not enough Spark');
+      await this.users.update(userId, { currency: balance - pkg.price });
+    }
+    if (already) throw new BadRequestException('You already have that program');
+
+    const folder = await this.folders.save(
+      this.folders.create({ userId, name: pkg.name, packageId: pkg.id }),
+    );
+
+    let order = 0;
+    for (const day of pkg.days) {
+      const exercises = day.exercises
+        .map((x) => {
+          // Same resolver that mapped v1's history onto the catalog in P2, so a
+          // package day and a legacy session agree about what an exercise is.
+          const exerciseId = this.catalog.resolveLegacyName(x.name);
+          if (!exerciseId) return null;
+          const cat = this.catalog.find(exerciseId);
+          return {
+            exerciseId,
+            name: cat?.name ?? x.name,
+            sets: x.sets,
+            repMin: x.repMin,
+            repMax: x.repMax,
+            restSec: x.restSec,
+          };
+        })
+        .filter(Boolean);
+
+      await this.routines.save(
+        this.routines.create({
+          userId,
+          folderId: folder.id,
+          name: day.name,
+          sortOrder: order++,
+          exercises: JSON.stringify(exercises),
+        }),
+      );
+    }
+
+    // A program you just adopted and then have to go and select is a step that
+    // exists only because we made it.
+    await this.setDefaultFolder(userId, folder.id);
+    return this.listRoutines(userId);
+  }
+
+  /** At most one default per user, enforced by clearing the rest in the same call. */
+  async setDefaultFolder(userId: number, folderId: number | null) {
+    await this.folders.update({ userId }, { isDefault: null });
+    if (folderId !== null) {
+      const folder = await this.folders.findOne({ where: { id: folderId, userId } });
+      if (!folder) throw new NotFoundException('Folder not found');
+      await this.folders.update({ id: folderId, userId }, { isDefault: true });
+    }
+    return this.listRoutines(userId);
+  }
+
+  /** Stamped when a routine is started, so the Workout tab can rotate the split. */
+  async markRoutineUsed(userId: number, routineId: number) {
+    await this.routines.update({ id: routineId, userId }, { lastUsedAt: new Date() });
   }
 
   async createFolder(userId: number, name: string) {

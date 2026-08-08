@@ -4,6 +4,7 @@ import { Repository, Between, Not, IsNull } from 'typeorm';
 import { GymSession } from './gym-session.entity';
 import { WorkoutSet } from './workout-set.entity';
 import { PersonalRecord } from './personal-record.entity';
+import { Routine } from '../profile/routine.entity';
 import { User } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
 import { CatalogService } from '../exercises/catalog.service';
@@ -13,6 +14,7 @@ import {
   Difficulty,
   GenExercise,
   GeneratedWorkout,
+  PlannedExercise,
   LastPerformance,
   generate,
   roundLoad,
@@ -57,6 +59,7 @@ export class WorkoutsService {
     @InjectRepository(WorkoutSet) private setRepo: Repository<WorkoutSet>,
     @InjectRepository(PersonalRecord) private prRepo: Repository<PersonalRecord>,
     @InjectRepository(User) private userRepo: Repository<User>,
+    @InjectRepository(Routine) private routineRepo: Repository<Routine>,
     private usersService: UsersService,
     private catalog: CatalogService,
     private ranks: RanksService,
@@ -64,7 +67,13 @@ export class WorkoutsService {
 
   // ─── Sessions ───────────────────────────────────────────────────────────────
 
-  async startSession(userId: number, workoutType: string, workoutPlanId?: number, plan?: unknown) {
+  async startSession(
+    userId: number,
+    workoutType: string,
+    workoutPlanId?: number,
+    plan?: unknown,
+    routineId?: number,
+  ) {
     const session = this.sessionRepo.create({
       userId,
       workoutType,
@@ -72,7 +81,14 @@ export class WorkoutsService {
       plan: plan ? JSON.stringify(plan) : null,
       tracked: true,
     });
-    return this.sessionRepo.save(session);
+    const saved = await this.sessionRepo.save(session);
+    // Best-effort: a session that started is worth more than a rotation stamp.
+    if (routineId) {
+      await this.routineRepo
+        .update({ id: routineId, userId }, { lastUsedAt: new Date() })
+        .catch(() => undefined);
+    }
+    return saved;
   }
 
   async completeSession(
@@ -138,6 +154,105 @@ export class WorkoutsService {
       onlyMuscles: opts.muscles,
       estimate: (ex, reps) => this.estimateLoad(ex, reps, percentile, bw, user.sex, age),
     });
+  }
+
+  /**
+   * Turn a saved routine into a session plan.
+   *
+   * The counterpart to `generateWorkout`, returning the *same* `GeneratedWorkout`
+   * shape on purpose: the session screen, the outbox and `gym_sessions.plan` all
+   * consume that shape already, so a routine-started session and a generated one
+   * are indistinguishable downstream. A routine is a prescription of which
+   * exercises and how many sets; the numbers still come from the user's own last
+   * performance, or from the same estimate a generated session would use — never
+   * from whatever was stored when the routine was written, which would go stale
+   * the first time they got stronger.
+   */
+  async planFromRoutineId(userId: number, routineId: number) {
+    const row = await this.routineRepo.findOne({ where: { id: routineId, userId } });
+    if (!row) throw new NotFoundException('Routine not found');
+    let exercises: any[] = [];
+    try {
+      exercises = JSON.parse(row.exercises) ?? [];
+    } catch {
+      exercises = [];
+    }
+    const plan = await this.fromRoutine(userId, { name: row.name, exercises });
+    // Stamped here rather than at session start: the tab loads a plan the
+    // moment you pick a day, and a split that rotates on *opening* a day is
+    // wrong. `startSession` is where it counts — see the controller.
+    return { ...plan, routineId: row.id };
+  }
+
+  async fromRoutine(userId: number, routine: { name: string; exercises: any[] }) {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const [muscleRanks, history] = await Promise.all([
+      this.ranks.muscleRanks(userId),
+      this.lastPerformances(userId),
+    ]);
+    const percentile = Object.fromEntries(muscleRanks.map((m) => [m.muscleId, m.rank.percentile]));
+    const bw = user.weightKg > 0 ? user.weightKg : DEFAULT_BODYWEIGHT_KG;
+    const age = user.birthDate
+      ? Math.floor((Date.now() - new Date(user.birthDate).getTime()) / (365.25 * 86400000))
+      : null;
+
+    const exercises: PlannedExercise[] = [];
+    let estimatedSec = 0;
+    const focusCount: Record<string, number> = {};
+
+    for (const item of routine.exercises ?? []) {
+      const cat = this.catalog.find(item.exerciseId);
+      // A routine can outlive an exercise (a custom one deleted, a catalog id
+      // that no longer resolves). Skip it rather than fail the whole session.
+      if (!cat) continue;
+
+      const setCount = Math.max(1, Math.min(10, Number(item.sets) || 3));
+      const reps = Math.max(1, Math.round(((item.repMin ?? 8) + (item.repMax ?? 12)) / 2));
+      const restSec = Number(item.restSec) || cat.restSec || 90;
+      const last = history[item.exerciseId];
+      const weightKg =
+        last?.weightKg ??
+        this.estimateLoad(cat as unknown as GenExercise, reps, percentile, bw, user.sex, age);
+
+      exercises.push({
+        exerciseId: item.exerciseId,
+        name: cat.name,
+        primaryMuscle: cat.primary[0],
+        equipment: cat.equipment,
+        mechanic: cat.mechanic,
+        restSec,
+        sets: Array.from({ length: setCount }, (_, i) => ({
+          setNumber: i + 1,
+          isWarmup: false,
+          targetReps: reps,
+          weightKg,
+        })),
+        fromHistory: !!last,
+      });
+
+      focusCount[cat.primary[0]] = (focusCount[cat.primary[0]] ?? 0) + setCount;
+      estimatedSec += setCount * (45 + restSec) + 60;
+    }
+
+    const totalSets = Object.values(focusCount).reduce((a, b) => a + b, 0) || 1;
+    const focus = Object.entries(focusCount)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([muscleId, n]) => ({
+        muscleId,
+        label: this.catalog.muscle(muscleId)?.label ?? muscleId,
+        share: n / totalSets,
+      }));
+
+    return {
+      title: routine.name,
+      durationMin: Math.round(estimatedSec / 60),
+      estimatedSec,
+      focus,
+      exercises,
+    };
   }
 
   /**

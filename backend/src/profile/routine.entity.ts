@@ -20,6 +20,18 @@ export class RoutineFolder {
   @Column()
   name: string;
 
+  /**
+   * The program the Workout tab opens on. Null everywhere except at most one
+   * folder per user — `setDefaultFolder` clears the others in the same write.
+   * Nullable, like every column added to an existing table (MEMORY → Decisions).
+   */
+  @Column({ nullable: true })
+  isDefault: boolean;
+
+  /** Set when this folder came from a routine package, so the Store can tell. */
+  @Column({ nullable: true })
+  packageId: string;
+
   @CreateDateColumn()
   createdAt: Date;
 }
@@ -50,6 +62,18 @@ export class Routine {
   /** JSON: `{ exerciseId, name, sets, repMin, repMax, restSec }[]`. */
   @Column({ type: 'text' })
   exercises: string;
+
+  /**
+   * Last time this routine was started. What makes a six-day split rotate:
+   * the Workout tab suggests the day you have gone longest without, rather than
+   * asking you to remember where you are in the week.
+   */
+  @Column({ nullable: true })
+  lastUsedAt: Date;
+
+  /** Position within its folder — a program's days have an order. */
+  @Column({ nullable: true })
+  sortOrder: number;
 
   @CreateDateColumn()
   createdAt: Date;
