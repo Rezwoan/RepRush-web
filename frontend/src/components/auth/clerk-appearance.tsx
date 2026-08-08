@@ -61,24 +61,24 @@ export function useClerkAppearance(): Appearance {
       rootBox: 'w-full',
       cardBox: 'w-full shadow-none',
       card: 'bg-transparent shadow-none border-0 p-0',
-      // Hidden: the page carries its own "Don't have an account? Get started",
-      // which points at the onboarding funnel. Clerk's footer offers a second
-      // signup link to a different place, so both on screen is one prompt too
-      // many and two answers to the same question.
+      // Hidden: the page has its own "Don't have an account? Get started".
       footerAction: 'hidden',
       footer: 'bg-transparent',
-      formButtonPrimary: 'font-semibold tracking-tight normal-case text-[0.95rem] h-12 shadow-lift',
-      // Explicit foreground: this is the element that was invisible, and it is
-      // the one place Clerk's own default text colour used to win.
-      socialButtonsBlockButton:
-        'border-2 border-border bg-secondary/60 text-foreground hover:bg-secondary h-12 font-semibold normal-case transition-colors',
-      socialButtonsBlockButtonText: 'text-foreground font-semibold',
+
+      // COLOURS ONLY, deliberately. The first version of this file also forced
+      // `h-12` and `border-2` onto Clerk's buttons and inputs — geometry, on top
+      // of a component that already has a tested responsive box model. Fixed
+      // heights against Clerk's own padding is what makes a control clip its
+      // label or spill its border on a narrow screen. Anything to do with size,
+      // spacing or wrapping is Clerk's job; ours stops at the palette.
+      socialButtonsBlockButton: 'border-border bg-secondary/60 text-foreground hover:bg-secondary',
+      socialButtonsBlockButtonText: 'text-foreground',
       dividerLine: 'bg-border',
       dividerText: 'text-muted-foreground',
-      formFieldLabel: 'text-muted-foreground font-semibold',
-      formFieldInput: 'border-2 border-border bg-card h-12',
+      formFieldLabel: 'text-muted-foreground',
+      formFieldInput: 'border-border bg-card',
       footerActionText: 'text-muted-foreground',
-      footerActionLink: 'text-primary font-semibold hover:underline',
+      footerActionLink: 'text-primary',
     },
   };
 }
