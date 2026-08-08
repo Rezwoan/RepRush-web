@@ -1019,6 +1019,40 @@ All three land on the same mistake, and it was mine: **the data model, not the s
       so three reports sent in the same second sorted unstably on a screen claiming newest-first.
       Fixed with an `id` tiebreaker.
 
+### Round six — Today's Workout follows the program, Memories reads as a calendar (2026-08-08)
+
+- [x] **`HomeService.today()` was never routine-aware.** It picked muscles by recovered +
+      lowest-ranked — the generator's logic — so someone running the six-day split was told to
+      train "Legs, Chest & Back" while their own program said Pull. Its docstring still read
+      *"P6 owns the real generator; until then…"*: **the third stale TODO found this phase** that
+      outlived its phase and hid a real gap, after the top bar's "arrives with P11" and the store's.
+      The card names the next day of the program now, and starts it — Home deep-links
+      `/workout?routine=<id>` rather than dropping the user on a list to find it again. The
+      generator is the fallback for someone with no routines, not the default for everyone.
+- [x] **Rotation is one shared function** (`backend/src/profile/routine-rotation.ts`), published as
+      `nextRoutineId` by `listRoutines` and consumed by both Home and the Workout tab. Home's card
+      and the tab's `Next up` badge naming different days would read as a bug in both with no way
+      to tell which was lying — the same call P6 made moving recovery into `RanksService`.
+      The rule is **order-based, not longest-unused**: after Upper comes Lower, and skipping legs
+      once must not make the app demand legs for the rest of the week. Nine assertions, including
+      that exact case, plus the wrap and the never-trained-first rule.
+- [x] **Memories rebuilt.** It drew each trained day as a ~40px `Bodygraph` silhouette — a smudge
+      at that size — with no weekday headers, no month, no legend and nothing tappable. It now has
+      weekday headers (free: 14 consecutive days is exactly two weeks, so column *j* always holds
+      the same weekday), day numbers always visible, filled trained days, a month label where the
+      month turns over, an `N of 14 days` count, and a tap that opens what was actually trained —
+      with the Bodygraph moved into that sheet, at a size where it is legible.
+- [x] **Exit check — verified on dev by walking the whole program:** starting and completing each
+      day in turn produced Upper → Lower → Push → Pull → Leg → Arms → **Upper**, and Home's card
+      and the Workout tab's badge agreed on **every one of the seven steps**. Focus shares are
+      set-count weighted and sum to 1.00. With no routines the card correctly falls back to the
+      generator. `rotation ok` at boot, zero ERROR lines, `/workout?routine=` 200, prod untouched.
+- [x] **The check caught its own flaw first**, which is worth recording: the initial run started
+      seven sessions without completing them, so the card was correctly in `resume` state — which
+      carries no `routineId` — and the comparison was against a field that does not apply there.
+      The test was wrong, not the code. `source` is now documented as meaningful only when `state`
+      is `start`.
+
 ### Still open — resume here
 
 - [ ] **Rebuild the admin panel in the v2 shell.** `app/admin/page.tsx` is still v1's 501-line page

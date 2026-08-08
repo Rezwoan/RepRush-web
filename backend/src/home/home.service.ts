@@ -90,7 +90,11 @@ export interface HomeSummary {
      * suggestion was generated, which only happens when they have no routines.
      */
     routineId: number | null;
-    /** `routine` | `generated` — what the card should say it is offering. */
+    /**
+     * What the card is offering. **Only meaningful when `state` is `start`** —
+     * a resumed session is neither a suggestion nor a generated one, and the
+     * field is carried there only so the shape stays uniform.
+     */
     source: 'routine' | 'generated';
   };
   recovery: {
@@ -213,6 +217,8 @@ export class HomeService {
         title: active.workoutType || 'Workout in progress',
         subtitle: 'You left a session open. Pick up where you stopped.',
         focus: [],
+        // A resumed session is not a suggestion: there is nothing to pick,
+        // only somewhere to return to. `source` is inert here — see the type.
         routineId: null,
         source: 'routine',
       };

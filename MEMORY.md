@@ -916,3 +916,23 @@ Two rules that fall out of it:
 - Uploads are base64 data URLs in the JSON body, not multipart — avoids adding multer for one form.
   Affordable only because the client downscales first (`lib/image-compress.ts`, 1600px JPEG q0.82,
   which also strips EXIF/GPS). nginx caps bodies at 12 MB.
+
+**P15 round six · 2026-08-08**
+
+- **Which routine comes next is `backend/src/profile/routine-rotation.ts`, and only that.** It is
+  published as `nextRoutineId` on `GET /profile/routines` and consumed by Home's Today's Workout
+  card and the Workout tab's `Next up` badge. Two screens answering it independently would
+  eventually disagree, and the user could not tell which was lying.
+- The rule is **order-based, not longest-unused**: never-trained days first in program order, then
+  the day *after* the most recent, wrapping. They agree while a program runs in sequence and
+  diverge when a day is skipped — and there, continuing the sequence is right.
+- **`HomeService.today()` was the third stale TODO of this phase** (`"P6 owns the real generator;
+  until then…"`), after the top bar's `"arrives with P11"`. **When a phase closes, grep for
+  comments naming it.** Every one found so far was hiding a real gap.
+- `HomeSummary.today.source` is only meaningful when `state === 'start'`. A resumed session is
+  neither a suggestion nor a generated one.
+- **14 consecutive days is exactly two weeks**, so a 7-column grid of them is weekday-aligned by
+  construction — column *j* always holds the same weekday. That is what lets the Memories card
+  carry a single weekday header row and read as a calendar.
+- A `Bodygraph` is unreadable below roughly 80px. Use it in a sheet or a card, never in a
+  calendar cell; a day cell wants a number and a fill.
