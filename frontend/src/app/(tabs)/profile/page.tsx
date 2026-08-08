@@ -36,8 +36,9 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Chip, Segmented } from '@/components/ui/controls';
 import { Bar, EmptyState, StatTile, TabSkeleton } from '@/components/ui/display';
+import { Sheet } from '@/components/ui/sheet';
 import { RankBadge } from '@/components/art/rank-badge';
-import { Bodygraph, BodygraphPair } from '@/components/art/bodygraph';
+import { BodygraphPair } from '@/components/art/bodygraph';
 import { Mascot, type MascotPose } from '@/components/art/mascot';
 import { ProfileHeaderCard, useProfile } from './header';
 import { EditProfile } from './edit';
@@ -91,43 +92,140 @@ function Card({
   );
 }
 
-/** Days with a workout show what was trained, not the date (SPEC §9, card 1). */
+/**
+ * Memories — the last two weeks, as a calendar you can actually read.
+ *
+ * The first version drew each trained day as a ~40px `Bodygraph` silhouette and
+ * left untrained days as a bare number. At that size the anatomy is a smudge,
+ * there were no weekday headers, no month, no legend and nothing tappable — so
+ * it neither read as a calendar nor told you anything. The owner's verdict was
+ * that it "does not serve any good purpose", which was correct.
+ *
+ * What it needs to answer is *did I train, and how consistently*. So: weekday
+ * headers, the day number always visible, trained days filled, a count in the
+ * corner, and a tap that says what was actually done.
+ *
+ * The 7-column grid is weekday-aligned for free — 14 consecutive days is
+ * exactly two weeks, so column j always holds the same weekday and one header
+ * row is correct for both.
+ */
 function MemoriesCard({ data }: { data: Overview }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const [open, setOpen] = useState<Overview['memories'][number] | null>(null);
+
+  const days = data.memories;
+  const trained = days.filter((d) => d.muscles.length > 0).length;
+
+  // Derived from the data rather than a constant, because the window ends today
+  // and therefore starts on a different weekday every day.
+  const headers = days.slice(0, 7).map((d) =>
+    new Date(`${d.date}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'narrow' }),
+  );
+
+  const groupsOf = (muscles: string[]) =>
+    Array.from(
+      new Set(
+        muscles.map((m) => MUSCLE_BY_ID[m as MuscleId]?.group).filter(Boolean) as string[],
+      ),
+    );
+
   return (
-    <Card title="Memories">
+    <Card
+      title="Memories"
+      action={
+        <span className="nums text-xs font-bold text-muted-foreground">
+          {trained} of {days.length} days
+        </span>
+      }
+    >
+      <div className="grid grid-cols-7 gap-1.5 pb-1 text-center">
+        {headers.map((h, i) => (
+          <span key={i} className="text-[11px] font-bold uppercase text-muted-foreground">
+            {h}
+          </span>
+        ))}
+      </div>
+
       <div className="grid grid-cols-7 gap-1.5">
-        {data.memories.map((d) => {
-          const muscles = d.muscles.filter((m) => m in MUSCLE_BY_ID) as MuscleId[];
-          const colors = Object.fromEntries(
-            muscles.map((m) => [m, 'hsl(var(--primary) / 0.85)']),
-          ) as Partial<Record<MuscleId, string>>;
-          const views = new Set(muscles.map((m) => MUSCLE_BY_ID[m].view));
-          const back = views.has('back') && !views.has('front');
+        {days.map((d) => {
+          const did = d.muscles.length > 0;
+          const date = new Date(`${d.date}T00:00:00`);
+          const isToday = d.date === todayKey;
+          const first = date.getDate() === 1;
           return (
-            <div
+            <button
               key={d.date}
+              onClick={() => did && setOpen(d)}
+              disabled={!did}
+              aria-label={
+                did
+                  ? `${date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })} — trained ${groupsOf(d.muscles).join(', ')}`
+                  : `${date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })} — rest day`
+              }
               className={cn(
-                'grid aspect-square place-items-center overflow-hidden rounded-xl bg-muted/50',
-                d.date === today && 'ring-2 ring-primary',
+                'relative grid aspect-square place-items-center rounded-xl text-sm font-extrabold transition-colors',
+                did
+                  ? 'press bg-primary-fill text-primary-foreground'
+                  : 'bg-muted/50 text-muted-foreground',
+                isToday && 'ring-2 ring-primary ring-offset-2 ring-offset-card',
               )}
             >
-              {muscles.length ? (
-                <Bodygraph
-                  view={back ? 'back' : 'front'}
-                  colors={colors}
-                  interactive={false}
-                  className="h-full py-1"
-                />
-              ) : (
-                <span className="nums text-xs font-bold text-muted-foreground">
-                  {parseInt(d.date.slice(8), 10)}
+              <span className="nums leading-none">{date.getDate()}</span>
+              {/* The month, only where it changes — a bare "1" is ambiguous. */}
+              {first && (
+                <span className="absolute bottom-0.5 text-[8px] font-bold uppercase opacity-80">
+                  {date.toLocaleDateString('en-GB', { month: 'short' })}
                 </span>
               )}
-            </div>
+            </button>
           );
         })}
       </div>
+
+      <p className="mt-2.5 text-xs text-muted-foreground">
+        {trained === 0
+          ? 'Nothing logged in the last two weeks.'
+          : 'Filled days are days you trained — tap one to see what you did.'}
+      </p>
+
+      <Sheet
+        open={!!open}
+        onOpenChange={(v) => !v && setOpen(null)}
+        title={
+          open
+            ? new Date(`${open.date}T00:00:00`).toLocaleDateString('en-GB', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+              })
+            : ''
+        }
+      >
+        {open && (
+          <div className="space-y-3 pb-2">
+            <div className="flex items-baseline gap-2">
+              <p className="text-lg font-extrabold">{open.title ?? 'Workout'}</p>
+              <p className="nums text-sm text-muted-foreground">{open.sets} sets</p>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {open.muscles.map((m) => (
+                <span key={m} className="rounded-lg bg-secondary px-2 py-1 text-sm font-bold">
+                  {MUSCLE_BY_ID[m as MuscleId]?.label ?? m}
+                </span>
+              ))}
+            </div>
+            {/* The Bodygraph belongs here, at a size where it is legible —
+                not shrunk into a 40px calendar cell. */}
+            <BodygraphPair
+              colors={
+                Object.fromEntries(
+                  open.muscles.map((m) => [m, 'hsl(var(--primary) / 0.85)']),
+                ) as Partial<Record<MuscleId, string>>
+              }
+            />
+          </div>
+        )}
+      </Sheet>
     </Card>
   );
 }

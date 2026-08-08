@@ -40,7 +40,9 @@ export interface Overview {
   header: ProfileHeader;
   preferences: Preferences;
   layout: string[];
-  memories: { date: string; muscles: string[] }[];
+  /** 14 consecutive days ending today — exactly two weeks, so a 7-column
+   *  grid of them is weekday-aligned and can carry one header row. */
+  memories: { date: string; muscles: string[]; title: string | null; sets: number }[];
   last7: Record<string, number>;
   totals: {
     window: number;

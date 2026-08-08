@@ -19,6 +19,7 @@ import { HealthLog } from './health-log.entity';
 import { Routine, RoutineFolder, UserExercise } from './routine.entity';
 import { ROUTINE_PACKAGES, packageById } from '../workouts/routine-packages';
 import { normaliseExercise, parseExercises } from './routine-shape';
+import { nextRoutineId } from './routine-rotation';
 import { COSMETIC_BY_ID, COSMETICS, DEFAULT_COSMETIC, freeIds, type CosmeticKind } from './cosmetics';
 import { XP, levelFromXp } from './xp';
 
@@ -200,7 +201,14 @@ export class ProfileService {
     );
 
     // Memories — two weeks of "what did I train that day" (SPEC §9, card 1).
+    //
+    // Fourteen *consecutive* days is exactly two weeks, so a 7-column grid of
+    // them is weekday-aligned by construction: column j always holds the same
+    // weekday. That is what lets the card carry a single weekday header row and
+    // actually read as a calendar.
     const byDay = new Map<string, Set<string>>();
+    const titleByDay = new Map<string, string>();
+    const setsByDay = new Map<string, number>();
     const durationOf = (s: GymSession) =>
       Math.max(0, (new Date(s.completedAt).getTime() - new Date(s.startedAt).getTime()) / 1000);
     for (const s of sessions) {
@@ -211,11 +219,20 @@ export class ProfileService {
         for (const m of ex?.primary ?? []) muscles.add(m);
       }
       byDay.set(key, muscles);
+      // The session's own name, so a tapped day can say "Upper" rather than
+      // making the user infer it from a list of muscles.
+      if (s.workoutType) titleByDay.set(key, s.workoutType);
+      setsByDay.set(key, (setsByDay.get(key) ?? 0) + working(s.id).length);
     }
     const memories = Array.from({ length: 14 }, (_, i) => {
       const d = new Date(now.getTime() - (13 - i) * DAY_MS);
       const key = dayKey(d);
-      return { date: key, muscles: Array.from(byDay.get(key) ?? []) };
+      return {
+        date: key,
+        muscles: Array.from(byDay.get(key) ?? []),
+        title: titleByDay.get(key) ?? null,
+        sets: setsByDay.get(key) ?? 0,
+      };
     });
 
     // Last 7 days — Bodygraph tinted by *volume*, not fatigue. Different
@@ -589,6 +606,19 @@ export class ProfileService {
       loose: routines.filter((r) => !r.folderId).map(shape),
       /** Total across folders and loose — the one number the Workout tab branches on. */
       total: routines.length,
+      /**
+       * Which day to suggest next, computed **here** so Home's Today's Workout
+       * card and the Workout tab's `Next up` badge cannot disagree — see
+       * `routine-rotation.ts`. Scoped to the default program when there is one,
+       * because rotating across unrelated routines is not a rotation.
+       */
+      nextRoutineId: nextRoutineId(
+        (folders.find((f) => f.isDefault) ?? folders[0])
+          ? routines.filter(
+              (r) => r.folderId === (folders.find((f) => f.isDefault) ?? folders[0]).id,
+            )
+          : routines.filter((r) => !r.folderId),
+      ),
     };
   }
 

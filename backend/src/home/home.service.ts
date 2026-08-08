@@ -7,6 +7,8 @@ import { WorkoutSet } from '../workouts/workout-set.entity';
 import { PersonalRecord } from '../workouts/personal-record.entity';
 import { BodyWeightLog } from '../body-weight/body-weight-log.entity';
 import { CatalogService } from '../exercises/catalog.service';
+import { Routine, RoutineFolder } from '../profile/routine.entity';
+import { nextRoutineId } from '../profile/routine-rotation';
 import { RanksService } from '../ranks/ranks.service';
 import { effectiveLoad } from '../ranks/e1rm';
 import { FRESH_BELOW, RecoveryStatus } from '../ranks/recovery';
@@ -82,6 +84,14 @@ export interface HomeSummary {
     title: string;
     subtitle: string;
     focus: { muscleId: string; label: string; share: number }[];
+    /**
+     * Set when the suggestion is a day from the user's own program, so the card
+     * can start *that* rather than dropping them on the builder. Null means the
+     * suggestion was generated, which only happens when they have no routines.
+     */
+    routineId: number | null;
+    /** `routine` | `generated` — what the card should say it is offering. */
+    source: 'routine' | 'generated';
   };
   recovery: {
     readiness: number;
@@ -112,6 +122,11 @@ export class HomeService {
     @InjectRepository(WorkoutSet) private sets: Repository<WorkoutSet>,
     @InjectRepository(PersonalRecord) private prs: Repository<PersonalRecord>,
     @InjectRepository(BodyWeightLog) private weights: Repository<BodyWeightLog>,
+    // Registered as repositories rather than by importing ProfileModule: this
+    // only reads routine rows to pick the next day, and a module edge for one
+    // lookup is a dependency neither side needs. Same call WorkoutsModule makes.
+    @InjectRepository(Routine) private routineRepo: Repository<Routine>,
+    @InjectRepository(RoutineFolder) private folderRepo: Repository<RoutineFolder>,
     private catalog: CatalogService,
     private ranks: RanksService,
   ) {}
@@ -198,6 +213,31 @@ export class HomeService {
         title: active.workoutType || 'Workout in progress',
         subtitle: 'You left a session open. Pick up where you stopped.',
         focus: [],
+        routineId: null,
+        source: 'routine',
+      };
+    }
+
+    // ── follow the program, if there is one ──
+    //
+    // This card generated a muscle suggestion for everybody until now, so
+    // somebody running a six-day split was told to train "Legs, Chest & Back"
+    // while their own program said Pull. Routines are the answer whenever they
+    // exist; the generator is the fallback for someone who has not chosen a
+    // program, not the default for everyone.
+    const suggested = await this.suggestedRoutine(userId);
+    if (suggested) {
+      const focus = this.focusFromRoutine(suggested.exercises);
+      return {
+        state: 'start',
+        sessionId: null,
+        title: suggested.name,
+        subtitle: suggested.folderName
+          ? `Next in ${suggested.folderName} · ${suggested.exercises.length} exercises`
+          : `${suggested.exercises.length} exercises`,
+        focus,
+        routineId: suggested.id,
+        source: 'routine',
       };
     }
 
@@ -235,7 +275,74 @@ export class HomeService {
             ? `Aimed at ${focus.map((f) => f.label).join(', ')}.`
             : 'Log your first session and the app starts aiming for you.',
       focus,
+      routineId: null,
+      source: 'generated',
     };
+  }
+
+  /**
+   * The next day of the user's program, or null if they have no routines.
+   *
+   * Scoped to the default folder (or the first one) so the rotation runs over a
+   * program rather than over every routine they own. `nextRoutineId` is shared
+   * with `ProfileService.listRoutines`, which is what stops this card and the
+   * Workout tab's `Next up` badge from ever naming different days.
+   */
+  private async suggestedRoutine(userId: number) {
+    const [folders, routines] = await Promise.all([
+      this.folderRepo.find({ where: { userId } }),
+      this.routineRepo.find({ where: { userId } }),
+    ]);
+    if (!routines.length) return null;
+
+    const program = folders.find((f) => f.isDefault) ?? folders[0] ?? null;
+    const pool = program
+      ? routines.filter((r) => r.folderId === program.id)
+      : routines.filter((r) => !r.folderId);
+    const candidates = pool.length ? pool : routines;
+
+    const id = nextRoutineId(candidates);
+    const row = candidates.find((r) => r.id === id);
+    if (!row) return null;
+
+    let exercises: any[] = [];
+    try {
+      exercises = JSON.parse(row.exercises) ?? [];
+    } catch {
+      exercises = [];
+    }
+    return {
+      id: row.id,
+      name: row.name,
+      folderName: pool.length && program ? program.name : null,
+      exercises,
+    };
+  }
+
+  /**
+   * Target-muscle shares for a routine, so the card's Bodygraph lights up the
+   * same way it does for a generated session.
+   *
+   * Weighted by **set count**, not by exercise count: four sets of squats is
+   * more of a leg session than one set of calf raises is a calf session.
+   */
+  private focusFromRoutine(exercises: any[]) {
+    const counts: Record<string, number> = {};
+    for (const ex of exercises) {
+      const cat = this.catalog.find(ex?.exerciseId);
+      if (!cat) continue;
+      const sets = Array.isArray(ex?.sets) ? ex.sets.length : Number(ex?.sets) || 1;
+      counts[cat.primary[0]] = (counts[cat.primary[0]] ?? 0) + sets;
+    }
+    const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([muscleId, n]) => ({
+        muscleId,
+        label: this.catalog.muscle(muscleId)?.label ?? muscleId,
+        share: round(n / total, 2),
+      }));
   }
 
   private titleCase = (s: string) => s.replace(/\b[a-z]/g, (c) => c.toUpperCase());

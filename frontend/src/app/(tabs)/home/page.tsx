@@ -32,6 +32,9 @@ interface Summary {
   user: { name: string; avatarId: string | null; streak: number; bestStreak: number };
   today: {
     state: 'resume' | 'start';
+    /** Set when the suggestion is a day of the user's own program. */
+    routineId: number | null;
+    source: 'routine' | 'generated';
     sessionId: number | null;
     title: string;
     subtitle: string;
@@ -455,12 +458,22 @@ function ForYou({
         )}
 
         <button
-          onClick={() =>
-            router.push(today.sessionId ? `/workout/session/${today.sessionId}` : '/workout')
-          }
+          onClick={() => {
+            // Three destinations, in order of how specific the suggestion is:
+            // an open session, a named day of the user's program (deep-linked
+            // so the builder opens on *that* routine rather than making them
+            // find it again), or the builder itself.
+            if (today.sessionId) return router.push(`/workout/session/${today.sessionId}`);
+            if (today.routineId) return router.push(`/workout?routine=${today.routineId}`);
+            router.push('/workout');
+          }}
           className="press mt-5 h-12 w-full rounded-xl border-b-4 border-b-black/20 bg-white text-sm font-extrabold uppercase tracking-wider text-brand-700 active:translate-y-[3px] active:border-b-[1px]"
         >
-          {today.state === 'resume' ? 'Resume session' : 'Start workout'}
+          {today.state === 'resume'
+            ? 'Resume session'
+            : today.routineId
+              ? `Start ${today.title}`
+              : 'Start workout'}
         </button>
       </motion.div>
       )}

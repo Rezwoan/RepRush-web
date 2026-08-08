@@ -7,8 +7,8 @@
  * state: someone shuffling chips for two minutes should not leave a trail of
  * abandoned sessions behind them.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
   ChevronDown, ChevronLeft, GripVertical, MoreVertical, Play, Plus, RefreshCw, Repeat, Trash2, X,
@@ -205,6 +205,7 @@ function MenuItem({
 
 export default function WorkoutBuilderPage() {
   const router = useRouter();
+  const params = useSearchParams();
   const { byId } = useCatalog();
 
   /**
@@ -262,6 +263,23 @@ export default function WorkoutBuilderPage() {
       setLoading(false);
     }
   }, []);
+
+  /**
+   * `?routine=<id>` opens straight onto that day.
+   *
+   * Home's Today's Workout card deep-links here: without this the card would
+   * name a specific day and then drop the user on a list, asking them to find
+   * it again. Runs once — `openRoutine` is stable and the guard stops a
+   * re-render from reloading the plan under an edit.
+   */
+  const deepLinked = useRef(false);
+  useEffect(() => {
+    const id = parseInt(params.get('routine') ?? '', 10);
+    if (!deepLinked.current && Number.isFinite(id) && id > 0) {
+      deepLinked.current = true;
+      void openRoutine(id);
+    }
+  }, [params, openRoutine]);
 
   const backToChoose = () => {
     setMode('choose');

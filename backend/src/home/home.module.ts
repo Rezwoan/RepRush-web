@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { Routine, RoutineFolder } from '../profile/routine.entity';
 import { User } from '../users/user.entity';
 import { GymSession } from '../workouts/gym-session.entity';
 import { WorkoutSet } from '../workouts/workout-set.entity';
@@ -13,7 +14,16 @@ import { HomeController } from './home.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, GymSession, WorkoutSet, PersonalRecord, BodyWeightLog]),
+    TypeOrmModule.forFeature([
+      User,
+      GymSession,
+      WorkoutSet,
+      PersonalRecord,
+      BodyWeightLog,
+      // Today's Workout follows the user's program — see HomeService.today.
+      Routine,
+      RoutineFolder,
+    ]),
     ExercisesModule,
     RanksModule,
     GoalsModule,
