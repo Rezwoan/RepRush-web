@@ -911,6 +911,38 @@ not the symptom, and one was structural enough to be the phase's centre.
       forked it and got A's edit; B renaming their copy left A's untouched; claiming your own
       program **400**, a junk code **404**, `/routine/<code>` **200**. Test accounts deleted.
 
+### Round three — per-set rows (2026-08-08)
+
+Owner, with a reference screenshot: *"I can not edit each set in each exercise. Also when I try to
+create a new routine why you assume I will always do 3 sets? and why I can not set reps/weights."*
+All three land on the same mistake, and it was mine: **the data model, not the screen.**
+
+- [x] **A routine exercise is an array of set rows now**, each with its own weight and reps, instead
+      of `{ sets: 3, repMin, repMax }` — a count plus one range every set shared. That shape cannot
+      write down a working routine: a top set of 3 under two back-offs of 8 is the normal shape of a
+      heavy day, and there was no way to express it. Which is also why every set looked identical
+      and why adding an exercise had to guess a number.
+- [x] **The editor is the `SET | PREV | KG | REPS` grid the session tracker already uses**, plus
+      per-exercise notes, add/remove of individual sets, and rest per exercise. Deliberately the
+      same grid: what you write here is what you see in the gym.
+- [x] **Blank is a real value.** A row with no numbers means "whatever I did last time" and the
+      tracker fills it from history — the v1 ghost rule, a lookup and never a projection. So the
+      cells show PREV as a *placeholder* rather than pre-filling a number that pretends to be a plan.
+- [x] **"Why do you assume 3 sets" — it does not any more.** A newly added exercise gets as many
+      rows as the user did last time, read from `GET /workouts/previous/:id`, which is also what
+      fills the PREV column. Three only when there is no history to go on.
+- [x] **`backend/src/profile/routine-shape.ts` is the one normaliser**, used by save, by read and by
+      the shared-folder preview. It accepts the old shape and expands it (count + range → that many
+      rows at the range's midpoint), so every already-claimed package day and every routine saved
+      earlier this week opens correctly and migrates on the next write. Ten assertions at boot.
+- [x] **`fromRoutine` precedence: prescribed → last performance → standards estimate.** A number
+      written down on purpose wins; a blank falls back to history; only then does the engine guess.
+- [x] **Exit check — verified on dev:** a claimed ULPPL day arrived as `3 × 7` rows (the 5–8 range
+      expanded at its midpoint) with rest intact; editing bench to `100×3, 80×8, 80×8, blank` stored
+      and round-tripped with its notes; the generated plan honoured all three prescribed rows and
+      left the blank one to the estimate; clamps held (`reps: 0` → null, `1e9` → 1000, `restSec −5`
+      → 0); `routine shape ok` at boot, zero ERROR lines. Test account deleted.
+
 ### Still open — resume here
 
 - [ ] **Rebuild the admin panel in the v2 shell.** `app/admin/page.tsx` is still v1's 501-line page

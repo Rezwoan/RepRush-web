@@ -864,3 +864,14 @@ Two rules that fall out of it:
   mutable ownership would need a permission model nothing else here has.
 - `/routine/<code>` is in `PUBLIC_ROUTES` so the global 401 bounce cannot eat the code, and
   **`/login?next=<path>`** now exists — any link that needs a session can round-trip through sign-in.
+
+- **2026-08-08 — a routine exercise is an array of set rows**, `{weightKg, reps}[]`, not a set count
+  plus a shared rep range. The old shape could not express a top set plus back-offs, which is the
+  normal shape of a heavy day. `backend/src/profile/routine-shape.ts` is the only normaliser —
+  save, read and the share preview all go through it, and it expands the legacy shape on the way in
+  so nothing needs migrating. **`null` in a row is meaningful**: it means "not prescribed", and the
+  tracker fills it from the user's last performance (the v1 ghost rule). `fromRoutine`'s precedence
+  is prescribed → last performance → standards estimate.
+- **When a screen "can't edit X", check whether the model can even hold X.** Two rounds were spent
+  improving a routine editor whose storage shape made the owner's actual request impossible. The
+  question to ask first is not "what control is missing" but "what would this have to store".
