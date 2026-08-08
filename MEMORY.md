@@ -1040,3 +1040,28 @@ Two rules that fall out of it:
   localStorage written by `lib/offline.ts` (the only place a session can start or complete), so the
   bar is instant and correct offline — and it must be remapped when the outbox swaps a negative
   temp id for the real one, or Resume navigates to a session the server never had.
+
+**Signup order · 2026-08-08**
+
+- **The account is created before the onboarding funnel, not after it.** `/welcome` shows the splash
+  and the value carousel to a signed-out visitor and nothing else; both CTAs go to `/sign-up`. The
+  funnel past the carousel requires a session and is entered as `/welcome?setup=1`.
+- **`POST /auth/register` is identity only** (email/password *or* a Clerk token, plus name, username,
+  referral code). The funnel's answers are written by **`PATCH /profile`** at the `building` step —
+  `ProfileService.update` holds the allow-lists for `sex`, `birthDate`, height, weight, `experience`,
+  `goal`, `trainingLocation`, `equipment`, `limitations`, and asserts them at boot. `sex` picks the
+  strength-standards column: a junk value is a permanently mis-ranked account, so it is dropped, never
+  stored.
+- **`ClerkBridge` is the single place an account gets created** from a verified Clerk identity
+  (`needsSignup` → register → `/welcome?setup=1`). The email flow, the OAuth callback and anything
+  added later all pass through that one exchange, so it is not duplicated per entry point.
+- **`/login` and `/sign-up` are custom Clerk flows, not Clerk's components.** Four commits went into
+  overriding `<SignIn>`/`<SignUp>` CSS and the result still read as a foreign form (two-up social grid
+  at ~130px a side on a phone). `useSignIn` / `useSignUp` / `<AuthenticateWithRedirectCallback>` at
+  `/sso-callback`, styled with the app's own chunky buttons and `rounded-2xl border-2` fields. If the
+  Clerk instance requires a name, `/sign-up` fills it from the email's local part rather than showing
+  the fields — the real off-switch is Clerk's dashboard (Personal information → Name).
+- **The login password field tries Clerk first, then this app's database.** Every pre-2026-08-08
+  account's hash is ours, not Clerk's, and its owner cannot tell the two apart.
+- **An abandoned funnel now leaves a real but sparse account.** `app/page.tsx` routes anyone with
+  saved funnel progress (`setupInProgress()`) back to `/welcome` instead of `/home`.
