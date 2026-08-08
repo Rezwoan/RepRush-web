@@ -9,7 +9,8 @@
  * carousel and sends people here; what follows the signup is profile setup for
  * an account that already exists.
  *
- * Two doors, stacked, full width: Google, or an email and a password. No first
+ * Two doors, stacked, full width: Google, or an email and a password (or just
+ * the password one, on a deployment with no Clerk keys). No first
  * and last name — the funnel asks for a name two screens later, in the app's
  * own voice, and asking twice was the sort of form-filling this rewrite exists
  * to delete. If the Clerk instance still *requires* a name, one is filled in
@@ -18,8 +19,10 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSignUp } from '@clerk/nextjs';
-import { AlertCircle } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
+import { authApi } from '@/lib/api';
+import { setToken } from '@/lib/token';
+import { readReferralCode } from '@/lib/referral';
 import { clerkEnabled } from '@/components/auth/clerk-gate';
 import { Button } from '@/components/ui/button';
 import { BrandLoader } from '@/components/ui/motion-primitives';
@@ -36,10 +39,10 @@ import {
 /**
  * The branch is on a build-time constant, so the hook order below never
  * changes — `useSignUp()` throws outside `<ClerkProvider>`, which is only
- * mounted when a key exists (same rule as `useClerkSignup`).
+ * mounted when a key exists (same rule as `useClerkSignedIn`).
  */
 export default function SignUpPage() {
-  return clerkEnabled ? <ClerkSignUp /> : <NotConfigured />;
+  return clerkEnabled ? <ClerkSignUp /> : <PasswordSignUp />;
 }
 
 function ClerkSignUp() {
@@ -213,16 +216,84 @@ function ClerkSignUp() {
   );
 }
 
-/** No Clerk keys on this deployment — say so rather than showing a dead form. */
-function NotConfigured() {
+/**
+ * No Clerk keys on this deployment — sign up against this app's own database.
+ *
+ * This used to be a dead end pointing at `/login`, which meant a keyless
+ * deployment (dev, or a Clerk outage) could not create an account at all. It
+ * works now for the same reason the reshuffle above does: the funnel *patches*
+ * a profile rather than registering one, so any door that produces a session
+ * leads into it. Same screen, same two fields, one fewer provider.
+ */
+function PasswordSignUp() {
+  const { refresh } = useAuth();
+  const router = useRouter();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const res = await authApi.register({
+        email: email.trim(),
+        password,
+        // A placeholder the funnel overwrites two screens later; it is only here
+        // because the account needs something to derive a handle from.
+        name: email.trim().split('@')[0].slice(0, 40) || 'Athlete',
+        referralCode: readReferralCode() || undefined,
+      });
+      if (res.data?.token) setToken(res.data.token);
+      await refresh();
+      router.replace('/welcome?setup=1');
+    } catch (err: any) {
+      setError(err?.response?.data?.message ?? 'Something went wrong. Try again.');
+      setBusy(false);
+    }
+  };
+
   return (
-    <AuthScreen title="Signup is not set up here" subtitle="This server has no Clerk keys configured.">
-      <div className="flex items-start gap-3 rounded-2xl border-2 border-border bg-card p-4 text-sm text-muted-foreground">
-        <AlertCircle size={18} className="mt-0.5 shrink-0" />
-        <p>Existing accounts can still sign in with their email and password.</p>
-      </div>
-      <Button variant="chunky" size="cta" onClick={() => (window.location.href = '/login')}>
-        Go to sign in
+    <AuthScreen
+      title="Create your account"
+      subtitle="One account, then about two minutes of setup."
+      footer={
+        <>
+          Already have an account?{' '}
+          <a href="/login" className="font-semibold text-primary hover:underline">
+            Sign in
+          </a>
+        </>
+      }
+    >
+      <input
+        type="email"
+        autoComplete="email"
+        inputMode="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="Email"
+        className={authField}
+      />
+      <input
+        type="password"
+        autoComplete="new-password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && submit()}
+        placeholder="Password (8+ characters)"
+        className={authField}
+      />
+      <AuthError>{error}</AuthError>
+      <Button
+        variant="chunky"
+        size="cta"
+        disabled={busy || !email.includes('@') || password.length < 8}
+        onClick={submit}
+      >
+        {busy ? 'Creating account…' : 'Create account'}
       </Button>
     </AuthScreen>
   );
