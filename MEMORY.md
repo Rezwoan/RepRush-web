@@ -976,3 +976,38 @@ Two rules that fall out of it:
   nothing). It is sequential rather than `Promise.all` — Resend rate-limits, and it returns a
   per-recipient result so a retry can target failures instead of mailing everyone twice. There is no
   claim table: it is admin-only and manual, so "sent once" is a human decision, not state.
+
+**Clerk sign-in · 2026-08-08**
+
+- **Clerk proves identity; the RepRush JWT is still the session.** `POST /auth/clerk` verifies a
+  Clerk session token and returns the same JWT `login` does. Swapping the session model would have
+  meant rewriting the outbox, the idempotency interceptor, every guard and the offline boot — for
+  nothing a user can see.
+- **Email is the identity, and it must be *verified*.** Resolution order is
+  `clerkUserId` → verified email → new signup (`backend/src/auth/clerk-resolve.ts`, asserted at
+  boot). Matching on an unverified address would let anyone who claims `someone@example.com`
+  inherit that person's entire training history, so `ClerkService` refuses anything Clerk has not
+  marked `verified`, and a linked account beats a stale email match.
+- **`findByEmail` was case-sensitive, and SQLite's default collation is BINARY.** Google hands back
+  whatever casing the provider stores, so `Rezwoan@Gmail.com` would not have matched
+  `frezwoan@gmail.com` — it would have silently created a second, empty account rather than
+  erroring. Fixed in the shared lookup, so login and the duplicate check get it too.
+- **`clerkMiddleware()` needs `CLERK_SECRET_KEY` in the *frontend* process.** The backend having it
+  is irrelevant — they are separate services with separate env files. Setting only the publishable
+  key made every route 500 with `Missing secretKey` and took production down until it was added.
+  `src/middleware.ts` now requires **both** keys before enabling itself, so a half-configured
+  deployment degrades to password login the way push and mail already do.
+- **A `pk_live_` key is bound to its domain.** It cannot be used on dev-reprush; the dev stack needs
+  its own Clerk *development* instance (`pk_test_`) or it simply runs password-only, which the
+  gating handles. The publishable key base64-decodes to the Frontend API host, which is how you tell
+  a production instance from a development one.
+- **A Clerk production instance needs five CNAMEs, all DNS-only.** `clerk`, `accounts`, `clkmail`,
+  `clk._domainkey`, `clk2._domainkey`. Proxying them (orange cloud) terminates TLS at Cloudflare and
+  Clerk's edge never sees the right SNI. Verify with
+  `curl -sI https://clerk.<domain>/v1/client` — 200 with `ssl_verify_result: 0` is the proof.
+- **Password login is kept deliberately.** Every account predates Clerk, and a Clerk
+  misconfiguration would otherwise be a total lockout. `GET /auth/providers` tells the login screen
+  which doors actually exist on that deployment.
+- Next 14 uses **`middleware.ts`; `proxy.ts` is the Next 16 name** and is simply never loaded here —
+  the failure is a silent no-op, not an error. Clerk 7 requires Next ≥15.2.8, so this app is pinned
+  to **`@clerk/nextjs@6`**, which has `<SignedIn>`/`<SignedOut>` and no `<Show>`.
