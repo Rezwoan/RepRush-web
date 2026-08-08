@@ -290,9 +290,23 @@ export default function ProfilePage() {
   if (!ready) return <TabSkeleton />;
 
   if (view && data) {
-    const back = () => router.push('/profile');
+    // Settings' own sub-screens keep local state and return to Settings, but
+    // three of its rows (Profile, Statistics, Health log) are `?view=` panels —
+    // a different screen entirely, whose back button used to land on the
+    // Profile root. `from` is what lets them go back where they came from, and
+    // it survives a refresh in a way `router.back()` would not.
+    const from = params.get('from');
+    const back = () => router.push(from ? `/profile?view=${from}` : '/profile');
     if (view === 'edit') return <EditProfile data={data} onBack={back} onSaved={() => reload(win)} />;
-    if (view === 'settings') return <SettingsPanel data={data} onBack={back} onChanged={() => reload(win)} onView={go} />;
+    if (view === 'settings')
+      return (
+        <SettingsPanel
+          data={data}
+          onBack={back}
+          onChanged={() => reload(win)}
+          onView={(v) => router.push(`/profile?view=${v}&from=settings`)}
+        />
+      );
     if (view === 'health') return <HealthPanel onBack={back} />;
     if (view === 'consumables') return <ConsumablesPanel onBack={back} />;
     if (view === 'routines' || view === 'exercises')

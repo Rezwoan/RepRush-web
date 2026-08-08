@@ -206,6 +206,19 @@ export function SettingsPanel({
             }
           />
         </Group>
+        <Group title="Sharing">
+          <Row
+            label="Auto-share workouts"
+            sub="Finished sessions go to Discovery by default — you can still change it per workout"
+            right={
+              <Toggle
+                checked={prefs.autoShare}
+                onChange={(v) => set('autoShare', v)}
+                label="Auto-share workouts"
+              />
+            }
+          />
+        </Group>
         <Group title="Feel">
           <Row
             label="Haptic feedback"

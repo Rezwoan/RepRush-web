@@ -9,6 +9,7 @@ import { profileApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Segmented } from '@/components/ui/controls';
 import { EmptyState } from '@/components/ui/display';
+import { SparkAmount } from '@/components/ui/spark';
 import { cn } from '@/lib/utils';
 import { Panel } from './panel';
 import type { Cosmetic } from './types';
@@ -73,7 +74,7 @@ export function StorePanel({
       onBack={onBack}
       action={
         <span className="nums rounded-full bg-secondary px-3 py-1 text-sm font-extrabold">
-          {store?.currency ?? 0} 🥚
+          <SparkAmount amount={store?.currency ?? 0} size={16} label />
         </span>
       }
     >
@@ -109,7 +110,7 @@ export function StorePanel({
               <div className="min-w-0 flex-1">
                 <p className="truncate font-bold">{c.label}</p>
                 <p className="text-xs text-muted-foreground">
-                  {c.free ? 'Free' : c.owned ? 'Owned' : `${c.price} 🥚`}
+                  {c.free ? 'Free' : c.owned ? 'Owned' : <SparkAmount amount={c.price} size={12} />}
                 </p>
               </div>
               {equipped ? (

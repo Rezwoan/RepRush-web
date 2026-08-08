@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/sheet';
 import { ImageCropper } from '@/components/ui/image-cropper';
 import { Mascot, type MascotPose } from '@/components/art/mascot';
+import { SparkAmount } from '@/components/ui/spark';
 import { cn } from '@/lib/utils';
 import { ProfileHeaderCard } from './header';
 import { Panel } from './panel';
@@ -217,7 +218,7 @@ export function EditProfile({
               >
                 <span className="h-9 w-16 shrink-0 rounded-lg" style={{ background: c.paint }} />
                 <span className="flex-1 font-bold">{c.label}</span>
-                {!c.owned && <span className="nums text-sm font-bold">{c.price} 🥚</span>}
+                {!c.owned && <SparkAmount amount={c.price} size={14} className="text-sm" />}
               </button>
             ))}
           {owned === null && <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>}

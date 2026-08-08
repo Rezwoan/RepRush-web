@@ -93,6 +93,13 @@ export const DEFAULT_PREFERENCES = {
   analysisWindow: 'rolling', // 'rolling' | 'calendar'
   suggestedWorkouts: true,
   biggerDiscoveryPosts: false,
+  /**
+   * Seeds the finish flow's privacy control. Discovery's empty state tells
+   * people to "turn on Post in Discovery when you finish a workout", which was
+   * a per-session toggle with no way to make it the default — so sharing meant
+   * remembering, every time.
+   */
+  autoShare: false,
   haptics: true,
   sfx: true,
   restAlert: true,

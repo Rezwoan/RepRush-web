@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/sheet';
 import { Toggle } from '@/components/ui/controls';
 import { useUnits } from '@/lib/units';
+import { getPrefs } from '@/lib/feedback';
 import { cn } from '@/lib/utils';
 
 type Privacy = 'private' | 'friends' | 'discovery';
@@ -38,6 +39,14 @@ export default function FinishPage() {
   const [discovery, setDiscovery] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [privacy, setPrivacy] = useState<Privacy>('friends');
+
+  // Seed from the Auto-share preference. In an effect, never during render:
+  // preferences come from localStorage, which the server pass cannot see, so
+  // reading during render makes the first client pass disagree (P13's rule).
+  // It is a default, not a lock — the toggle below still wins for this session.
+  useEffect(() => {
+    if (getPrefs().autoShare) setDiscovery(true);
+  }, []);
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);

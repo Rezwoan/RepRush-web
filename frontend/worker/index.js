@@ -14,7 +14,7 @@ self.addEventListener('push', (event) => {
     icon: '/icon.png',
     badge: '/icon.png',
     tag: data.tag || 'reprush',
-    data: { url: data.url || '/dashboard' },
+    data: { url: data.url || '/home' },
     vibrate: [80, 40, 80],
   };
   event.waitUntil(self.registration.showNotification(title, options));
@@ -22,7 +22,7 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || '/dashboard';
+  const url = (event.notification.data && event.notification.data.url) || '/home';
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {

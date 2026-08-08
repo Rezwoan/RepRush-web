@@ -92,7 +92,12 @@ export function ProfileHeaderCard({
             </span>
           )}
         </div>
-        <div className="flex justify-end pt-2">
+        {/* The avatar is absolute and hangs 38px into this card, so the name
+            needs that much clearance. It used to come from the height of the
+            Edit button — which Edit Profile's own live preview does not render,
+            so there the avatar sat on top of the name. Reserve it explicitly:
+            the row is the same height whether the button is there or not. */}
+        <div className="flex h-9 items-center justify-end">
           {onEdit && (
             <button onClick={onEdit} className="press text-sm font-bold text-primary">
               Edit profile

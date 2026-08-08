@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Bar } from '@/components/ui/display';
 import { Medal } from '@/components/art/medal';
+import { SparkAmount } from '@/components/ui/spark';
 import { Panel } from './panel';
 
 interface Quest {
@@ -92,7 +93,7 @@ function QuestRow({ q, onClaim }: { q: Quest; onClaim: (key: string) => void }) 
       <Bar value={q.progress / q.target} />
       <div className="mt-2.5 flex items-center gap-2">
         <span className="nums text-xs font-bold text-muted-foreground">◈ {q.xp} XP</span>
-        <span className="nums text-xs font-bold text-muted-foreground">🥚 {q.currency}</span>
+        <SparkAmount amount={q.currency} size={12} className="text-xs text-muted-foreground" />
         <span className="flex-1" />
         {q.claimed ? (
           <span className="flex items-center gap-1 text-sm font-bold text-primary">
@@ -160,7 +161,7 @@ export function QuestsPanel({ onBack }: { onBack: () => void }) {
           </p>
         </div>
         <span className="nums shrink-0 rounded-full bg-secondary px-3 py-1 text-sm font-extrabold">
-          {data.currency} 🥚
+          <SparkAmount amount={data.currency} size={16} label />
         </span>
       </div>
 
@@ -179,7 +180,7 @@ export function QuestsPanel({ onBack }: { onBack: () => void }) {
                   <Gift size={18} className="text-volt-400" />
                   <span className="flex-1 font-bold">Level {l.level} reward</span>
                   <span className="nums text-sm font-bold text-muted-foreground">
-                    🥚 {l.currency}
+                    <SparkAmount amount={l.currency} size={12} />
                   </span>
                   <Button
                     variant="chunkyGold"

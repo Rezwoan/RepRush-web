@@ -24,16 +24,17 @@ export interface ProfileHeader {
   cosmetics: { title: Cosmetic; border: Cosmetic; banner: Cosmetic };
 }
 
-export interface Preferences {
-  units: 'metric' | 'imperial';
-  weekStart: 'sunday' | 'monday';
-  analysisWindow: 'rolling' | 'calendar';
-  suggestedWorkouts: boolean;
-  biggerDiscoveryPosts: boolean;
-  haptics: boolean;
-  sfx: boolean;
-  restAlert: boolean;
-}
+/**
+ * The preference shape had three copies — the backend's `DEFAULT_PREFERENCES`,
+ * `lib/feedback.ts`'s `DEFAULTS`, and this one. Two is the minimum (the backend
+ * is the boundary that validates), and `feedback.ts` is already the file that
+ * declares itself the mirror, so this defers to it. Adding a preference is now
+ * two edits instead of three — which matters, because a key missing from one
+ * copy is exactly how P13 shipped six settings nothing read.
+ */
+import type { Prefs } from '@/lib/feedback';
+
+export type Preferences = Prefs;
 
 export interface Overview {
   header: ProfileHeader;

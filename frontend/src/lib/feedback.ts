@@ -22,6 +22,7 @@ const DEFAULTS = {
   analysisWindow: 'rolling' as 'rolling' | 'calendar',
   suggestedWorkouts: true,
   biggerDiscoveryPosts: false,
+  autoShare: false,
   haptics: true,
   sfx: true,
   restAlert: true,

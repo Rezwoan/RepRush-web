@@ -3,17 +3,17 @@
  * The v2 tab shell: global top bar, scrolling content, bottom tab bar.
  *
  * A route group, so it wraps the new tabs without adding a URL segment — and
- * without colliding with v1's `/workout` and `/profile`, which still live at
- * `app/workout` and `app/profile` until P6 and P10 replace them.
+ * without colliding with v1's routes.
  */
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { homeApi } from '@/lib/api';
+import { gameApi } from '@/lib/api';
 import { BrandLoader } from '@/components/ui/motion-primitives';
 import { TabBar } from '@/components/layout/tab-bar';
 import { TopBar } from '@/components/layout/top-bar';
 import OfflineBanner from '@/components/layout/offline-banner';
+import { StreakSheet } from '@/components/layout/streak-sheet';
 import { Mascot, type MascotPose } from '@/components/art/mascot';
 
 /**
@@ -29,25 +29,34 @@ const TAB_TITLE: Record<string, string> = {
   '/profile': 'Profile',
 };
 
+export interface ShellStats {
+  level: { level: number; intoLevel: number; nextLevelXp: number };
+  currency: number;
+  streak: { current: number; best: number; freezes: number };
+}
+
 export default function TabsLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const [streak, setStreak] = useState(0);
+  const [stats, setStats] = useState<ShellStats | null>(null);
+  const [streakOpen, setStreakOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/welcome');
   }, [user, loading, router]);
 
-  // The streak is the one top-bar number that exists today; level and currency
-  // arrive with P11's XP ledger. Cheap because /home/summary is cached.
+  // Level, Spark and streak in one call. This used to read `/home/summary` for
+  // the streak alone and pass neither of the other two, on a comment saying
+  // they arrived with P11's ledger — P11 shipped, and the app had been showing
+  // a level and a balance nowhere ever since.
   useEffect(() => {
     if (!user) return;
-    homeApi
-      .summary()
-      .then((r) => setStreak(r.data?.user?.streak ?? 0))
+    gameApi
+      .me()
+      .then((r) => setStats(r.data))
       .catch(() => {});
-  }, [user]);
+  }, [user, pathname]);
 
   if (loading) return <BrandLoader />;
   if (!user) return null;
@@ -55,8 +64,15 @@ export default function TabsLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="min-h-[100dvh] pb-[72px]">
       <TopBar
-        streak={streak}
+        level={stats?.level.level}
+        levelProgress={
+          stats && stats.level.nextLevelXp > 0 ? stats.level.intoLevel / stats.level.nextLevelXp : 0
+        }
+        streak={stats?.streak.current ?? 0}
+        currency={stats?.currency}
         avatar={<Mascot pose={((user as any).avatarId as MascotPose) || 'idle'} size={30} />}
+        onStreak={() => setStreakOpen(true)}
+        onCurrency={() => router.push('/profile?view=store')}
         onAction={() => router.push('/profile')}
       />
       <main id="main" className="mx-auto max-w-2xl px-4 py-4">
@@ -65,6 +81,15 @@ export default function TabsLayout({ children }: { children: React.ReactNode }) 
         {children}
       </main>
       <TabBar />
+      <StreakSheet
+        open={streakOpen}
+        onOpenChange={setStreakOpen}
+        streak={stats?.streak}
+        onQuests={() => {
+          setStreakOpen(false);
+          router.push('/profile?view=quests');
+        }}
+      />
     </div>
   );
 }

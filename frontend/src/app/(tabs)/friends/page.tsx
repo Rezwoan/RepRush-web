@@ -12,6 +12,7 @@ import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
   Check,
+  ChevronDown,
   Copy,
   Gift,
   Search,
@@ -30,6 +31,7 @@ import { Bar, EmptyState } from '@/components/ui/display';
 import { Sheet } from '@/components/ui/sheet';
 import { RankChip } from '@/components/art/rank-badge';
 import { Avatar, type PublicUser } from '@/components/social/feed';
+import { SparkAmount } from '@/components/ui/spark';
 import type { Rank } from '@/lib/ranks';
 
 type Tab = 'friends' | 'boards' | 'referrals';
@@ -60,16 +62,33 @@ interface Referral {
   }[];
 }
 
-const METRICS = [
-  { value: 'bodyrank', label: 'Bodyrank' },
+/**
+ * The three boards worth opening on, and the five behind `More`.
+ *
+ * All eight still work server-side — `LEADERBOARD_METRICS` validates the
+ * request and every one of them returns a sensible order. This is a UI
+ * narrowing: eight chips in a scrolling strip made the default screen a menu,
+ * and Rank is the board this app is actually about. Note the split is also
+ * honest about provenance — SPEC §8 took five metrics from the reference, and
+ * relative strength / Wilks / progress rate are ours, folded in from v1 in P9.
+ */
+const PRIMARY_METRICS = [
+  { value: 'bodyrank', label: 'Rank' },
+  { value: 'streak', label: 'Streak' },
+  { value: 'relative', label: 'Relative strength' },
+];
+
+const MORE_METRICS = [
   { value: 'lp', label: 'LP this week' },
   { value: 'volume', label: 'Volume (30d)' },
-  { value: 'streak', label: 'Streak' },
   { value: 'workouts', label: 'Workouts' },
-  { value: 'relative', label: 'Relative strength' },
   { value: 'wilks', label: 'Wilks' },
   { value: 'progress', label: 'Progress rate' },
 ];
+
+const METRIC_LABEL = Object.fromEntries(
+  [...PRIMARY_METRICS, ...MORE_METRICS].map((m) => [m.value, m.label]),
+);
 
 // ── people ──────────────────────────────────────────────────────────
 
@@ -348,6 +367,10 @@ function BoardsPanel() {
   const [scope, setScope] = useState<'friends' | 'global'>('global');
   const [metric, setMetric] = useState('bodyrank');
   const [rows, setRows] = useState<any[] | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
+  // A metric chosen from the sheet gets its own chip, so the strip always shows
+  // what is actually selected rather than three chips and no active one.
+  const extra = MORE_METRICS.find((m) => m.value === metric);
 
   useEffect(() => {
     setRows(null);
@@ -368,12 +391,40 @@ function BoardsPanel() {
         onChange={setScope}
       />
       <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
-        {METRICS.map((m) => (
+        {PRIMARY_METRICS.map((m) => (
           <Chip key={m.value} active={metric === m.value} onClick={() => setMetric(m.value)}>
             {m.label}
           </Chip>
         ))}
+        {extra && (
+          <Chip active onClick={() => setMoreOpen(true)}>
+            {extra.label}
+          </Chip>
+        )}
+        <Chip onClick={() => setMoreOpen(true)}>
+          More <ChevronDown size={14} />
+        </Chip>
       </div>
+
+      <Sheet open={moreOpen} onOpenChange={setMoreOpen} title="More boards">
+        <div className="space-y-2 pb-2">
+          {MORE_METRICS.map((m) => (
+            <button
+              key={m.value}
+              onClick={() => {
+                setMetric(m.value);
+                setMoreOpen(false);
+              }}
+              className={cn(
+                'press w-full rounded-xl border-2 px-4 py-3 text-left font-bold',
+                metric === m.value ? 'border-primary bg-primary/10' : 'border-border bg-card',
+              )}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </Sheet>
 
       {rows === null && <div className="surface h-64 animate-pulse opacity-60" />}
       {rows?.length === 0 && (
@@ -529,7 +580,7 @@ function ReferralsPanel({ data, reload }: { data: Referral | null; reload: () =>
             <Bar value={q.progress / q.target} />
             <div className="mt-2 flex items-center gap-2">
               <Chip>+{q.xp} XP</Chip>
-              <Chip>+{q.currency} 🥚</Chip>
+              <Chip><SparkAmount amount={q.currency} size={12} /></Chip>
               <span className="ml-auto text-xs font-semibold text-muted-foreground">
                 {q.done ? 'Rewards land with quests' : 'Keep going'}
               </span>
