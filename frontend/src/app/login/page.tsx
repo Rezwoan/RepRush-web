@@ -1,20 +1,42 @@
 'use client';
+/**
+ * The one sign-in page.
+ *
+ * There used to be two — `/login` (email + password) and `/sign-in` (Clerk,
+ * which *also* shows email and password) — because Clerk was added beside the
+ * old form instead of replacing it. Two doors, near-identical fields, and no
+ * way for anyone to know which one was theirs. `/sign-in` now redirects here.
+ *
+ * The order on this page is the whole design:
+ *   1. Clerk — Google, or an email code, or a Clerk password. The default.
+ *   2. A disclosure for the legacy password, because every account that existed
+ *      before 2026-08-08 has its hash in *our* database, not Clerk's, and those
+ *      people cannot sign in through Clerk's password field. It is not a second
+ *      front door; it is the answer to "my old password doesn't work".
+ *
+ * Either route lands on the same account: the backend matches a verified Clerk
+ * email against the existing row (`AuthService.loginWithClerk`).
+ */
 import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { SignIn } from '@clerk/nextjs';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertCircle, ArrowRight, Sparkles } from 'lucide-react';
+import { AlertCircle, ArrowRight, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { authApi } from '@/lib/api';
 import { setToken } from '@/lib/token';
 import { Logo } from '@/components/ui/logo';
 import { Button } from '@/components/ui/button';
 import { spring } from '@/lib/motion';
+import { cn } from '@/lib/utils';
 import { clerkEnabled } from '@/components/auth/clerk-gate';
+import { useClerkAppearance } from '@/components/auth/clerk-appearance';
 
 function LoginContent() {
   const { login, user, loading } = useAuth();
   const router = useRouter();
   const params = useSearchParams();
+  const appearance = useClerkAppearance();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,6 +44,7 @@ function LoginContent() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [legacyOpen, setLegacyOpen] = useState(false);
 
   /** Where to land after signing in — set by any link that needs a session. */
   const next = params.get('next');
@@ -33,6 +56,7 @@ function LoginContent() {
   useEffect(() => {
     if (!loading && user) router.replace(landing(user.role));
     if (inviteEmail) setEmail(decodeURIComponent(inviteEmail));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, loading, inviteEmail, router]);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -66,21 +90,44 @@ function LoginContent() {
     }
   };
 
+  const errorBanner = (
+    <AnimatePresence>
+      {error && (
+        <motion.div
+          initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+          animate={{ opacity: 1, height: 'auto', marginBottom: 16 }}
+          exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+          className="flex items-center gap-2 overflow-hidden rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive"
+        >
+          <AlertCircle size={15} className="flex-shrink-0" />
+          {error}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
+  const legacyForm = (
+    <form onSubmit={handleLogin} className="space-y-4">
+      <Field label="Email">
+        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" required className="field" />
+      </Field>
+      <Field label="Password">
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your password" required className="field" />
+      </Field>
+      <Button type="submit" disabled={submitting} className="w-full" size="lg">
+        {submitting ? 'Signing in…' : <>Sign in <ArrowRight size={16} /></>}
+      </Button>
+    </form>
+  );
+
   return (
-    <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden">
-      {/* Ambient background */}
+    <main className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden p-4">
       <div className="absolute inset-0 bg-grid opacity-[0.4]" />
       <motion.div
         aria-hidden
-        className="absolute -top-32 left-1/2 -translate-x-1/2 w-[520px] h-[520px] rounded-full bg-brand-500/20 blur-[120px]"
+        className="absolute -top-32 left-1/2 h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-brand-500/20 blur-[120px]"
         animate={{ opacity: [0.5, 0.85, 0.5], scale: [0.95, 1.05, 0.95] }}
         transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}
-      />
-      <motion.div
-        aria-hidden
-        className="absolute bottom-0 right-10 w-72 h-72 rounded-full bg-volt-400/10 blur-[100px]"
-        animate={{ opacity: [0.3, 0.6, 0.3] }}
-        transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut' }}
       />
 
       <motion.div
@@ -89,108 +136,98 @@ function LoginContent() {
         transition={spring.gentle}
         className="relative w-full max-w-sm"
       >
-        <div className="text-center mb-8 flex flex-col items-center">
+        <div className="mb-7 flex flex-col items-center text-center">
           <Logo size="lg" withText={false} />
           <h1 className="mt-4 text-3xl font-display font-extrabold tracking-tight">
             Rep<span className="text-gradient">Rush</span>
           </h1>
-          <p className="text-muted-foreground text-sm mt-2">
+          <p className="mt-2 text-sm text-muted-foreground">
             {isActivation ? 'Set up your account to get started' : "Welcome back. Let's get after it."}
           </p>
         </div>
 
         <div className="glass rounded-2xl p-6 shadow-lift">
-          <h2 className="text-lg font-display font-semibold mb-5">
-            {isActivation ? 'Create your password' : 'Sign in'}
-          </h2>
-
-          {/* The Clerk door, offered above the password form rather than instead
-              of it. Two reasons it is not a replacement: a server with no Clerk
-              keys must still have a way in, and every existing account was made
-              with a password — taking that away on the same day the new door
-              appears would turn any Clerk misconfiguration into a lockout. */}
-          {!isActivation && clerkEnabled && (
-            <div className="mb-5">
-              <Button
-                type="button"
-                variant="chunky"
-                size="cta"
-                onClick={() => router.push(`/sign-in${next ? `?next=${encodeURIComponent(next)}` : ''}`)}
-              >
-                <Sparkles size={16} />
-                Continue with email or Google
-              </Button>
-              <p className="text-[11px] text-muted-foreground mt-2 text-center leading-relaxed">
-                Been here before? Use the same email address and you&apos;ll land back on your own
-                workouts, ranks and streak.
-              </p>
-              <div className="flex items-center gap-3 mt-5" aria-hidden>
-                <span className="h-px flex-1 bg-border" />
-                <span className="text-[10px] uppercase tracking-widest text-muted-foreground">or</span>
-                <span className="h-px flex-1 bg-border" />
-              </div>
-            </div>
-          )}
-
-          <AnimatePresence>
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, height: 0, marginBottom: 0 }}
-                animate={{ opacity: 1, height: 'auto', marginBottom: 16 }}
-                exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-                className="flex items-center gap-2 bg-destructive/10 border border-destructive/30 text-destructive text-sm rounded-xl px-3 py-2.5 overflow-hidden"
-              >
-                <AlertCircle size={15} className="flex-shrink-0" />
-                {error}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
           {isActivation ? (
-            <form onSubmit={handleActivate} className="space-y-4">
-              <Field label="Email">
-                <input type="email" value={email} disabled className="field opacity-60 cursor-not-allowed" />
-              </Field>
-              <Field label="New Password">
-                <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Min. 8 characters" required className="field" />
-              </Field>
-              <Field label="Confirm Password">
-                <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Repeat password" required className="field" />
-              </Field>
-              <Button type="submit" disabled={submitting} className="w-full" size="lg">
-                {submitting ? 'Activating…' : <>Activate &amp; Continue <ArrowRight size={16} /></>}
-              </Button>
-            </form>
+            <>
+              <h2 className="mb-5 text-lg font-display font-semibold">Create your password</h2>
+              {errorBanner}
+              <form onSubmit={handleActivate} className="space-y-4">
+                <Field label="Email">
+                  <input type="email" value={email} disabled className="field cursor-not-allowed opacity-60" />
+                </Field>
+                <Field label="New Password">
+                  <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Min. 8 characters" required className="field" />
+                </Field>
+                <Field label="Confirm Password">
+                  <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Repeat password" required className="field" />
+                </Field>
+                <Button type="submit" disabled={submitting} className="w-full" size="lg">
+                  {submitting ? 'Activating…' : <>Activate &amp; Continue <ArrowRight size={16} /></>}
+                </Button>
+              </form>
+            </>
+          ) : clerkEnabled ? (
+            <>
+              {errorBanner}
+              {/* `routing="hash"` keeps every Clerk sub-step (SSO callback, second
+                  factor, reset) on this one URL. The alternative is a catch-all
+                  route, which is what produced a second sign-in page in the
+                  first place. */}
+              <SignIn
+                routing="hash"
+                appearance={appearance}
+                signUpUrl="/welcome"
+                forceRedirectUrl={landing()}
+                fallbackRedirectUrl={landing()}
+              />
+
+              <div className="mt-5 border-t border-border pt-4">
+                <button
+                  type="button"
+                  onClick={() => setLegacyOpen((o) => !o)}
+                  className="flex w-full items-center justify-between text-left text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
+                  aria-expanded={legacyOpen}
+                >
+                  Had an account before August 2026?
+                  <ChevronDown size={15} className={cn('transition-transform', legacyOpen && 'rotate-180')} />
+                </button>
+                {legacyOpen && (
+                  <div className="mt-4 space-y-4">
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      Your old password lives in RepRush, not above. Use it here — or sign in with
+                      Google using the same email and we&apos;ll reconnect you to the same account.
+                    </p>
+                    {legacyForm}
+                  </div>
+                )}
+              </div>
+            </>
           ) : (
-            <form onSubmit={handleLogin} className="space-y-4">
-              <Field label="Email">
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" required className="field" />
-              </Field>
-              <Field label="Password">
-                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your password" required className="field" />
-              </Field>
-              <Button type="submit" disabled={submitting} className="w-full" size="lg">
-                {submitting ? 'Signing in…' : <>Sign in <ArrowRight size={16} /></>}
-              </Button>
-            </form>
+            <>
+              <h2 className="mb-5 text-lg font-display font-semibold">Sign in</h2>
+              {errorBanner}
+              {legacyForm}
+            </>
           )}
         </div>
 
-        <p className="text-center text-xs text-muted-foreground mt-6">
-          Don&apos;t have an account?{' '}
-          <a href="/welcome" className="font-semibold text-primary hover:underline">
-            Get started
-          </a>
-        </p>
+        {!isActivation && (
+          <p className="mt-6 text-center text-xs text-muted-foreground">
+            Don&apos;t have an account?{' '}
+            <a href="/welcome" className="font-semibold text-primary hover:underline">
+              Get started
+            </a>
+          </p>
+        )}
       </motion.div>
-    </div>
+    </main>
   );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-sm text-muted-foreground block mb-1.5">{label}</span>
+      <span className="mb-1.5 block text-sm text-muted-foreground">{label}</span>
       {children}
     </label>
   );

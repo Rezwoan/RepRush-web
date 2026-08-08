@@ -1,7 +1,7 @@
 'use client';
 
 import { SignUp } from '@clerk/nextjs';
-import { clerkAppearance } from '@/components/auth/clerk-appearance';
+import { useClerkAppearance } from '@/components/auth/clerk-appearance';
 import { clerkEnabled } from '@/components/auth/clerk-gate';
 import { AuthShell, ClerkNotConfigured } from '@/components/auth/auth-shell';
 
@@ -14,6 +14,7 @@ import { AuthShell, ClerkNotConfigured } from '@/components/auth/auth-shell';
  * says so rather than letting someone worry they have made a duplicate.
  */
 export default function SignUpPage() {
+  const appearance = useClerkAppearance();
   if (!clerkEnabled) return <ClerkNotConfigured />;
 
   return (
@@ -22,8 +23,8 @@ export default function SignUpPage() {
       subtitle="Already trained with us? Use the same email and we'll reconnect you to your existing history."
     >
       <SignUp
-        appearance={clerkAppearance}
-        signInUrl="/sign-in"
+        appearance={appearance}
+        signInUrl="/login"
         // New accounts still owe us a sex, birth date and bodyweight before the
         // rank engine can score anything — that is what /welcome collects.
         forceRedirectUrl="/welcome?clerk=1"
