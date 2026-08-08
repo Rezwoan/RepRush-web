@@ -61,6 +61,11 @@ export function useClerkAppearance(): Appearance {
       rootBox: 'w-full',
       cardBox: 'w-full shadow-none',
       card: 'bg-transparent shadow-none border-0 p-0',
+      // Hidden: the page carries its own "Don't have an account? Get started",
+      // which points at the onboarding funnel. Clerk's footer offers a second
+      // signup link to a different place, so both on screen is one prompt too
+      // many and two answers to the same question.
+      footerAction: 'hidden',
       footer: 'bg-transparent',
       formButtonPrimary: 'font-semibold tracking-tight normal-case text-[0.95rem] h-12 shadow-lift',
       // Explicit foreground: this is the element that was invisible, and it is
