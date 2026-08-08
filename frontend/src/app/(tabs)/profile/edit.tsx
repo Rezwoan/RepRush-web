@@ -89,6 +89,7 @@ export function EditProfile({
           level={data.levels.level}
           bodyrank={data.ranks.bodyrank}
           standing={data.ranks.standing}
+          streak={data.streaks}
         />
 
         <div className="grid grid-cols-2 gap-2">

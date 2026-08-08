@@ -20,7 +20,7 @@
  * by previewing with the real header — so this takes the owner's affordance
  * (`onEdit`) as an optional prop instead of existing twice.
  */
-import { CalendarDays, Trophy } from 'lucide-react';
+import { CalendarDays, Flame, Trophy } from 'lucide-react';
 import { rankLabel, type Rank } from '@/lib/ranks';
 import { cn } from '@/lib/utils';
 import { UserAvatar } from '@/components/ui/user-avatar';
@@ -58,6 +58,7 @@ export function ProfileCard({
   level,
   bodyrank,
   standing,
+  streak,
   onEdit,
   action,
   className,
@@ -67,6 +68,8 @@ export function ProfileCard({
   bodyrank?: { rank: Rank; predicted: boolean } | null;
   /** Position on the global Bodyrank board, and how many people are on it. */
   standing?: { position: number | null; of: number } | null;
+  /** Days in a row now, and the longest ever. */
+  streak?: { current: number; best: number } | null;
   onEdit?: () => void;
   /** Anything the viewer can do about this person — Add friend, Share. */
   action?: React.ReactNode;
@@ -153,9 +156,26 @@ export function ProfileCard({
           </div>
         )}
 
-        <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
-          <CalendarDays size={13} /> Joined {joined(header.joinedAt)}
-        </p>
+        {/* Both numbers, not just the live one: a streak you have lost is
+            still something you did, and "best 12" is the only thing on the
+            card that says so on a morning when the flame reads 0. */}
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          {streak && (
+            <span className="flex items-center gap-1.5">
+              <Flame
+                size={13}
+                className={streak.current > 0 ? 'fill-volt-400/30 text-volt-400' : undefined}
+              />
+              <span className="nums font-bold text-foreground">
+                {streak.current} day{streak.current === 1 ? '' : 's'}
+              </span>
+              <span className="nums">· longest {streak.best}</span>
+            </span>
+          )}
+          <span className="flex items-center gap-1.5">
+            <CalendarDays size={13} /> Joined {joined(header.joinedAt)}
+          </span>
+        </div>
       </div>
     </div>
   );

@@ -80,11 +80,14 @@ export default function PublicProfilePage() {
         level={data.levels.level}
         bodyrank={data.bodyrank}
         standing={data.standing}
+        streak={data.streak}
       />
 
       <div className="grid grid-cols-3 gap-2">
+        {/* No streak tile: the card above already carries both numbers, and
+            the same figure twice on one screen is the thing that makes people
+            wonder which one is right. */}
         <StatTile label="Workouts" value={String(data.workouts)} />
-        <StatTile label="Streak" value={`${data.streak.current} 🔥`} sub={`best ${data.streak.best}`} />
         <StatTile label="Volume" value={`${compact(data.volumeKg)} kg`} />
         <StatTile label="Days trained" value={String(data.daysTrained)} />
         <StatTile label="Time" value={hours >= 1 ? `${hours}h` : `${data.minutes}m`} />

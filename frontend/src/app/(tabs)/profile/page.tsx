@@ -475,6 +475,7 @@ export default function ProfilePage() {
         level={data.levels.level}
         bodyrank={data.ranks.bodyrank}
         standing={data.ranks.standing}
+        streak={data.streaks}
         onEdit={() => go('edit')}
       />
 
