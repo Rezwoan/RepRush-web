@@ -95,6 +95,8 @@ export const workoutsApi = {
     muscles?: string;
   }) => api.get('/workouts/generate', { params }),
   /** Last session's actual sets for one exercise — the tracker's PREV column. */
+  /** One exercise's whole history, per session and per set. */
+  progress: (exerciseId: string) => api.get(`/workouts/progress/${encodeURIComponent(exerciseId)}`),
   getPrevious: (exerciseId: string) => api.get(`/workouts/previous/${encodeURIComponent(exerciseId)}`),
   getSessions: () => api.get('/workouts/sessions'),
   getSessionHistory: () => api.get('/workouts/sessions/history'),

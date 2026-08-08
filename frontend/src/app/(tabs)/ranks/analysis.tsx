@@ -1,28 +1,48 @@
 'use client';
 /**
- * Analysis — SPEC §6. Average Ranks, Predictions, Statistics, Rank Distribution.
+ * Analysis — rebuilt around the questions people actually ask.
  *
- * Everything here is derived from the one `GET /ranks/me` the tab already
- * fetched plus the cached catalog; nothing needs its own request. The donut is
- * a stroke-dasharray circle rather than a chart library — recharts is installed
- * but a single ring of arcs does not need an axis system.
+ * The first version had four sections and the owner could not read any of them:
+ * *Average Ranks* per catalog category (strength / powerlifting / strongman —
+ * words from the exercise database, not from training), *Predictions* (the same
+ * prescription the session's rank strip already shows, one tap from where you
+ * would act on it), *Statistics* (a bare "Number of Rank Ups: 12" over a week
+ * strip with no stated period), and *Rank Distribution* (a donut with no
+ * sentence saying what was being counted).
+ *
+ * So this is three sections, each led by a plain sentence stating what it is:
+ *
+ *   1. **Am I getting stronger on this lift?** — every exercise, tap for its
+ *      full history, set by set. This is the one people asked for and the only
+ *      thing here that could not be read off another screen.
+ *   2. **Where do my lifts sit on the ladder?** — the distribution, with the
+ *      count spelled out.
+ *   3. **How often am I moving up?** — rank-ups, with the word defined and the
+ *      period named.
+ *
+ * Two sections were deleted rather than explained. *Average Ranks* by category
+ * answers "which muscles are strong", which the Bodygraph on the Your Rank tab
+ * already answers better and anatomically. *Predictions* is the rank strip.
+ * Explaining a duplicate does not make it worth reading.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { MUSCLE_BY_ID, type MuscleId } from '@/lib/muscles';
 import { TIERS, TIER_LABEL, rankLabel, rankValue, type Tier } from '@/lib/ranks';
 import { useUnits } from '@/lib/units';
 import { getPrefs } from '@/lib/feedback';
 import { cn } from '@/lib/utils';
-import { Bar, EmptyState } from '@/components/ui/display';
+import { EmptyState } from '@/components/ui/display';
+import { Sheet } from '@/components/ui/sheet';
 import { RankBadge } from '@/components/art/rank-badge';
 import { Thumb, useCatalog } from '@/components/workout/exercise-picker';
-import { bestLabel, targetLabel, tierColor, type Overview } from './types';
+import { ExerciseProgress } from '@/components/workout/exercise-progress';
+import { bestLabel, tierColor, type Overview } from './types';
 
-/** Sunday-first, and rotated below to whichever day Settings → Calendar picks. */
+/** Sunday-first, rotated below to whichever day Settings → Calendar picks. */
 const DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-/** A donut arc set. Values are counts; the ring is drawn clockwise from 12 o'clock. */
+/** A donut arc set. Values are counts; the ring is drawn clockwise from 12. */
 function Donut({ slices, hole }: { slices: { tier: Tier; count: number }[]; hole: string }) {
   const total = slices.reduce((n, s) => n + s.count, 0) || 1;
   const R = 42;
@@ -34,7 +54,6 @@ function Donut({ slices, hole }: { slices: { tier: Tier; count: number }[]; hole
         <circle cx={50} cy={50} r={R} fill="none" stroke="hsl(var(--muted-foreground)/.15)" strokeWidth={13} />
         {slices.map((s) => {
           const len = (s.count / total) * C;
-          const dash = `${len} ${C - len}`;
           const el = (
             <circle
               key={s.tier}
@@ -44,7 +63,7 @@ function Donut({ slices, hole }: { slices: { tier: Tier; count: number }[]; hole
               fill="none"
               stroke={`hsl(var(--tier-${s.tier}))`}
               strokeWidth={13}
-              strokeDasharray={dash}
+              strokeDasharray={`${len} ${C - len}`}
               strokeDashoffset={-offset}
             />
           );
@@ -60,13 +79,25 @@ function Donut({ slices, hole }: { slices: { tier: Tier; count: number }[]; hole
   );
 }
 
-function Section({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
+/** A section, and the sentence that says what it is. Never one without the other. */
+function Section({
+  title,
+  blurb,
+  action,
+  children,
+}: {
+  title: string;
+  blurb: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <section className="mt-6">
-      <div className="mb-2.5 flex items-end justify-between">
+      <div className="mb-1 flex items-end justify-between gap-2">
         <h2 className="text-[22px] font-bold">{title}</h2>
         {action}
       </div>
+      <p className="mb-2.5 text-sm text-muted-foreground">{blurb}</p>
       {children}
     </section>
   );
@@ -75,17 +106,17 @@ function Section({ title, action, children }: { title: string; action?: React.Re
 export function AnalysisPanel({ data }: { data: Overview }) {
   const { byId } = useCatalog();
   const u = useUnits();
-  const [showAllCategories, setShowAllCategories] = useState(false);
   const [scope, setScope] = useState(0);
-  // Settings → Calendar. In an effect, like every other preference: it comes
-  // from localStorage, which the server pass cannot see.
+  const [query, setQuery] = useState('');
+  const [openExercise, setOpenExercise] = useState<{ id: string; name: string } | null>(null);
+
+  // Settings → Calendar. In an effect, like every preference: it comes from
+  // localStorage, which the server pass cannot see.
   const [firstDay, setFirstDay] = useState(0);
   useEffect(() => setFirstDay(getPrefs().weekStart === 'sunday' ? 0 : 1), []);
   const days = useMemo(() => [...DAYS.slice(firstDay), ...DAYS.slice(0, firstDay)], [firstDay]);
 
-  const categories = data.categories;
-
-  // ── Statistics: rank-ups, this week Su–Sa ─────────────────────────
+  // ── rank-ups, this week ───────────────────────────────────────────
   const week = useMemo(() => {
     const now = new Date();
     // `+ 7` before the modulo: under a Monday start, Sunday is six days into
@@ -93,19 +124,23 @@ export function AnalysisPanel({ data }: { data: Overview }) {
     const column = (d: Date) => (d.getDay() - firstDay + 7) % 7;
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - column(now));
     const counts = [0, 0, 0, 0, 0, 0, 0];
+    let total = 0;
     for (const iso of data.rankUps) {
       const d = new Date(iso);
-      if (d >= start) counts[column(d)]++;
+      if (d >= start) {
+        counts[column(d)]++;
+        total++;
+      }
     }
-    return { counts, today: column(now) };
+    return { counts, today: column(now), total };
   }, [data.rankUps, firstDay]);
 
-  // ── Distribution, filterable by body region / muscle group ────────
+  // ── distribution, filterable by body region ───────────────────────
   const scopes = useMemo(() => {
     const groups = Array.from(
       new Set(data.exercises.map((r) => MUSCLE_BY_ID[r.primaryMuscle as MuscleId]?.group).filter(Boolean)),
     ) as string[];
-    return [{ id: null as string | null, label: 'All ranks' }, ...groups.map((g) => ({ id: g, label: g }))];
+    return [{ id: null as string | null, label: 'All lifts' }, ...groups.map((g) => ({ id: g, label: g }))];
   }, [data.exercises]);
 
   const active = scopes[Math.min(scope, scopes.length - 1)];
@@ -119,18 +154,21 @@ export function AnalysisPanel({ data }: { data: Overview }) {
     return TIERS.filter((t) => counts.has(t)).map((t) => ({ tier: t, count: counts.get(t)! }));
   }, [inScope]);
 
-  // ── Predictions: the same prescription the session's rank strip shows ──
-  const predictions = useMemo(
-    () => data.exercises.filter((r) => r.next).sort((a, b) => (b.next!.progress ?? 0) - (a.next!.progress ?? 0)),
-    [data.exercises],
-  );
+  // ── the exercise list, strongest first ────────────────────────────
+  const lifts = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return data.exercises
+      .filter((r) => !q || r.name.toLowerCase().includes(q))
+      .slice()
+      .sort((a, b) => rankValue(b.rank) - rankValue(a.rank));
+  }, [data.exercises, query]);
 
   if (!data.exercises.length) {
     return (
       <EmptyState
         pose="idle"
         title="Nothing to analyse yet"
-        description="Log a few sets and this fills with your averages, your next targets and where your ranks cluster."
+        description="Log a few sets and this fills with every lift's history and where your ranks sit."
       />
     );
   }
@@ -138,112 +176,65 @@ export function AnalysisPanel({ data }: { data: Overview }) {
   return (
     <div>
       <Section
-        title="Average Ranks"
-        action={
-          categories.length > 3 && (
-            <button
-              onClick={() => setShowAllCategories((v) => !v)}
-              className="text-sm font-bold text-primary"
-            >
-              {showAllCategories ? 'Show less' : 'View all ›'}
-            </button>
-          )
-        }
+        title="Your lifts"
+        blurb="Tap any lift to see every session you have done it — set by set, with your best marked."
       >
-        <div className="space-y-1.5">
-          {(showAllCategories ? categories : categories.slice(0, 3)).map((c) => (
-            <div key={c.category} className="surface flex items-center gap-3 p-3">
-              <RankBadge
-                tier={c.rank.tier}
-                division={c.rank.division}
-                size="sm"
-                animated={false}
-                showDivision={false}
-              />
-              <p className="min-w-0 flex-1 truncate font-bold capitalize">{c.category}</p>
-              <span
-                className="shrink-0 text-sm font-extrabold uppercase tracking-wide"
-                style={{ color: tierColor(c.rank) }}
-              >
-                {rankLabel(c.rank)}
-              </span>
-              <span className="nums shrink-0 text-xs text-muted-foreground">{c.count}</span>
-            </div>
-          ))}
-        </div>
-      </Section>
+        {data.exercises.length > 6 && (
+          <div className="relative mb-2">
+            <Search
+              size={16}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search your lifts"
+              aria-label="Search your lifts"
+              className="w-full rounded-2xl border-2 border-border bg-card py-2.5 pl-9 pr-3 font-semibold outline-none focus:border-primary"
+            />
+          </div>
+        )}
 
-      <Section title="Predictions">
         <div className="space-y-1.5">
-          {predictions.slice(0, 8).map((r) => {
+          {lifts.map((r) => {
             const ex = byId[r.exerciseId];
-            const n = r.next!;
             return (
-              <div key={r.exerciseId} className="surface p-3">
-                <div className="flex items-center gap-3">
-                  {ex && <Thumb ex={ex} size={40} />}
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold">{r.name}</p>
-                    <p className="nums text-xs text-muted-foreground">
-                      Best {bestLabel(r.bestWeightKg, r.bestReps, u)}
-                    </p>
-                  </div>
-                  <RankBadge
-                    tier={r.rank.tier}
-                    division={r.rank.division}
-                    size="sm"
-                    animated={false}
-                    showDivision={false}
-                  />
+              <button
+                key={r.exerciseId}
+                onClick={() => setOpenExercise({ id: r.exerciseId, name: r.name })}
+                className="press surface flex w-full items-center gap-3 p-3 text-left"
+              >
+                {ex && <Thumb ex={ex} size={40} />}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold">{r.name}</p>
+                  <p className="nums text-xs text-muted-foreground">
+                    Best {bestLabel(r.bestWeightKg, r.bestReps, u)}
+                  </p>
                 </div>
-                <div className="mt-2.5 flex items-center gap-3">
-                  <span className="shrink-0 text-[11px] font-extrabold uppercase tracking-widest text-muted-foreground">
-                    Next {rankLabel(n.rank)}
-                  </span>
-                  <Bar
-                    value={n.progress}
-                    color={tierColor(n.rank)}
-                    className="flex-1"
-                    height={8}
-                    label={`Progress to ${rankLabel(n.rank)}`}
-                  />
-                  <span className="nums shrink-0 text-sm font-extrabold" style={{ color: tierColor(n.rank) }}>
-                    {targetLabel(n, u)}
-                  </span>
-                </div>
-              </div>
+                <span
+                  className="shrink-0 text-xs font-extrabold uppercase tracking-wide"
+                  style={{ color: tierColor(r.rank) }}
+                >
+                  {rankLabel(r.rank)}
+                </span>
+                <ChevronRight size={16} className="shrink-0 text-muted-foreground" />
+              </button>
             );
           })}
-          {!predictions.length && (
-            <p className="text-sm text-muted-foreground">Every ranked lift is at the top of the ladder.</p>
+          {!lifts.length && (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              No lift matches &ldquo;{query}&rdquo;.
+            </p>
           )}
         </div>
       </Section>
 
-      <Section title="Statistics">
-        <div className="surface p-4">
-          <p className="text-sm text-muted-foreground">Number of Rank Ups</p>
-          <p className="nums text-4xl font-extrabold leading-none">{data.rankUps.length}</p>
-          <div className="mt-4 flex justify-between gap-1">
-            {days.map((d, i) => (
-              <div key={i} className="flex flex-1 flex-col items-center gap-1.5">
-                <span
-                  className={cn(
-                    'nums grid h-9 w-full place-items-center rounded-lg text-sm font-extrabold',
-                    week.counts[i] ? 'bg-primary-fill text-primary-foreground' : 'bg-secondary text-muted-foreground',
-                    i === week.today && 'ring-2 ring-primary ring-offset-2 ring-offset-background',
-                  )}
-                >
-                  {week.counts[i]}
-                </span>
-                <span className="text-[11px] font-bold text-muted-foreground">{d}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </Section>
-
-      <Section title="Rank Distribution">
+      <Section
+        title="Where your lifts stand"
+        blurb={`Each lift you have ranked sits in a tier. These are your ${inScope.length} ${
+          active?.id ? `${active.label} ` : ''
+        }lift${inScope.length === 1 ? '' : 's'}, counted by tier.`}
+      >
         <div className="surface p-4">
           <div className="mb-3 flex items-center justify-between">
             <button
@@ -263,25 +254,71 @@ export function AnalysisPanel({ data }: { data: Overview }) {
             </button>
           </div>
           <div className="flex items-center gap-4">
-            <Donut slices={slices} hole={slices.length === 1 ? 'Rank' : 'Ranks'} />
+            <Donut slices={slices} hole={inScope.length === 1 ? 'lift' : 'lifts'} />
             <ul className="min-w-0 flex-1 space-y-1.5">
               {slices
                 .slice()
-                .sort((a, b) => rankValue({ tier: b.tier, division: 1, lp: 0 }) - rankValue({ tier: a.tier, division: 1, lp: 0 }))
+                .sort(
+                  (a, b) =>
+                    rankValue({ tier: b.tier, division: 1, lp: 0 }) -
+                    rankValue({ tier: a.tier, division: 1, lp: 0 }),
+                )
                 .map((s) => (
                   <li key={s.tier} className="flex items-center gap-2 text-sm">
                     <span
                       className="h-3 w-3 shrink-0 rounded-full"
                       style={{ background: `hsl(var(--tier-${s.tier}))` }}
                     />
-                    <span className="min-w-0 flex-1 truncate font-semibold">{TIER_LABEL[s.tier]}</span>
-                    <span className="nums font-extrabold">{s.count}</span>
+                    <span className="min-w-0 flex-1 truncate font-bold">{TIER_LABEL[s.tier]}</span>
+                    <span className="nums shrink-0 text-muted-foreground">{s.count}</span>
                   </li>
                 ))}
             </ul>
           </div>
         </div>
       </Section>
+
+      <Section
+        title="Moving up"
+        blurb="A rank-up is any time one of your lifts crosses into a higher division. This is the current week."
+      >
+        <div className="surface p-4">
+          <p className="nums text-4xl font-extrabold leading-none">{week.total}</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {week.total === 0
+              ? 'None yet this week — beat a lift you have already ranked and it lands here.'
+              : `rank-up${week.total === 1 ? '' : 's'} this week, ${data.rankUps.length} all time.`}
+          </p>
+          <div className="mt-4 flex justify-between gap-1">
+            {days.map((d, i) => (
+              <div key={i} className="flex flex-1 flex-col items-center gap-1.5">
+                <span
+                  className={cn(
+                    'nums grid h-9 w-full place-items-center rounded-lg text-sm font-extrabold',
+                    week.counts[i]
+                      ? 'bg-primary-fill text-primary-foreground'
+                      : 'bg-secondary text-muted-foreground',
+                    i === week.today && 'ring-2 ring-primary ring-offset-2 ring-offset-background',
+                  )}
+                >
+                  {week.counts[i]}
+                </span>
+                <span className="text-[11px] font-bold text-muted-foreground">{d}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Section>
+
+      <Sheet
+        open={!!openExercise}
+        onOpenChange={(v) => !v && setOpenExercise(null)}
+        title={openExercise?.name ?? ''}
+      >
+        <div className="pb-2">
+          {openExercise && <ExerciseProgress exerciseId={openExercise.id} />}
+        </div>
+      </Sheet>
     </div>
   );
 }

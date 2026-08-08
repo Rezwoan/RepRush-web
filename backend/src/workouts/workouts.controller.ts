@@ -101,6 +101,12 @@ export class WorkoutsController {
     return this.workoutsService.getExerciseList(user.id);
   }
 
+  /** One exercise's whole history, per session and per set (see the service). */
+  @Get('progress/:exerciseId')
+  exerciseProgress(@CurrentUser() user: User, @Param('exerciseId') exerciseId: string) {
+    return this.workoutsService.exerciseProgress(user.id, exerciseId);
+  }
+
   @Get('exercises/history')
   getExerciseHistory(@CurrentUser() user: User, @Query('name') name: string) {
     return this.workoutsService.getExerciseHistory(user.id, name);

@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Check, ChevronDown, ChevronRight, HelpCircle, MoreVertical, Plus, Settings, Trash2, X,
+  Check, ChevronDown, ChevronRight, HelpCircle, LineChart, MoreVertical, Plus, Settings, Trash2, X,
 } from 'lucide-react';
 import { ranksApi, workoutsApi } from '@/lib/api';
 import {
@@ -27,6 +27,7 @@ import { spring } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/sheet';
+import { ExerciseProgress } from '@/components/workout/exercise-progress';
 import { Toggle } from '@/components/ui/controls';
 import { Bar } from '@/components/ui/display';
 import { RankBadge } from '@/components/art/rank-badge';
@@ -522,7 +523,25 @@ function ExerciseCard({
   focusField: Field | null;
 }) {
   const [menu, setMenu] = useState(false);
+  const [history, setHistory] = useState(false);
   const u = useUnits();
+
+  /**
+   * Tapping a number mid-exercise, whether or not the set is already ticked.
+   *
+   * A logged set used to be read-only — the only way to correct it was Undo,
+   * and nothing on the row said so. Tapping one now un-logs it *and* seeds the
+   * draft with what it held, so the keypad opens on the real numbers and one
+   * tap of ✓ puts it back. The delete and the re-log both go through the
+   * outbox, so this works with no signal like everything else here.
+   */
+  const onEditCell = (key: string, field: Field, done: CachedSet | undefined, w: string, r: string) => {
+    if (done) {
+      setDrafts((d) => ({ ...d, [key]: { weight: w, reps: r } }));
+      onUndo(done);
+    }
+    onFocus(key, field);
+  };
 
   // Planned rows plus any the user added mid-session. The extras inherit the
   // last planned set, which is what "one more set" means.
@@ -550,7 +569,11 @@ function ExerciseCard({
         ) : (
           <span className="h-10 w-10 shrink-0 rounded-xl border border-border bg-secondary" />
         )}
-        <button onClick={onCollapse} className="min-w-0 flex-1 text-left">
+        <button
+          onClick={() => setHistory(true)}
+          className="press min-w-0 flex-1 text-left"
+          aria-label={`${ex.name} — see my history`}
+        >
           <p className="truncate font-bold">{ex.name}</p>
           <p className="nums text-xs text-muted-foreground">
             {logged.length}/{rows.length} sets · {Math.round(ex.restSec / 60)}m rest
@@ -662,14 +685,14 @@ function ExerciseCard({
                       value={weight}
                       done={!!done}
                       active={focusKey === key && focusField === 'weight'}
-                      onClick={() => !done && onFocus(key, 'weight')}
+                      onClick={() => onEditCell(key, 'weight', done, weight, reps)}
                     />
                     <Cell
                       label={`Reps, set ${i + 1}`}
                       value={reps}
                       done={!!done}
                       active={focusKey === key && focusField === 'reps'}
-                      onClick={() => !done && onFocus(key, 'reps')}
+                      onClick={() => onEditCell(key, 'reps', done, weight, reps)}
                     />
 
                     <button
@@ -710,6 +733,15 @@ function ExerciseCard({
         <button
           onClick={() => {
             setMenu(false);
+            setHistory(true);
+          }}
+          className="press mb-2 flex w-full items-center gap-3 rounded-xl border border-border bg-card p-3.5 text-left font-bold"
+        >
+          <LineChart size={18} /> See my history
+        </button>
+        <button
+          onClick={() => {
+            setMenu(false);
             onRemove();
           }}
           className="press flex w-full items-center gap-3 rounded-xl border border-border bg-card p-3.5 text-left font-bold text-destructive"
@@ -719,6 +751,15 @@ function ExerciseCard({
         <p className="mt-3 text-xs text-muted-foreground">
           Sets you have already logged stay logged — removing only takes the remaining rows off the screen.
         </p>
+      </Sheet>
+
+      {/* A sheet, not a route. Closing it returns to the session with drafts,
+          focus and the rest timer exactly as they were, because nothing
+          unmounted — "back with zero friction" by never leaving. */}
+      <Sheet open={history} onOpenChange={setHistory} title={ex.name}>
+        <div className="pb-2">
+          <ExerciseProgress exerciseId={ex.exerciseId} />
+        </div>
       </Sheet>
     </section>
   );

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, Not, IsNull } from 'typeorm';
+import { Repository, Between, Not, IsNull, In } from 'typeorm';
 import { GymSession } from './gym-session.entity';
 import { WorkoutSet } from './workout-set.entity';
 import { PersonalRecord } from './personal-record.entity';
@@ -10,6 +10,7 @@ import { UsersService } from '../users/users.service';
 import { CatalogService } from '../exercises/catalog.service';
 import { RanksService } from '../ranks/ranks.service';
 import { ratioForPercentile, medianRatio, ageFactor } from '../ranks/standards';
+import { e1rm } from '../ranks/e1rm';
 import {
   Difficulty,
   GenExercise,
@@ -524,6 +525,110 @@ export class WorkoutsService {
     let runMax = 0;
     points.forEach((p) => { p.isPR = p.topWeight > runMax; if (p.isPR) runMax = p.topWeight; });
     return points;
+  }
+
+  /**
+   * One exercise, every session, every set.
+   *
+   * The question this answers is the one a person actually asks mid-set — *what
+   * did I do last time, and the time before?* — so it returns the sets
+   * themselves rather than a summary of them. v1 had `getExerciseHistory`, but
+   * it keyed on the free-text `exerciseName` and collapsed each session to a
+   * single top-weight point, which cannot tell you that last week's 100 was a
+   * single and this week's is a triple.
+   *
+   * Keyed on `exerciseId`, so it covers the v1 history P2 backfilled as well as
+   * everything logged since.
+   */
+  async exerciseProgress(userId: number, exerciseId: string) {
+    const rows = await this.setRepo
+      .createQueryBuilder('s')
+      .innerJoin('gym_sessions', 'g', 'g.id = s.sessionId')
+      .addSelect('g.startedAt', 'g_startedAt')
+      .where('g.userId = :userId', { userId })
+      .andWhere('s.exerciseId = :exerciseId', { exerciseId })
+      .orderBy('s.loggedAt', 'ASC')
+      .getMany();
+
+    const cat = this.catalog.find(exerciseId);
+    if (!rows.length) {
+      return { exerciseId, name: cat?.name ?? exerciseId, sessions: [], best: null, totals: null };
+    }
+
+    const bySession = new Map<number, WorkoutSet[]>();
+    for (const r of rows) {
+      const list = bySession.get(r.sessionId) ?? [];
+      list.push(r);
+      bySession.set(r.sessionId, list);
+    }
+
+    const sessionRows = await this.sessionRepo.find({
+      where: { id: In(Array.from(bySession.keys())) },
+    });
+    const dateOf = new Map(sessionRows.map((s) => [s.id, s.completedAt ?? s.startedAt]));
+
+    let runningBestE1rm = 0;
+    const sessions = Array.from(bySession.entries())
+      .map(([sessionId, sets]) => {
+        const working = sets.filter((s) => !s.isWarmup);
+        const scored = working.length ? working : sets;
+        const best = scored.reduce(
+          (b, s) => (e1rm(s.weightKg, s.actualReps) > e1rm(b.weightKg, b.actualReps) ? s : b),
+          scored[0],
+        );
+        return {
+          sessionId,
+          date: dateOf.get(sessionId) ?? null,
+          sets: sets
+            .sort((a, b) => a.setNumber - b.setNumber)
+            .map((s) => ({
+              setNumber: s.setNumber,
+              weightKg: s.weightKg,
+              reps: s.actualReps,
+              isWarmup: !!s.isWarmup,
+              rpe: s.rpe ?? null,
+            })),
+          topWeightKg: Math.max(...scored.map((s) => s.weightKg)),
+          e1rm: Math.round(e1rm(best.weightKg, best.actualReps) * 10) / 10,
+          volumeKg: Math.round(scored.reduce((a, s) => a + s.weightKg * s.actualReps, 0)),
+          totalReps: scored.reduce((a, s) => a + s.actualReps, 0),
+          workingSets: working.length,
+          isPR: false,
+        };
+      })
+      .sort((a, b) => new Date(a.date ?? 0).getTime() - new Date(b.date ?? 0).getTime());
+
+    // A PR is a session that beat every session before it, so it has to be
+    // marked in chronological order — then the list is reversed for display.
+    for (const s of sessions) {
+      if (s.e1rm > runningBestE1rm) {
+        s.isPR = true;
+        runningBestE1rm = s.e1rm;
+      }
+    }
+
+    const allWorking = rows.filter((r) => !r.isWarmup);
+    const heaviest = allWorking.reduce(
+      (b, s) => (s.weightKg > b.weightKg ? s : b),
+      allWorking[0] ?? rows[0],
+    );
+
+    return {
+      exerciseId,
+      name: cat?.name ?? rows[0].exerciseName ?? exerciseId,
+      sessions: sessions.reverse(), // newest first — that is what gets read
+      best: {
+        weightKg: heaviest.weightKg,
+        reps: heaviest.actualReps,
+        e1rm: Math.round(runningBestE1rm * 10) / 10,
+      },
+      totals: {
+        sessions: sessions.length,
+        sets: allWorking.length,
+        reps: allWorking.reduce((a, s) => a + s.actualReps, 0),
+        volumeKg: Math.round(allWorking.reduce((a, s) => a + s.weightKg * s.actualReps, 0)),
+      },
+    };
   }
 
   async getHeatmapData(userId: number, year?: number) {
