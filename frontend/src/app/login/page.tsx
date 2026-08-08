@@ -9,12 +9,15 @@
  *
  * Three things share the page, in this order:
  *
- *  1. **Google**, the one-tap door.
- *  2. **Email and password.** Tried against Clerk first, then against this
- *     app's own database — every account that existed before 2026-08-08 has its
- *     hash *here*, not in Clerk, and those people cannot sign in through
- *     Clerk's password field. One form, either credential, no disclosure to
- *     find: "my old password doesn't work" was the failure this had to end.
+ *  1. **Google and Facebook** — both enabled on the instance, both leading the
+ *     screen. A tap on a provider you are already signed into beats recalling
+ *     a password, and this is the screen people bounce off.
+ *  2. **Email and password**, behind a text link. Tried against Clerk first,
+ *     then against this
+ *     app's own database — every account that existed before 2026-08-08 has
+ *     its hash *here*, not in Clerk, and those people cannot sign in through
+ *     Clerk's password field. One form, either credential: "my old password
+ *     doesn't work" was the failure this had to end.
  *  3. **Forgot password**, which is Clerk's email-code reset inline rather than
  *     a hand-off to a hosted page in another skin.
  *
@@ -37,7 +40,7 @@ import {
   AuthScreen,
   CodeInput,
   Divider,
-  GoogleIcon,
+  SocialButtons,
   authField,
   clerkError,
 } from '@/components/auth/auth-ui';
@@ -76,6 +79,7 @@ function ClerkSignIn() {
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [showEmail, setShowEmail] = useState(false);
   const [phase, setPhase] = useState<'form' | 'reset-sent'>('form');
   const [busy, setBusy] = useState(false);
   // `?error=clerk` is `ClerkBridge` bailing out of a handshake it could not
@@ -116,12 +120,12 @@ function ClerkSignIn() {
     }
   };
 
-  const google = async () => {
+  const social = async (strategy: 'oauth_google' | 'oauth_facebook') => {
     if (!isLoaded) return;
     setError('');
     try {
       await signIn.authenticateWithRedirect({
-        strategy: 'oauth_google',
+        strategy,
         redirectUrl: '/sso-callback',
         redirectUrlComplete: landing(),
       });
@@ -220,42 +224,60 @@ function ClerkSignIn() {
         </>
       }
     >
-      <Button variant="chunkyOutline" size="cta" onClick={google}>
-        <GoogleIcon /> Continue with Google
-      </Button>
+      <SocialButtons onPick={social} disabled={busy} />
 
-      <Divider label="or" />
-
-      <input
-        type="email"
-        autoComplete="email"
-        inputMode="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="Email"
-        className={authField}
-      />
-      <input
-        type="password"
-        autoComplete="current-password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && submit()}
-        placeholder="Password"
-        className={authField}
-      />
-      <AuthError>{error}</AuthError>
-      <Button variant="chunky" size="cta" disabled={busy || !email || !password} onClick={submit}>
-        {busy ? 'Signing in…' : 'Sign in'}
-      </Button>
-      <button
-        type="button"
-        onClick={sendReset}
-        className="w-full pt-1 text-center text-xs font-semibold text-primary hover:underline"
-      >
-        Forgot your password?
-      </button>
-      <p className="text-center text-[10px] text-muted-foreground/60">Secured by Clerk</p>
+      {!showEmail ? (
+        <>
+          <AuthError>{error}</AuthError>
+          <button
+            type="button"
+            onClick={() => setShowEmail(true)}
+            className="w-full pt-2 text-center text-sm font-semibold text-muted-foreground hover:text-foreground"
+          >
+            Sign in with email instead
+          </button>
+        </>
+      ) : (
+        <>
+          <Divider label="or use email" />
+          <input
+            type="email"
+            autoComplete="email"
+            inputMode="email"
+            autoFocus
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email"
+            className={authField}
+          />
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && submit()}
+            placeholder="Password"
+            className={authField}
+          />
+          <AuthError>{error}</AuthError>
+          <Button
+            variant="chunkyOutline"
+            size="cta"
+            disabled={busy || !email || !password}
+            onClick={submit}
+          >
+            {busy ? 'Signing in…' : 'Sign in'}
+          </Button>
+          <button
+            type="button"
+            onClick={sendReset}
+            className="w-full pt-1 text-center text-xs font-semibold text-primary hover:underline"
+          >
+            Forgot your password?
+          </button>
+        </>
+      )}
+      <p className="pt-1 text-center text-[10px] text-muted-foreground/60">Secured by Clerk</p>
     </AuthScreen>
   );
 }

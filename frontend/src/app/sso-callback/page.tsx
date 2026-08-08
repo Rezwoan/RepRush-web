@@ -18,6 +18,11 @@ export default function SsoCallbackPage() {
         <AuthenticateWithRedirectCallback
           signUpForceRedirectUrl="/welcome?setup=1"
           signInForceRedirectUrl="/home"
+          // The live Clerk instance marks `username` required, so a Google
+          // signup arrives here *incomplete*. `/sign-up` fills it from the
+          // address and finishes; without this the callback has nowhere to send
+          // someone who has already approved the provider.
+          continueSignUpUrl="/sign-up"
         />
       )}
       <BrandLoader />

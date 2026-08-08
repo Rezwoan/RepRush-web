@@ -16,6 +16,7 @@
  * handshake. Only the pixels moved.
  */
 import { motion } from 'framer-motion';
+import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/ui/logo';
 import { spring } from '@/lib/motion';
 import { cn } from '@/lib/utils';
@@ -112,6 +113,53 @@ export function CodeInput({
       aria-label="Verification code"
       className={cn(authField, 'nums text-center text-2xl font-extrabold tracking-[0.4em]')}
     />
+  );
+}
+
+/**
+ * The two doors that come first.
+ *
+ * Both are enabled on the Clerk instance (checked against `/v1/environment`,
+ * not assumed), and they lead the page rather than sitting under an email form:
+ * a tap on a provider you are already signed into beats choosing a password,
+ * remembering it, and finding the verification email. Full width, stacked — the
+ * two-up grid this replaced gave each button about 130px on a phone.
+ */
+export function SocialButtons({
+  onPick,
+  disabled,
+}: {
+  onPick: (strategy: 'oauth_google' | 'oauth_facebook') => void;
+  disabled?: boolean;
+}) {
+  return (
+    <>
+      <Button
+        variant="chunkyLight"
+        size="cta"
+        disabled={disabled}
+        onClick={() => onPick('oauth_google')}
+      >
+        <GoogleIcon /> Continue with Google
+      </Button>
+      <Button
+        variant="chunky"
+        size="cta"
+        disabled={disabled}
+        className="border-b-black/30 bg-[#1877F2] text-white"
+        onClick={() => onPick('oauth_facebook')}
+      >
+        <FacebookIcon /> Continue with Facebook
+      </Button>
+    </>
+  );
+}
+
+export function FacebookIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.09 10.13 24v-8.44H7.08v-3.49h3.05V9.41c-3.02 0-4.54 1.49-4.54 4.48v2.18h3.05V24C19.61 23.09 24 18.1 24 12.07z" />
+    </svg>
   );
 }
 
