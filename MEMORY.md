@@ -936,3 +936,43 @@ Two rules that fall out of it:
   carry a single weekday header row and read as a calendar.
 - A `Bodygraph` is unreadable below roughly 80px. Use it in a sheet or a card, never in a
   calendar cell; a day cell wants a number and a fill.
+
+**P14 cutover · 2026-08-08**
+
+- **v2 is live on `main` / reprush.rezwoan.codes** as of merge `aaf1435`. `main` is now the product;
+  `v2` remains the working branch and dev-reprush the staging stack. Pre-cutover pins for a
+  rollback: commit `82f2a1317921c8d6a3c872b0c7ad409cad9e19c5`, DB backups
+  `~/reprush-prod-backup-20260808.db` and `~/reprush-prod-backup-precutover-20260808.db` (identical,
+  md5 `a490d373b806c7fc9014e2c18b35c72a`), vhost backup
+  `/etc/nginx/sites-available/reprush.bak-precutover-20260808`. Procedure: `docs/v2/ROLLBACK.md`.
+- **The migration moved no data, by design.** The schema is additive, and every number the app shows
+  — ranks, streaks, XP, levels, Spark, medals, quests, leagues — is derived from `workout_sets` at
+  read time. So "migrate the users and recompute their points" is satisfied by carrying the database
+  file forward and restarting: the first read after boot already reflects the newest set. This is the
+  P3 decision paying off; it is why there was no backfill job to write and nothing that could
+  disagree with the sets.
+- **A stale staging database looks exactly like a data bug.** Dev's copy was taken at P0 and never
+  refreshed, so by 2026-08-08 it was three sessions behind and the app there correctly reported a
+  broken streak — which read as "the app lost my workouts". **Refresh dev from prod before judging
+  anything data-dependent on dev**, and treat "the numbers are wrong on dev" as a question about the
+  copy first:
+  ```bash
+  ssh reezz@blackbox.local 'sudo systemctl stop reprush-dev-backend \
+    && cp /var/www/reprush/backend/database/reprush.db /var/www/reprush-dev/backend/database/reprush.db \
+    && sudo systemctl start reprush-dev-backend'
+  ```
+  (It carries prod's users across, including their password hashes — which is what makes dev testable
+  and also why dev must keep its `X-Robots-Tag: noindex` and its own JWT secret.)
+- **`systemctl reload nginx` returns before the new config is serving.** `prod-cache-headers.sh`
+  printed the *old* `s-maxage` header from its own verification curl and looked like it had failed;
+  a re-probe seconds later showed `no-cache`. Verify a reload by re-probing, not by the command's
+  trailing output.
+- **A deploy script cannot fix itself on the run that introduces it.** `deploy.sh` hard-resets the
+  checkout in step 1, so the `flock` and DB-snapshot steps added in the cutover merge did not protect
+  the cutover deploy. Where that matters, either let CI own the deploy (it did here — the runner was
+  already busy, so no manual run could race it) or run the new script from `/tmp` rather than from
+  the checkout it is about to overwrite.
+- **`POST /api/admin/announce`** is the one-off broadcast (`?dryRun=1` lists recipients and sends
+  nothing). It is sequential rather than `Promise.all` — Resend rate-limits, and it returns a
+  per-recipient result so a retry can target failures instead of mailing everyone twice. There is no
+  claim table: it is admin-only and manual, so "sent once" is a human decision, not state.
