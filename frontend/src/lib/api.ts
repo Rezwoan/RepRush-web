@@ -326,3 +326,30 @@ export const adminApi = {
 };
 
 export default api;
+
+// ─── Feedback (docs/v2/FEEDBACK.md) ──────────────────────────────────────────
+/**
+ * Every route is authenticated — there is no anonymous submission path, because
+ * an open form writing files to the Pi is a spam funnel.
+ *
+ * `create` posts images as base64 data URLs inside the JSON body rather than as
+ * multipart. That avoids adding multer for one form; the ~33% encoding overhead
+ * is affordable because `lib/image-compress.ts` has already downscaled each
+ * image to ~200-400 KB, leaving the whole report well inside nginx's 12 MB cap.
+ */
+export const feedbackApi = {
+  /** Topic and status lists plus the image limit, so the client hardcodes none. */
+  meta: () => api.get('/feedback/meta'),
+  create: (body: {
+    message: string;
+    topic?: string | null;
+    images?: string[];
+    context?: string | null;
+  }) => api.post('/feedback', body),
+  /** The reporter's own history. */
+  mine: () => api.get('/feedback/mine'),
+  /** Admin only; the server enforces it, not this client. */
+  all: () => api.get('/feedback/all'),
+  setStatus: (id: number, status: string) => api.patch(`/feedback/${id}/status`, { status }),
+  remove: (id: number) => api.delete(`/feedback/${id}`),
+};

@@ -390,9 +390,26 @@ export function SettingsPanel({
       )}
 
       <Group title="Resources">
+        {/* P10 pulled a Feedback tile because it opened a "coming soon" for a
+            form with no backend. This one is real, and its reader — the admin
+            list below — shipped in the same change. */}
+        <Row
+          label="Send feedback"
+          sub="Tell us what is broken or what is missing"
+          onClick={() => onView('feedback')}
+          right={<ChevronRight size={18} className="text-muted-foreground" />}
+        />
         <Row label="About & attributions" onClick={() => setScreen('about')} right={<ChevronRight size={18} className="text-muted-foreground" />} />
         {user?.role === 'admin' && (
-          <Row label="Admin" sub="User management" onClick={() => router.push('/admin')} right={<ChevronRight size={18} className="text-muted-foreground" />} />
+          <>
+            <Row
+              label="Feedback inbox"
+              sub="What users have reported"
+              onClick={() => onView('feedback-admin')}
+              right={<ChevronRight size={18} className="text-muted-foreground" />}
+            />
+            <Row label="Admin" sub="User management" onClick={() => router.push('/admin')} right={<ChevronRight size={18} className="text-muted-foreground" />} />
+          </>
         )}
       </Group>
 

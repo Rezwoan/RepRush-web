@@ -31,6 +31,25 @@ down RepRush **and** affect the other apps on that Pi.
 
 ---
 
+## Code and documentation standard
+
+**All new code follows [`docs/ENGINEERING.md`](docs/ENGINEERING.md).** It is
+written for AI agents and defines how this repository is commented: every file
+header states *why* it exists, every exported symbol states its contract,
+non-obvious lines carry a *why* rather than a *what*, rejected alternatives are
+recorded, and deliberate shortcuts are marked `ponytail:` with their ceiling.
+
+It also carries the rules that keep changes correct here — validate at the trust
+boundary, additive schema changes only, one runnable check per piece of
+non-trivial logic, and **every new writer needs a named reader in the same
+change**. That last one is not style: it is the defect this project has shipped
+four times.
+
+Anything with its own data model or lifecycle also gets a page under `docs/v2/`.
+[`docs/v2/FEEDBACK.md`](docs/v2/FEEDBACK.md) is the reference example.
+
+---
+
 ## The Most Important Rules
 
 ### 1. Do not break the build

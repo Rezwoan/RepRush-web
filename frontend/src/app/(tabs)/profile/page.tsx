@@ -47,6 +47,7 @@ import { ReactionsPanel } from './reactions';
 import { MedalsPanel, QuestsPanel } from './quests';
 import { RoutinesPanel } from './routines';
 import { SettingsPanel } from './settings';
+import { FeedbackAdminPanel, FeedbackPanel } from './feedback';
 import { StatisticsPanel } from './statistics';
 import { StorePanel } from './store';
 import { CARD_TITLE, hhmm, type Overview } from './types';
@@ -321,6 +322,8 @@ export default function ProfilePage() {
           onQuests={() => router.push('/profile?view=quests')}
         />
       );
+    if (view === 'feedback') return <FeedbackPanel onBack={back} />;
+    if (view === 'feedback-admin') return <FeedbackAdminPanel onBack={back} />;
     if (view === 'statistics') return <StatisticsPanel onBack={back} />;
     if (view === 'quests')
       return <QuestsPanel onBack={back} onStore={() => router.push('/profile?view=store')} />;

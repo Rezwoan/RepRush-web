@@ -19,6 +19,7 @@ into `MEMORY.md` under *Decisions*, and move on.
 2. Read `PROGRESS.md` — find the first phase whose status is not `DONE`. That is your work.
 3. Read the relevant section of `docs/v2/SPEC.md` for that phase.
 4. Read `AGENTS.md` — the production-safety rules still apply to anything under `main`.
+   Then read `docs/ENGINEERING.md` — the code and documentation standard all new code follows.
 5. `git fetch --all && git checkout v2 && git pull` (create `v2` from `main` if it does not exist).
 6. Work. Then run the **Definition of Done** below before you stop.
 

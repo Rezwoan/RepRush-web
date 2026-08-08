@@ -23,6 +23,7 @@ import { HomeModule } from './home/home.module';
 import { SocialModule } from './social/social.module';
 import { ProfileModule } from './profile/profile.module';
 import { GamificationModule } from './gamification/gamification.module';
+import { FeedbackModule } from './feedback/feedback.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { GamificationModule } from './gamification/gamification.module';
     ProfileModule,
     GamificationModule,
     SeedModule,
+    FeedbackModule,
   ],
 })
 export class AppModule {}
