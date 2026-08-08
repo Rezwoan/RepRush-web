@@ -755,6 +755,19 @@ export class WorkoutsService implements OnModuleInit {
     });
     if (!set || set.session.userId !== userId) throw new NotFoundException('Set not found');
     await this.setRepo.delete(setId);
+
+    // The other way a finished session can end up empty, and the last hole in
+    // the rule `completeSession` enforces: strip the last set off a workout
+    // that was already finished and it would go on counting as a training day
+    // with nothing in it.
+    //
+    // Only ever a *completed* session — an in-progress one is meant to be
+    // empty between the first tap and the first logged set, and deleting it
+    // there would throw away the session somebody is in the middle of.
+    if (set.session.completedAt && !(await this.setRepo.count({ where: { sessionId: set.sessionId } }))) {
+      await this.sessionRepo.delete(set.sessionId);
+      return { message: 'Set deleted', sessionDiscarded: true };
+    }
     return { message: 'Set deleted' };
   }
 

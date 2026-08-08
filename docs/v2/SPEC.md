@@ -461,6 +461,19 @@ A day counts if a tracked workout was completed. Weekday dot row; flaming mascot
 scales with streak length; best-ever streak. One "freeze" earned per 7-day streak, auto-spent to
 cover a single missed day (max 2 banked). Streak screens are full-screen celebrations.
 
+**A session with no logged sets is not a workout.** It counts towards nothing — not the streak,
+not the workout total, not a medal, not Spark — because there is nothing in it. Tapping *start*
+and then walking away used to record a training day, which is how a five-day streak displayed as
+six. The rule is enforced where sessions are written rather than where they are counted, so no
+counter has to remember it: `completeSession` discards an empty session instead of finishing one,
+and `deleteSet` discards a finished session whose last set has just been removed. There is
+therefore no such thing as a stored completed session with nothing in it, and every count over
+`completedAt` is honest by construction.
+
+For the same reason, **starting** a workout changes nothing: the session records which routine it
+came from and finishing it is what stamps `routines.lastUsedAt`, so a day you began and abandoned
+does not rotate your split.
+
 ### XP & Levels
 
 **The award is itemised, and the user can see the itemisation.** `Show XP Breakdown` on the
