@@ -943,6 +943,47 @@ All three land on the same mistake, and it was mine: **the data model, not the s
       left the blank one to the estimate; clamps held (`reps: 0` → null, `1e9` → 1000, `restSec −5`
       → 0); `routine shape ok` at boot, zero ERROR lines. Test account deleted.
 
+### Round four — progression, mid-session editing, and a legible Analysis tab (2026-08-08)
+
+- [x] **`GET /workouts/progress/:exerciseId`** — every session, every set. v1 had
+      `getExerciseHistory`, but it keyed on the free-text `exerciseName` and collapsed each session
+      to one top-weight point, which cannot tell you that last week's 100 was a single and this
+      week's is a triple. Keyed on `exerciseId`, so it covers the v1 history P2 backfilled.
+      The trend line is **e1RM, not top weight** — dropping the load and adding reps is progress
+      that a top-weight line draws as a decline. PRs are marked in chronological order and the list
+      is then reversed, so "best yet" means beating everything before it, not tying it.
+- [x] **Reachable mid-set, and free to leave.** From a session the history opens as a **Sheet, not
+      a route** — closing it returns with the drafts, the focused cell and the rest timer exactly as
+      they were, because nothing unmounted. "Back with zero friction" achieved by never leaving.
+      Reachable from the exercise name itself and from its overflow menu.
+- [x] **A logged set is editable.** `!done && onFocus(...)` made a ticked row read-only; the only
+      recourse was Undo, and nothing on the row said so. Tapping a number now un-logs the set *and*
+      seeds the keypad with what it held, so one tick puts it back. Delete and re-log both go
+      through the outbox, so it works with no signal like everything else on that screen.
+- [x] **Save today's session as a routine**, from the finish flow. Built from the **logged sets**,
+      not from the plan it started with: mid-session you swap an exercise, drop a set, add fifteen
+      kilos, and all of that used to evaporate, leaving the routine describing a workout you no
+      longer do.
+- [x] **Analysis rebuilt.** Owner: *"I totally do not understand anything in the Analysis page."*
+      Fair — four sections and not one of them said what it was:
+      - *Average Ranks* grouped by **catalog category** (strength / powerlifting / strongman) —
+        words from the exercise database, not from training. **Deleted:** it answers "which muscles
+        are strong", which the Bodygraph on Your Rank already answers better and anatomically.
+      - *Predictions* restated the session's own rank strip, one tap from where you would act on it.
+        **Deleted**, per the owner's call.
+      - *Statistics* was a bare "Number of Rank Ups: 12" over an unlabelled week strip.
+      - *Rank Distribution* was a donut with no sentence saying what was being counted.
+
+      Three sections now, each led by a plain line stating what it is: **Your lifts** (searchable,
+      tap for the full history — the thing that was asked for, and the only one here that cannot be
+      read off another screen), **Where your lifts stand** (the distribution, with the count spelled
+      out), and **Moving up** (rank-up actually defined, period named, all-time total beside it).
+- [x] **Exit check — verified on dev against a real account's history:** `Incline Dumbbell Curl`
+      returned 10 sessions / 31 sets / 232 reps / 2,320 kg with per-set detail, newest-first
+      ordering asserted, and exactly one PR — the first session to reach that e1RM, not each one
+      that ties it. An exercise never performed returns an empty history rather than an error, and
+      a junk id does the same. Boot self-checks green, zero ERROR lines, prod 200 and untouched.
+
 ### Still open — resume here
 
 - [ ] **Rebuild the admin panel in the v2 shell.** `app/admin/page.tsx` is still v1's 501-line page

@@ -875,3 +875,21 @@ Two rules that fall out of it:
 - **When a screen "can't edit X", check whether the model can even hold X.** Two rounds were spent
   improving a routine editor whose storage shape made the owner's actual request impossible. The
   question to ask first is not "what control is missing" but "what would this have to store".
+
+**P15 round four · 2026-08-08**
+
+- **`GET /workouts/progress/:exerciseId`** is the per-exercise history: every session, every set,
+  keyed on `exerciseId` so it covers backfilled v1 rows. v1's `getExerciseHistory` (name-keyed, one
+  point per session) is superseded and should not be extended.
+- **Progress is e1RM, not top weight.** Dropping the load and adding reps is progress; a top-weight
+  line draws it as a decline. PRs are flagged walking oldest→newest with `>`, then the list is
+  reversed for display — so a session that *ties* the best is not a PR.
+- **Opening a detail view from the active session must be a Sheet, never a route.** The session
+  screen holds drafts, a focused cell and a rest timer in local state; navigating away and back
+  loses all three. "Back with zero friction" is achieved by not navigating.
+- A logged set is editable by tapping its number: it un-logs and seeds the draft with the old
+  values, so one tick restores it. Both writes go through the outbox.
+- **A screen that shows a number must say what the number is.** The Analysis tab had four sections
+  and no sentence explaining any of them; two of the four were deleted outright rather than
+  explained, because both duplicated a screen that said it better (the Bodygraph, and the session's
+  own rank strip). Explaining a duplicate does not make it worth reading.
