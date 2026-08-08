@@ -15,9 +15,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Check, ChevronDown, ChevronRight, HelpCircle, LineChart, MoreVertical, Plus, Settings, Trash2, X,
+  Check, ChevronDown, ChevronRight, Flame, HelpCircle, LineChart, MoreVertical, Plus, Repeat,
+  Settings, Trash2, X,
 } from 'lucide-react';
 import { ranksApi, workoutsApi } from '@/lib/api';
+import { GONE, appendRow, insertRow, removeRow, type Reshape } from '@/lib/set-rows';
 import {
   cacheSession, getCachedSession, getSessionPlan, materializeSets, queueDeleteSet,
   queueLogSet, resolveSessionId, setSessionNotes, subscribe, flushOutbox, type CachedSet,
@@ -114,7 +116,8 @@ export default function SessionPage() {
   const [discarding, setDiscarding] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
-  const [extraSlots, setExtraSlots] = useState<Record<string, number>>({});
+  /** Which exercise the picker is replacing, when it was opened to swap one. */
+  const [swapping, setSwapping] = useState<string | null>(null);
   const [focus, setFocus] = useState<{ key: string; field: Field; restSec: number } | null>(null);
   const [clock, setClock] = useState(0);
 
@@ -251,6 +254,125 @@ export default function SessionPage() {
     }
   };
 
+  /**
+   * Change an exercise's rows, keeping the sets already logged against them.
+   *
+   * The server identifies a set by its number *within* the exercise, so adding
+   * or removing a row in the middle silently re-points every logged set after
+   * it — set 3 would start reading as set 2. `map` says where each old row
+   * ended up (`-1` = gone), and anything that moved is rewritten through the
+   * outbox, which is also what makes this work with no signal.
+   *
+   * This is why the rows live in `exercises` alone. They used to be `ex.sets`
+   * plus a parallel `extraSlots` counter, which could only ever grow and only
+   * at the end — two sources of truth for one list, and the reason there was
+   * no way to take a set back off.
+   */
+  const reshape = (ex: PlannedExercise, { rows, map }: Reshape<PlannedSet>) => {
+    const numbered = rows.map((s, i) => ({ ...s, setNumber: i + 1 }));
+    for (const set of loggedFor(ex.exerciseId)) {
+      const from = set.setNumber - 1;
+      const to = map[from];
+      if (to === from) continue;
+      queueDeleteSet(sessionId, set);
+      if (to !== GONE && numbered[to]) {
+        queueLogSet(sessionId, {
+          exerciseName: ex.name,
+          exerciseId: ex.exerciseId,
+          setNumber: to + 1,
+          actualReps: set.actualReps,
+          weightKg: set.weightKg,
+          targetReps: numbered[to].targetReps,
+          isWarmup: numbered[to].isWarmup,
+        });
+      }
+    }
+    setExercises((l) =>
+      l.map((e) => (e.exerciseId === ex.exerciseId ? { ...e, sets: numbered } : e)),
+    );
+    void flushOutbox();
+    rerender();
+  };
+
+  /** One more of the same — the common case is a fourth set of what you just did. */
+  const addSet = (ex: PlannedExercise) => {
+    const tail = ex.sets[ex.sets.length - 1];
+    reshape(
+      ex,
+      appendRow(ex.sets, {
+        setNumber: 0,
+        isWarmup: false,
+        targetReps: tail?.targetReps ?? 8,
+        weightKg: tail?.weightKg ?? null,
+      }),
+    );
+  };
+
+  /**
+   * A warm-up row, at the top where warm-ups belong — after any already there,
+   * before the working sets.
+   *
+   * Half the working weight for four more reps, which is the same rule the
+   * backend generator warms up with. Routine-started sessions had no warm-ups
+   * at all and no way to add one: `fromRoutine` marks every set as working, so
+   * the `W` badge this screen can draw was unreachable for anyone running their
+   * own program.
+   */
+  const addWarmup = (ex: PlannedExercise) => {
+    const at = ex.sets.filter((s) => s.isWarmup).length;
+    const work = ex.sets.find((s) => !s.isWarmup) ?? ex.sets[0];
+    const row: PlannedSet = {
+      setNumber: 0,
+      isWarmup: true,
+      targetReps: Math.min(12, (work?.targetReps ?? 8) + 4),
+      // Rounded to a plate, not to a decimal — nobody loads 23.7 kg.
+      weightKg: work?.weightKg != null ? Math.round((work.weightKg * 0.5) / 2.5) * 2.5 : null,
+    };
+    reshape(ex, insertRow(ex.sets, at, row));
+  };
+
+  /** Take one row off, wherever it is. A logged set on it did not happen. */
+  const removeSet = (ex: PlannedExercise, index: number) => {
+    if (ex.sets.length <= 1) return; // the last row is `Remove from this session`
+    reshape(ex, removeRow(ex.sets, index));
+  };
+
+  /**
+   * Trade one movement for another mid-session.
+   *
+   * The rack is taken, the machine is broken, your shoulder disagrees — and the
+   * only way through it was to delete the exercise and add a different one,
+   * which lost the set and rep shape the routine prescribed. The shape is kept
+   * and only the weights are cleared, because those belonged to the old lift.
+   *
+   * Sets already logged against the old exercise stay logged: they happened,
+   * and the summary should say so. The sheet says as much before you tap.
+   */
+  const swapExercise = (oldId: string, cat: CatalogExercise) => {
+    setExercises((l) =>
+      l.map((e) =>
+        e.exerciseId === oldId
+          ? {
+              exerciseId: cat.id,
+              name: cat.name,
+              primaryMuscle: cat.primary[0],
+              equipment: cat.equipment,
+              mechanic: cat.mechanic,
+              restSec: cat.restSec,
+              sets: e.sets.map((s, i) => ({
+                setNumber: i + 1,
+                isWarmup: s.isWarmup,
+                targetReps: s.targetReps,
+                weightKg: null,
+              })),
+              fromHistory: false,
+            }
+          : e,
+      ),
+    );
+    setSwapping(null);
+  };
+
   const addExercise = (cat: CatalogExercise) => {
     setExercises((l) => [
       ...l,
@@ -272,7 +394,7 @@ export default function SessionPage() {
     ]);
   };
 
-  const totalPlanned = exercises.reduce((n, e) => n + e.sets.length + (extraSlots[e.exerciseId] ?? 0), 0);
+  const totalPlanned = exercises.reduce((n, e) => n + e.sets.length, 0);
   const doneCount = logged.length;
   const loggedCount = logged.length;
 
@@ -364,37 +486,10 @@ export default function SessionPage() {
               logged={loggedFor(ex.exerciseId)}
               drafts={drafts}
               setDrafts={setDrafts}
-              extra={extraSlots[ex.exerciseId] ?? 0}
-              onAddSet={() =>
-                setExtraSlots((s) => ({ ...s, [ex.exerciseId]: (s[ex.exerciseId] ?? 0) + 1 }))
-              }
-              /**
-               * Take the last row off. `Add set` had no counterpart, so one
-               * mis-tap left a row that could never go away — and a routine
-               * prescribing four sets on a day you only have three in you had
-               * to be edited to say so.
-               *
-               * Extras come off first, then prescribed rows. A row holding a
-               * logged set is un-logged on the way out, through the same
-               * outbox call the ✓ makes, because removing a set you logged
-               * plainly means it did not happen.
-               */
-              onRemoveSet={() => {
-                const extras = extraSlots[ex.exerciseId] ?? 0;
-                const last = ex.sets.length + extras;
-                if (last <= 1) return; // an exercise with no rows is `Remove from this session`
-                const logged = loggedFor(ex.exerciseId).find((s) => s.setNumber === last);
-                if (logged) undo(logged);
-                if (extras > 0) {
-                  setExtraSlots((s) => ({ ...s, [ex.exerciseId]: extras - 1 }));
-                } else {
-                  setExercises((l) =>
-                    l.map((e) =>
-                      e.exerciseId === ex.exerciseId ? { ...e, sets: e.sets.slice(0, -1) } : e,
-                    ),
-                  );
-                }
-              }}
+              onAddSet={() => addSet(ex)}
+              onAddWarmup={() => addWarmup(ex)}
+              onRemoveSet={(i) => removeSet(ex, i)}
+              onSwap={() => setSwapping(ex.exerciseId)}
               collapsed={!!collapsed[ex.exerciseId]}
               onCollapse={() => setCollapsed((c) => ({ ...c, [ex.exerciseId]: !c[ex.exerciseId] }))}
               onRemove={() => setExercises((l) => l.filter((e) => e.exerciseId !== ex.exerciseId))}
@@ -555,6 +650,16 @@ export default function SessionPage() {
         onPick={addExercise}
         excludeIds={exercises.map((e) => e.exerciseId)}
       />
+
+      {/* The same picker, pointed at a replacement. Excluding what is already
+          in the session includes the exercise being swapped out — picking it
+          again is a no-op the list should not offer. */}
+      <ExercisePicker
+        open={swapping !== null}
+        onOpenChange={(v) => !v && setSwapping(null)}
+        onPick={(cat) => swapping && swapExercise(swapping, cat)}
+        excludeIds={exercises.map((e) => e.exerciseId)}
+      />
     </div>
   );
 }
@@ -595,9 +700,88 @@ function SettingRow({
   );
 }
 
+/**
+ * A set row you can swipe left to remove.
+ *
+ * The red button is always in the DOM behind the row, not conditionally
+ * rendered: that is what lets a keyboard or a screen reader reach it at all —
+ * focusing it slides the row open, so the gesture is a shortcut rather than the
+ * only way in. A swipe-only delete is a delete that does not exist for anybody
+ * navigating by keys.
+ *
+ * Touch events rather than a gesture library: this is one axis, one threshold,
+ * and the screen already ships two of its own. The vertical check is what stops
+ * a scroll down the set list from being read as a swipe.
+ */
+function SetRow({
+  children,
+  onRemove,
+  canRemove,
+  label,
+  className,
+}: {
+  children: React.ReactNode;
+  onRemove: () => void;
+  canRemove: boolean;
+  label: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const start = useRef<{ x: number; y: number } | null>(null);
+
+  // A row that is the only one left cannot be removed, so it must not open —
+  // an action drawer with a button that does nothing is worse than no drawer.
+  const armed = canRemove;
+
+  return (
+    <li className="relative overflow-hidden rounded-xl">
+      <button
+        onClick={() => {
+          setOpen(false);
+          onRemove();
+        }}
+        onFocus={() => armed && setOpen(true)}
+        onBlur={() => setOpen(false)}
+        disabled={!armed}
+        aria-label={`Remove ${label}`}
+        className="absolute inset-y-0 right-0 grid w-20 place-items-center bg-destructive text-xs font-extrabold uppercase tracking-wider text-destructive-foreground"
+      >
+        <span className="flex flex-col items-center gap-0.5">
+          <Trash2 size={16} />
+          Remove
+        </span>
+      </button>
+
+      <div
+        onTouchStart={(e) => {
+          start.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }}
+        onTouchMove={(e) => {
+          if (!start.current) return;
+          const dx = e.touches[0].clientX - start.current.x;
+          const dy = e.touches[0].clientY - start.current.y;
+          if (Math.abs(dx) < 28 || Math.abs(dx) < Math.abs(dy)) return; // a scroll, not a swipe
+          setOpen(armed && dx < 0);
+          start.current = null;
+        }}
+        onTouchEnd={() => {
+          start.current = null;
+        }}
+        style={{ transform: open ? 'translateX(-5rem)' : undefined }}
+        className={cn(
+          'relative grid grid-cols-[28px_60px_1fr_1fr_44px] items-center gap-2 rounded-xl bg-card px-1 py-1.5 transition-transform',
+          className,
+        )}
+      >
+        {children}
+      </div>
+    </li>
+  );
+}
+
 function ExerciseCard({
-  ex, catalog, info, logged, drafts, setDrafts, extra, onAddSet, onRemoveSet, collapsed, onCollapse,
-  onRemove, showRankStrip, onCommit, onUndo, onFocus, focusKey, focusField,
+  ex, catalog, info, logged, drafts, setDrafts, onAddSet, onAddWarmup, onRemoveSet, onSwap,
+  collapsed, onCollapse, onRemove, showRankStrip, onCommit, onUndo, onFocus, focusKey, focusField,
 }: {
   ex: PlannedExercise;
   catalog?: CatalogExercise;
@@ -605,9 +789,10 @@ function ExerciseCard({
   logged: CachedSet[];
   drafts: Record<string, Draft>;
   setDrafts: React.Dispatch<React.SetStateAction<Record<string, Draft>>>;
-  extra: number;
   onAddSet: () => void;
-  onRemoveSet: () => void;
+  onAddWarmup: () => void;
+  onRemoveSet: (index: number) => void;
+  onSwap: () => void;
   collapsed: boolean;
   onCollapse: () => void;
   onRemove: () => void;
@@ -639,21 +824,14 @@ function ExerciseCard({
     onFocus(key, field);
   };
 
-  // Planned rows plus any the user added mid-session. The extras inherit the
-  // last planned set, which is what "one more set" means.
-  const rows: PlannedSet[] = useMemo(() => {
-    const base = ex.sets;
-    const tail = base[base.length - 1];
-    return [
-      ...base,
-      ...Array.from({ length: extra }, (_, i) => ({
-        setNumber: base.length + i + 1,
-        isWarmup: false,
-        targetReps: tail?.targetReps ?? 8,
-        weightKg: tail?.weightKg ?? null,
-      })),
-    ];
-  }, [ex.sets, extra]);
+  const rows = ex.sets;
+
+  // Working sets count 1, 2, 3 among themselves — a warm-up above them must not
+  // push the first real set to "2". Warm-ups all read `W`.
+  const ordinals = useMemo(() => {
+    let n = 0;
+    return rows.map((s) => (s.isWarmup ? 'W' : String(++n)));
+  }, [rows]);
 
   const next = info?.next;
 
@@ -756,12 +934,12 @@ function ExerciseCard({
                 const reps = done ? String(done.actualReps) : cell('reps', ghostReps);
 
                 return (
-                  <li
+                  <SetRow
                     key={key}
-                    className={cn(
-                      'grid grid-cols-[28px_60px_1fr_1fr_44px] items-center gap-2 rounded-xl px-1 py-1.5 transition-colors',
-                      done && 'bg-success/15',
-                    )}
+                    canRemove={rows.length > 1}
+                    onRemove={() => onRemoveSet(i)}
+                    label={`set ${ordinals[i]} of ${ex.name}`}
+                    className={cn(done && 'bg-success/15')}
                   >
                     <span
                       className={cn(
@@ -769,7 +947,7 @@ function ExerciseCard({
                         planned.isWarmup ? 'bg-tier-gold/20 text-tier-gold' : 'bg-secondary',
                       )}
                     >
-                      {planned.isWarmup ? 'W' : i + 1}
+                      {ordinals[i]}
                     </span>
 
                     <span className="nums truncate text-xs text-muted-foreground">
@@ -800,7 +978,7 @@ function ExerciseCard({
                         setDrafts((d) => ({ ...d, [key]: { weight, reps } }));
                         onCommit(i, planned);
                       }}
-                      aria-label={done ? `Undo set ${i + 1}` : `Complete set ${i + 1}`}
+                      aria-label={done ? `Undo set ${ordinals[i]}` : `Complete set ${ordinals[i]}`}
                       className={cn(
                         'press grid h-9 w-9 place-items-center rounded-xl border-2 transition-colors',
                         done
@@ -810,10 +988,14 @@ function ExerciseCard({
                     >
                       <Check size={17} strokeWidth={3} />
                     </button>
-                  </li>
+                  </SetRow>
                 );
               })}
             </ul>
+
+            <p className="mt-1.5 px-1 text-[11px] text-muted-foreground">
+              Swipe a set left to remove it.
+            </p>
 
             <div className="mt-2 flex gap-2">
               <button
@@ -822,17 +1004,13 @@ function ExerciseCard({
               >
                 + Add set
               </button>
-              {/* Only once there is something to take away — a lone set has
-                  `Remove from this session` for that. */}
-              {rows.length > 1 && (
-                <button
-                  onClick={onRemoveSet}
-                  aria-label={`Remove set ${rows.length} from ${ex.name}`}
-                  className="press rounded-xl border border-dashed border-border px-4 py-2 text-xs font-extrabold uppercase tracking-wider text-muted-foreground"
-                >
-                  − Set
-                </button>
-              )}
+              <button
+                onClick={onAddWarmup}
+                aria-label={`Add a warm-up set to ${ex.name}`}
+                className="press rounded-xl border border-dashed border-tier-gold/50 px-4 py-2 text-xs font-extrabold uppercase tracking-wider text-tier-gold"
+              >
+                + Warm-up
+              </button>
             </div>
           </div>
         </>
@@ -851,6 +1029,24 @@ function ExerciseCard({
         <button
           onClick={() => {
             setMenu(false);
+            onSwap();
+          }}
+          className="press mb-2 flex w-full items-center gap-3 rounded-xl border border-border bg-card p-3.5 text-left font-bold"
+        >
+          <Repeat size={18} /> Swap for another exercise
+        </button>
+        <button
+          onClick={() => {
+            setMenu(false);
+            onAddWarmup();
+          }}
+          className="press mb-2 flex w-full items-center gap-3 rounded-xl border border-border bg-card p-3.5 text-left font-bold"
+        >
+          <Flame size={18} /> Add a warm-up set
+        </button>
+        <button
+          onClick={() => {
+            setMenu(false);
             onRemove();
           }}
           className="press flex w-full items-center gap-3 rounded-xl border border-border bg-card p-3.5 text-left font-bold text-destructive"
@@ -858,7 +1054,9 @@ function ExerciseCard({
           <Trash2 size={18} /> Remove from this session
         </button>
         <p className="mt-3 text-xs text-muted-foreground">
-          Sets you have already logged stay logged — removing only takes the remaining rows off the screen.
+          Swapping keeps the sets and reps this exercise was going to do and clears the weights,
+          which belonged to the old lift. Sets you have already logged stay logged either way — they
+          happened, and the summary will say so.
         </p>
       </Sheet>
 
