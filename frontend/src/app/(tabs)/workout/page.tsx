@@ -352,7 +352,10 @@ export default function WorkoutBuilderPage() {
       <RoutineChooser
         onPickRoutine={openRoutine}
         onGenerate={() => setMode('generated')}
-        onManage={() => router.push('/profile?view=routines')}
+        onManage={() => router.push('/profile?view=routines&from=workout')}
+        // `from=workout` so the editor's back button returns to the day list
+        // you opened it from, rather than dumping you on the Profile tab.
+        onEditRoutine={(id) => router.push(`/profile?view=routines&routine=${id}&from=workout`)}
       />
     );
   }

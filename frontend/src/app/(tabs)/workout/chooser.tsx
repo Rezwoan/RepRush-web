@@ -131,10 +131,18 @@ export function RoutineChooser({
   onPickRoutine,
   onGenerate,
   onManage,
+  onEditRoutine,
 }: {
   onPickRoutine: (routineId: number) => void;
   onGenerate: () => void;
+  /** The routine library in general — `Edit routines`, `Build my own`. */
   onManage: () => void;
+  /**
+   * *This* day's editor. `Edit this day` used to call `onManage` and drop you
+   * on the library, which is the right screen and the wrong place: you then
+   * had to find the day you had just tapped, in a list, by name.
+   */
+  onEditRoutine: (routineId: number) => void;
 }) {
   const [list, setList] = useState<RoutineList | null>(null);
   const [packagesOpen, setPackagesOpen] = useState(false);
@@ -285,7 +293,7 @@ export function RoutineChooser({
                 routine={r}
                 suggested={r.id === suggestedId}
                 onStart={() => onPickRoutine(r.id)}
-                onEdit={onManage}
+                onEdit={() => onEditRoutine(r.id)}
               />
             ))}
             {primary.routines.length === 0 && (
@@ -306,11 +314,18 @@ export function RoutineChooser({
                   routine={{ ...r, name: `${f.name} · ${r.name}` }}
                   suggested={false}
                   onStart={() => onPickRoutine(r.id)}
+                  onEdit={() => onEditRoutine(r.id)}
                 />
               )),
             )}
             {list.loose.map((r) => (
-              <DayCard key={r.id} routine={r} suggested={false} onStart={() => onPickRoutine(r.id)} />
+              <DayCard
+                key={r.id}
+                routine={r}
+                suggested={false}
+                onStart={() => onPickRoutine(r.id)}
+                onEdit={() => onEditRoutine(r.id)}
+              />
             ))}
           </div>
         </section>

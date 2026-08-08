@@ -6,7 +6,7 @@
  * of stuff you made — and because `Create Exercise` was deferred out of P6's
  * picker to exactly here.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronDown, Folder, FolderPlus, Plus, Share2, Trash2 } from 'lucide-react';
 import { exercisesApi, profileApi } from '@/lib/api';
 import { MUSCLES } from '@/lib/muscles';
@@ -52,9 +52,18 @@ interface Library {
 export function RoutinesPanel({
   tab: initialTab,
   onBack,
+  openRoutineId,
 }: {
   tab: 'routines' | 'exercises';
   onBack: () => void;
+  /**
+   * Open straight into this routine's editor once the library has loaded.
+   *
+   * The Workout tab's `Edit this day` links here with the id, so tapping it
+   * lands on that day rather than on a list you then have to search. Ignored
+   * when the id names nothing — a routine deleted on another device.
+   */
+  openRoutineId?: number;
 }) {
   const [tab, setTab] = useState(initialTab);
   const [library, setLibrary] = useState<Library | null>(null);
@@ -86,6 +95,25 @@ export function RoutinesPanel({
   useEffect(() => {
     load();
   }, [load]);
+
+  // Deep link from the Workout tab. Guarded by a ref rather than by `editing`
+  // being null, or closing the editor would immediately reopen it and the back
+  // button would be stuck.
+  const jumped = useRef(false);
+  useEffect(() => {
+    if (!openRoutineId || !library || jumped.current) return;
+    jumped.current = true;
+    const all = [...library.folders.flatMap((f) => f.routines), ...library.loose];
+    const found = all.find((r) => r.id === openRoutineId);
+    if (found) {
+      setEditing({
+        id: found.id,
+        name: found.name,
+        folderId: found.folderId,
+        exercises: (found.exercises ?? []).map(withDefaults),
+      });
+    }
+  }, [openRoutineId, library]);
 
   const openPicker = async () => {
     setPicking(true);

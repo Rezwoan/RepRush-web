@@ -396,7 +396,11 @@ export default function ProfilePage() {
     // Profile root. `from` is what lets them go back where they came from, and
     // it survives a refresh in a way `router.back()` would not.
     const from = params.get('from');
-    const back = () => router.push(from ? `/profile?view=${from}` : '/profile');
+    // `from=workout` is the one value that is not a `?view=` panel: the Workout
+    // tab sends people here to edit the day they just tapped, and back has to
+    // mean the day list they came from.
+    const back = () =>
+      router.push(from === 'workout' ? '/workout' : from ? `/profile?view=${from}` : '/profile');
     if (view === 'edit') return <EditProfile data={data} onBack={back} onSaved={() => reload(win)} />;
     if (view === 'settings')
       return (
@@ -410,7 +414,13 @@ export default function ProfilePage() {
     if (view === 'health') return <HealthPanel onBack={back} />;
     if (view === 'consumables') return <ConsumablesPanel onBack={back} />;
     if (view === 'routines' || view === 'exercises')
-      return <RoutinesPanel tab={view} onBack={back} />;
+      return (
+        <RoutinesPanel
+          tab={view}
+          onBack={back}
+          openRoutineId={Number(params.get('routine')) || undefined}
+        />
+      );
     if (view === 'store' || view === 'inventory')
       return (
         <StorePanel

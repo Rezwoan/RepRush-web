@@ -368,6 +368,33 @@ export default function SessionPage() {
               onAddSet={() =>
                 setExtraSlots((s) => ({ ...s, [ex.exerciseId]: (s[ex.exerciseId] ?? 0) + 1 }))
               }
+              /**
+               * Take the last row off. `Add set` had no counterpart, so one
+               * mis-tap left a row that could never go away — and a routine
+               * prescribing four sets on a day you only have three in you had
+               * to be edited to say so.
+               *
+               * Extras come off first, then prescribed rows. A row holding a
+               * logged set is un-logged on the way out, through the same
+               * outbox call the ✓ makes, because removing a set you logged
+               * plainly means it did not happen.
+               */
+              onRemoveSet={() => {
+                const extras = extraSlots[ex.exerciseId] ?? 0;
+                const last = ex.sets.length + extras;
+                if (last <= 1) return; // an exercise with no rows is `Remove from this session`
+                const logged = loggedFor(ex.exerciseId).find((s) => s.setNumber === last);
+                if (logged) undo(logged);
+                if (extras > 0) {
+                  setExtraSlots((s) => ({ ...s, [ex.exerciseId]: extras - 1 }));
+                } else {
+                  setExercises((l) =>
+                    l.map((e) =>
+                      e.exerciseId === ex.exerciseId ? { ...e, sets: e.sets.slice(0, -1) } : e,
+                    ),
+                  );
+                }
+              }}
               collapsed={!!collapsed[ex.exerciseId]}
               onCollapse={() => setCollapsed((c) => ({ ...c, [ex.exerciseId]: !c[ex.exerciseId] }))}
               onRemove={() => setExercises((l) => l.filter((e) => e.exerciseId !== ex.exerciseId))}
@@ -569,7 +596,7 @@ function SettingRow({
 }
 
 function ExerciseCard({
-  ex, catalog, info, logged, drafts, setDrafts, extra, onAddSet, collapsed, onCollapse,
+  ex, catalog, info, logged, drafts, setDrafts, extra, onAddSet, onRemoveSet, collapsed, onCollapse,
   onRemove, showRankStrip, onCommit, onUndo, onFocus, focusKey, focusField,
 }: {
   ex: PlannedExercise;
@@ -580,6 +607,7 @@ function ExerciseCard({
   setDrafts: React.Dispatch<React.SetStateAction<Record<string, Draft>>>;
   extra: number;
   onAddSet: () => void;
+  onRemoveSet: () => void;
   collapsed: boolean;
   onCollapse: () => void;
   onRemove: () => void;
@@ -787,12 +815,25 @@ function ExerciseCard({
               })}
             </ul>
 
-            <button
-              onClick={onAddSet}
-              className="press mt-2 w-full rounded-xl border border-dashed border-border py-2 text-xs font-extrabold uppercase tracking-wider text-muted-foreground"
-            >
-              + Add set
-            </button>
+            <div className="mt-2 flex gap-2">
+              <button
+                onClick={onAddSet}
+                className="press flex-1 rounded-xl border border-dashed border-border py-2 text-xs font-extrabold uppercase tracking-wider text-muted-foreground"
+              >
+                + Add set
+              </button>
+              {/* Only once there is something to take away — a lone set has
+                  `Remove from this session` for that. */}
+              {rows.length > 1 && (
+                <button
+                  onClick={onRemoveSet}
+                  aria-label={`Remove set ${rows.length} from ${ex.name}`}
+                  className="press rounded-xl border border-dashed border-border px-4 py-2 text-xs font-extrabold uppercase tracking-wider text-muted-foreground"
+                >
+                  − Set
+                </button>
+              )}
+            </div>
           </div>
         </>
       )}
