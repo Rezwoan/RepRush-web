@@ -21,14 +21,13 @@ import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { SignIn } from '@clerk/nextjs';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertCircle, ArrowRight, ChevronDown } from 'lucide-react';
+import { AlertCircle, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { authApi } from '@/lib/api';
 import { setToken } from '@/lib/token';
 import { Logo } from '@/components/ui/logo';
 import { Button } from '@/components/ui/button';
 import { spring } from '@/lib/motion';
-import { cn } from '@/lib/utils';
 import { clerkEnabled } from '@/components/auth/clerk-gate';
 import { useClerkAppearance } from '@/components/auth/clerk-appearance';
 
@@ -44,7 +43,6 @@ function LoginContent() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [legacyOpen, setLegacyOpen] = useState(false);
 
   /** Where to land after signing in — set by any link that needs a session. */
   const next = params.get('next');
@@ -181,26 +179,10 @@ function LoginContent() {
                 fallbackRedirectUrl={landing()}
               />
 
-              <div className="mt-5 border-t border-border pt-4">
-                <button
-                  type="button"
-                  onClick={() => setLegacyOpen((o) => !o)}
-                  className="flex w-full items-center justify-between text-left text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
-                  aria-expanded={legacyOpen}
-                >
-                  Had an account before August 2026?
-                  <ChevronDown size={15} className={cn('transition-transform', legacyOpen && 'rotate-180')} />
-                </button>
-                {legacyOpen && (
-                  <div className="mt-4 space-y-4">
-                    <p className="text-xs leading-relaxed text-muted-foreground">
-                      Your old password lives in RepRush, not above. Use it here — or sign in with
-                      Google using the same email and we&apos;ll reconnect you to the same account.
-                    </p>
-                    {legacyForm}
-                  </div>
-                )}
-              </div>
+              <p className="mt-4 text-center text-[10px] text-muted-foreground/60">
+                Secured by Clerk
+              </p>
+
             </>
           ) : (
             <>
