@@ -11,6 +11,7 @@
  * races that a hand-rolled IDB wrapper would invite.
  */
 import { bodyWeightApi, gameApi, socialApi, workoutsApi } from './api';
+import { remapActiveSession, setActiveSession } from './active-session';
 
 const QUEUE_KEY = 'reprush_outbox_v1';
 const SESSION_KEY = 'reprush_session_cache_v1';
@@ -211,6 +212,8 @@ export function queueStartSession(
 ): number {
   const tempSessionId = -Date.now();
   enqueue({ id: uid(), kind: 'startSession', tempSessionId, workoutType, workoutPlanId, plan, routineId });
+  // One writer for the "mid-workout" record: a session can only begin here.
+  setActiveSession({ id: tempSessionId, title: workoutType, startedAt: new Date().toISOString() });
   const c = getCache();
   c[String(tempSessionId)] = {
     id: tempSessionId,
@@ -260,6 +263,7 @@ export function queueDeleteSet(sessionId: number, set: CachedSet) {
 
 export function queueCompleteSession(sessionId: number, finish?: FinishPayload) {
   enqueue({ id: uid(), kind: 'completeSession', sessionId, finish });
+  setActiveSession(null);
   const c = getCache();
   const s = c[String(sessionId)];
   if (s) { s.completedAt = new Date().toISOString(); setCache(c); }
@@ -324,6 +328,9 @@ export async function flushOutbox(): Promise<{ synced: number; failed: number }>
           const map = getIdMap();
           map[String(op.tempSessionId)] = realId;
           setIdMap(map);
+          // The bar's Resume button holds this id; leaving it pointing at the
+          // temp one would navigate to a session the server has never heard of.
+          remapActiveSession(op.tempSessionId, realId);
 
           // Carry the cached session (and its sets) over to the real id.
           const c = getCache();

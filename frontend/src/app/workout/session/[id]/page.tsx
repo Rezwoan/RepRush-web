@@ -22,6 +22,7 @@ import {
   cacheSession, getCachedSession, getSessionPlan, materializeSets, queueDeleteSet,
   queueLogSet, resolveSessionId, setSessionNotes, subscribe, flushOutbox, type CachedSet,
 } from '@/lib/offline';
+import { setActiveSession } from '@/lib/active-session';
 import { rankLabel, type Rank } from '@/lib/ranks';
 import { spring } from '@/lib/motion';
 import { cn } from '@/lib/utils';
@@ -109,6 +110,8 @@ export default function SessionPage() {
   const [rankInfo, setRankInfo] = useState<Record<string, ExerciseRankInfo>>({});
   const [settings, setSettings] = useState<TrackerSettings>(DEFAULT_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [extraSlots, setExtraSlots] = useState<Record<string, number>>({});
@@ -271,6 +274,29 @@ export default function SessionPage() {
 
   const totalPlanned = exercises.reduce((n, e) => n + e.sets.length + (extraSlots[e.exerciseId] ?? 0), 0);
   const doneCount = logged.length;
+  const loggedCount = logged.length;
+
+  /**
+   * Throw the session away.
+   *
+   * The record that says "you are mid-workout" is cleared *first* and
+   * unconditionally: if the delete fails because the phone is offline, the one
+   * thing that must not happen is the resume bar continuing to advertise a
+   * session the user has already decided to bin. A session started offline has
+   * a negative temp id the server has never seen, so there is nothing to delete
+   * there either — dropping the local record is the whole operation.
+   */
+  const discardSession = async () => {
+    setDiscarding(true);
+    setActiveSession(null);
+    try {
+      if (sessionId > 0) await workoutsApi.resetSession(sessionId);
+    } catch {
+      /* offline or already gone — the user is leaving either way */
+    }
+    setDiscardOpen(false);
+    router.replace('/workout');
+  };
 
   if (!exercises.length && !logged.length) {
     return (
@@ -451,6 +477,48 @@ export default function SessionPage() {
             checked={settings.showRankStrip}
             onChange={(v) => saveSettings({ ...settings, showRankStrip: v })}
           />
+
+          {/* Discarding lives here rather than beside Finish on the utility bar:
+              they are one tap apart on a phone held mid-set, and one of them
+              deletes the session. `DELETE /workouts/sessions/:id` has existed
+              since v1 and nothing in the app has ever called it — starting a
+              workout by accident meant living with it. */}
+          <div className="mt-4 border-t border-border pt-4">
+            <button
+              type="button"
+              onClick={() => { setSettingsOpen(false); setDiscardOpen(true); }}
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-3 text-left text-sm font-semibold text-destructive transition-colors hover:bg-destructive/10"
+            >
+              <Trash2 size={16} /> Discard this workout
+            </button>
+            <p className="px-3 pt-1 text-xs text-muted-foreground">
+              Deletes the session and everything logged in it. Cannot be undone.
+            </p>
+          </div>
+        </div>
+      </Sheet>
+
+      <Sheet open={discardOpen} onOpenChange={setDiscardOpen} title="Discard this workout?">
+        <div className="space-y-4 pb-2">
+          <p className="text-sm text-muted-foreground">
+            {loggedCount > 0
+              ? `${loggedCount} logged ${loggedCount === 1 ? 'set' : 'sets'} will be deleted. This cannot be undone.`
+              : 'Nothing has been logged yet, so there is nothing to lose.'}
+          </p>
+          <div className="flex gap-3">
+            <Button variant="chunkyOutline" size="cta" onClick={() => setDiscardOpen(false)}>
+              Keep training
+            </Button>
+            <Button
+              variant="chunky"
+              size="cta"
+              disabled={discarding}
+              onClick={discardSession}
+              className="!bg-destructive"
+            >
+              {discarding ? 'Discarding…' : 'Discard'}
+            </Button>
+          </div>
         </div>
       </Sheet>
 

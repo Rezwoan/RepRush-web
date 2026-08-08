@@ -13,6 +13,7 @@ import { BrandLoader } from '@/components/ui/motion-primitives';
 import { TabBar } from '@/components/layout/tab-bar';
 import { TopBar } from '@/components/layout/top-bar';
 import OfflineBanner from '@/components/layout/offline-banner';
+import ActiveSessionBar from '@/components/workout/active-session-bar';
 import { StreakSheet } from '@/components/layout/streak-sheet';
 import { Mascot, type MascotPose } from '@/components/art/mascot';
 
@@ -80,6 +81,7 @@ export default function TabsLayout({ children }: { children: React.ReactNode }) 
         <OfflineBanner />
         {children}
       </main>
+      <ActiveSessionBar />
       <TabBar />
       <StreakSheet
         open={streakOpen}

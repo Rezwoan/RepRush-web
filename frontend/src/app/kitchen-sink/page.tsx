@@ -26,6 +26,7 @@ import { MUSCLES, type MuscleId } from '@/lib/muscles';
 import { __selfcheck as ranksCheck } from '@/lib/ranks';
 import { __selfcheck as musclesCheck } from '@/lib/muscles';
 import { __selfcheck as themesCheck } from '@/lib/themes';
+import { __selfcheck as rulerCheck } from '@/components/ui/pickers';
 import { __selfcheck as bodygraphCheck } from '@/components/art/bodygraph';
 import { __selfcheck as badgeCheck } from '@/components/art/rank-badge';
 import { __selfcheck as medalCheck } from '@/components/art/medal';
@@ -50,6 +51,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function SelfChecks() {
   const results = [
     ['themes', themesCheck],
+    ['ruler', rulerCheck],
     ['muscles', musclesCheck],
     ['ranks', ranksCheck],
     ['bodygraph', bodygraphCheck],

@@ -33,10 +33,16 @@ export function Rays({
         const a = (360 / count) * i;
         const w = 360 / count / 2.4;
         const rad = (d: number) => ((d - 90) * Math.PI) / 180;
-        const x1 = 100 + 160 * Math.cos(rad(a - w));
-        const y1 = 100 + 160 * Math.sin(rad(a - w));
-        const x2 = 100 + 160 * Math.cos(rad(a + w));
-        const y2 = 100 + 160 * Math.sin(rad(a + w));
+        // Radius 100, not 160. The viewBox is 200×200 and SVG clips to it, so a
+        // 160 reach meant every wedge was sliced off square against the box —
+        // the burst read as a hard-edged rectangle sitting on top of whatever it
+        // was meant to be haloing, which is what "the shine and the avatar
+        // overlap" actually was. At 100 the wedge tips land exactly where the
+        // gradient reaches zero, so the burst fades out instead of being cut.
+        const x1 = 100 + 100 * Math.cos(rad(a - w));
+        const y1 = 100 + 100 * Math.sin(rad(a - w));
+        const x2 = 100 + 100 * Math.cos(rad(a + w));
+        const y2 = 100 + 100 * Math.sin(rad(a + w));
         return `M100 100 L${x1.toFixed(1)} ${y1.toFixed(1)} L${x2.toFixed(1)} ${y2.toFixed(1)} Z`;
       }),
     [count],
