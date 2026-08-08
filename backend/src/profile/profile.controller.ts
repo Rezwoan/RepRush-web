@@ -21,6 +21,7 @@ import { __selfcheck as cosmeticsSelfCheck } from './cosmetics';
 import { __selfcheck as xpSelfCheck } from './xp';
 import { __selfcheck as windowsSelfCheck } from './profile.service';
 import { __selfcheck as packagesSelfCheck, ROUTINE_PACKAGES } from '../workouts/routine-packages';
+import { __selfcheck as routineShapeSelfCheck } from './routine-shape';
 import { CatalogService } from '../exercises/catalog.service';
 
 @UseGuards(JwtAuthGuard)
@@ -39,6 +40,7 @@ export class ProfileController implements OnModuleInit {
     xpSelfCheck();
     windowsSelfCheck();
     packagesSelfCheck();
+    routineShapeSelfCheck();
     // The resolution check lives here rather than in the package file because
     // it needs the catalog. It is the one that matters: a package whose names
     // no longer map is a program that claims fine and then hands the user an
@@ -54,7 +56,7 @@ export class ProfileController implements OnModuleInit {
     if (unresolved.length) {
       throw new Error(`routine packages: unresolved exercises — ${unresolved.join(', ')}`);
     }
-    this.logger.log('ProfileService: cosmetics ok, xp ok, calendar windows ok, routine packages ok');
+    this.logger.log('ProfileService: cosmetics ok, xp ok, calendar windows ok, routine packages ok, routine shape ok');
   }
 
   /** Everything the Profile tab renders (SPEC §9), in one round trip. */

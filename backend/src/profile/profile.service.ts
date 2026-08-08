@@ -18,6 +18,7 @@ import { PostReaction } from '../social/post-reaction.entity';
 import { HealthLog } from './health-log.entity';
 import { Routine, RoutineFolder, UserExercise } from './routine.entity';
 import { ROUTINE_PACKAGES, packageById } from '../workouts/routine-packages';
+import { normaliseExercise, parseExercises } from './routine-shape';
 import { COSMETIC_BY_ID, COSMETICS, DEFAULT_COSMETIC, freeIds, type CosmeticKind } from './cosmetics';
 import { XP, levelFromXp } from './xp';
 
@@ -556,15 +557,19 @@ export class ProfileService {
   // ── Routines and custom exercises (SPEC §12.3) ────────────────────
 
   async listRoutines(userId: number) {
-    const [folders, routines] = await Promise.all([
+    const [folders, routines, lookups] = await Promise.all([
       this.folders.find({ where: { userId }, order: { name: 'ASC' } }),
       this.routines.find({ where: { userId }, order: { updatedAt: 'DESC' } }),
+      this.routineLookups(userId),
     ]);
+    // Parsed through the normaliser rather than handed over raw: a routine
+    // written before per-set rows existed opens in the current shape, and the
+    // client never has to know two formats.
     const shape = (r: Routine) => ({
       id: r.id,
       name: r.name,
       folderId: r.folderId ?? null,
-      exercises: parseJson<unknown[]>(r.exercises, []),
+      exercises: parseExercises(r.exercises, lookups.isKnown, lookups.nameFor, lookups.restFor),
       updatedAt: r.updatedAt,
       // What the Workout tab rotates on — the day gone longest without.
       lastUsedAt: r.lastUsedAt ?? null,
@@ -657,13 +662,16 @@ export class ProfileService {
           const exerciseId = this.catalog.resolveLegacyName(x.name);
           if (!exerciseId) return null;
           const cat = this.catalog.find(exerciseId);
+          // Per-set rows, with no weight: the package prescribes the shape of
+          // the session, and the tracker fills the numbers from the user's own
+          // last performance. A package cannot know what anyone lifts.
+          const reps = Math.round((x.repMin + x.repMax) / 2);
           return {
             exerciseId,
             name: cat?.name ?? x.name,
-            sets: x.sets,
-            repMin: x.repMin,
-            repMax: x.repMax,
+            notes: null,
             restSec: x.restSec,
+            sets: Array.from({ length: x.sets }, () => ({ weightKg: null, reps })),
           };
         })
         .filter(Boolean);
@@ -756,9 +764,10 @@ export class ProfileService {
   async sharedFolder(code: string) {
     const folder = await this.folders.findOne({ where: { shareCode: (code || '').toUpperCase() } });
     if (!folder) throw new NotFoundException('That routine link is not valid');
-    const [owner, routines] = await Promise.all([
+    const [owner, routines, ownerLookups] = await Promise.all([
       this.users.findOne({ where: { id: folder.userId } }),
       this.routines.find({ where: { userId: folder.userId, folderId: folder.id } }),
+      this.routineLookups(folder.userId),
     ]);
     return {
       code: folder.shareCode,
@@ -768,7 +777,7 @@ export class ProfileService {
         .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
         .map((r) => ({
           name: r.name,
-          exercises: parseJson<any[]>(r.exercises, []),
+          exercises: parseExercises(r.exercises, ownerLookups.isKnown, ownerLookups.nameFor, ownerLookups.restFor),
         })),
     };
   }
@@ -824,39 +833,17 @@ export class ProfileService {
   }
 
   /**
-   * Normalise one routine exercise at the trust boundary.
-   *
-   * This used to be `JSON.stringify(whatever)` because nothing but our own
-   * picker wrote it. The editor makes sets, reps and rest user-editable, so the
-   * numbers are input now: they are clamped rather than trusted, unknown keys
-   * are dropped, and the exercise id has to name something real — a routine
-   * referencing a made-up id would claim fine and hand over an empty tracker.
-   *
-   * Returns null for anything unusable, so a single bad row cannot fail a save.
+   * The three lookups `routine-shape.ts` needs, bound to this user: a routine
+   * may reference the catalog or one of their own exercises.
    */
-  private normaliseRoutineExercise(raw: any, customIds: Set<string>) {
-    const exerciseId = typeof raw?.exerciseId === 'string' ? raw.exerciseId : '';
-    if (!exerciseId) return null;
-    const cat = this.catalog.find(exerciseId);
-    if (!cat && !customIds.has(exerciseId)) return null;
-
-    const int = (v: unknown, lo: number, hi: number, fallback: number) => {
-      const n = Math.round(Number(v));
-      return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : fallback;
-    };
-
-    const repMin = int(raw?.repMin, 1, 100, 8);
-    // Clamped against repMin, not just the range: a max below the min renders as
-    // an empty target and prescribes nothing.
-    const repMax = Math.max(repMin, int(raw?.repMax, 1, 100, Math.max(repMin, 12)));
-
+  private async routineLookups(userId: number) {
+    const custom = await this.userExercises.find({ where: { userId } });
+    const customIds = new Set(custom.map((c) => `custom:${c.id}`));
+    const customName = new Map(custom.map((c) => [`custom:${c.id}`, c.name]));
     return {
-      exerciseId,
-      name: cat?.name ?? String(raw?.name ?? exerciseId).slice(0, 80),
-      sets: int(raw?.sets, 1, 20, 3),
-      repMin,
-      repMax,
-      restSec: int(raw?.restSec, 0, 600, cat?.restSec ?? 90),
+      isKnown: (id: string) => !!this.catalog.find(id) || customIds.has(id),
+      nameFor: (id: string) => this.catalog.find(id)?.name ?? customName.get(id),
+      restFor: (id: string) => this.catalog.find(id)?.restSec,
     };
   }
 
@@ -867,11 +854,10 @@ export class ProfileService {
     const name = (dto.name || '').trim().slice(0, 60);
     if (!name) throw new BadRequestException('Name the routine first');
 
-    const custom = await this.userExercises.find({ where: { userId } });
-    const customIds = new Set(custom.map((c) => `custom:${c.id}`));
+    const { isKnown, nameFor, restFor } = await this.routineLookups(userId);
     const list = (Array.isArray(dto.exercises) ? dto.exercises : [])
       .slice(0, 30)
-      .map((raw) => this.normaliseRoutineExercise(raw, customIds))
+      .map((raw) => normaliseExercise(raw, isKnown, nameFor, restFor))
       .filter(Boolean);
     const exercises = JSON.stringify(list);
 

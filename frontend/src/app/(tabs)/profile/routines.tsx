@@ -14,7 +14,13 @@ import { Button } from '@/components/ui/button';
 import { Segmented } from '@/components/ui/controls';
 import { EmptyState } from '@/components/ui/display';
 import { Sheet } from '@/components/ui/sheet';
-import { RoutineEditor, withDefaults, type EditableRoutine, type RoutineExercise } from './routine-editor';
+import {
+  RoutineEditor,
+  setSummary,
+  withDefaults,
+  type EditableRoutine,
+  type RoutineExercise,
+} from './routine-editor';
 import { EquipmentIcon, type Equipment } from '@/components/art/equipment-icon';
 import { cn } from '@/lib/utils';
 import { Panel } from './panel';
@@ -159,7 +165,7 @@ export function RoutinesPanel({
                 <li key={`${x.exerciseId}-${i}`} className="flex items-baseline gap-2 py-1 text-sm">
                   <span className="min-w-0 flex-1 truncate font-semibold">{x.name}</span>
                   <span className="nums shrink-0 text-xs text-muted-foreground">
-                    {x.sets} × {x.repMin}–{x.repMax}
+                    {setSummary(x)}
                   </span>
                 </li>
               );

@@ -208,13 +208,23 @@ export class WorkoutsService {
       // that no longer resolves). Skip it rather than fail the whole session.
       if (!cat) continue;
 
-      const setCount = Math.max(1, Math.min(10, Number(item.sets) || 3));
-      const reps = Math.max(1, Math.round(((item.repMin ?? 8) + (item.repMax ?? 12)) / 2));
       const restSec = Number(item.restSec) || cat.restSec || 90;
       const last = history[item.exerciseId];
-      const weightKg =
-        last?.weightKg ??
-        this.estimateLoad(cat as unknown as GenExercise, reps, percentile, bw, user.sex, age);
+      const rows: { weightKg: number | null; reps: number | null }[] =
+        Array.isArray(item.sets) && item.sets.length ? item.sets : [{ weightKg: null, reps: null }];
+
+      const planned = rows.map((row, i) => {
+        // Precedence, and it matters: what the routine prescribes wins, because
+        // the user wrote it down on purpose. A blank falls back to their own
+        // last performance, and only then to the standards estimate — the v1
+        // rule that a ghost value is a lookup, never a projection.
+        const reps = row?.reps ?? last?.reps ?? Math.round((cat.repMin + cat.repMax) / 2);
+        const weightKg =
+          row?.weightKg ??
+          last?.weightKg ??
+          this.estimateLoad(cat as unknown as GenExercise, reps, percentile, bw, user.sex, age);
+        return { setNumber: i + 1, isWarmup: false, targetReps: reps, weightKg };
+      });
 
       exercises.push({
         exerciseId: item.exerciseId,
@@ -223,17 +233,14 @@ export class WorkoutsService {
         equipment: cat.equipment,
         mechanic: cat.mechanic,
         restSec,
-        sets: Array.from({ length: setCount }, (_, i) => ({
-          setNumber: i + 1,
-          isWarmup: false,
-          targetReps: reps,
-          weightKg,
-        })),
-        fromHistory: !!last,
+        sets: planned,
+        // True when the *user's history* filled anything in — a routine that
+        // prescribes its own numbers is not "from history".
+        fromHistory: !!last && rows.some((r) => r?.weightKg == null),
       });
 
-      focusCount[cat.primary[0]] = (focusCount[cat.primary[0]] ?? 0) + setCount;
-      estimatedSec += setCount * (45 + restSec) + 60;
+      focusCount[cat.primary[0]] = (focusCount[cat.primary[0]] ?? 0) + planned.length;
+      estimatedSec += planned.length * (45 + restSec) + 60;
     }
 
     const totalSets = Object.values(focusCount).reduce((a, b) => a + b, 0) || 1;

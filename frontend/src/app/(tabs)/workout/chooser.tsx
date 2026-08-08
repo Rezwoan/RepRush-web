@@ -24,7 +24,7 @@ import { SparkAmount } from '@/components/ui/spark';
 export interface RoutineSummary {
   id: number;
   name: string;
-  exercises: { exerciseId: string; name: string }[];
+  exercises: { exerciseId: string; name: string; sets: { reps: number | null }[] }[];
   lastUsedAt?: string | null;
 }
 
@@ -97,8 +97,12 @@ function DayCard({
             difference between two days without opening either. */}
         <ul className="mt-2 space-y-0.5">
           {routine.exercises.slice(0, 6).map((e, i) => (
-            <li key={`${e.exerciseId}-${i}`} className="truncate text-sm text-muted-foreground">
-              {e.name}
+            <li
+              key={`${e.exerciseId}-${i}`}
+              className="flex items-baseline gap-2 text-sm text-muted-foreground"
+            >
+              <span className="min-w-0 flex-1 truncate">{e.name}</span>
+              <span className="nums shrink-0 text-xs">{e.sets?.length ?? 0} sets</span>
             </li>
           ))}
           {routine.exercises.length > 6 && (
