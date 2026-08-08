@@ -61,6 +61,12 @@ export class AdminController {
     return this.adminService.deleteUser(id);
   }
 
+  /** One-off broadcast of the v2 relaunch mail. `?dryRun=1` lists recipients without sending. */
+  @Post('announce')
+  announce(@Query('dryRun') dryRun?: string) {
+    return this.adminService.announceV2(dryRun === '1' || dryRun === 'true');
+  }
+
   @Get('compare')
   compare(@Query('users') users: string) {
     const ids = users.split(',').map((id) => parseInt(id));

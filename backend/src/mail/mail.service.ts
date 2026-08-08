@@ -206,6 +206,95 @@ export class MailService {
     this.logger.log(`=== WORKOUT REPORT (dev) === To: ${email} | Period: ${period}`);
   }
 
+  /**
+   * The v2 relaunch announcement. Sent once, to every existing account, after the
+   * cutover — see `docs/v2/ROLLBACK.md` for the cutover itself. Deliberately says
+   * "nothing was lost" first: the accounts receiving this have months of history,
+   * and a relaunch mail that only lists features reads as "they rebuilt it, is my
+   * log gone?".
+   */
+  async sendV2Welcome(email: string, name: string) {
+    const frontendUrl = this.config.get<string>('FRONTEND_URL') || 'https://reprush.rezwoan.codes';
+    const from = this.config.get<string>('RESEND_FROM_EMAIL') || 'RepRush <onboarding@resend.dev>';
+
+    const feature = (emoji: string, title: string, body: string) => `
+      <tr>
+        <td style="padding:0 0 18px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td width="34" style="vertical-align:top;font-size:19px;line-height:1.3;">${emoji}</td>
+              <td style="vertical-align:top;">
+                <p style="margin:0 0 3px;font-size:15px;font-weight:700;color:#e8edf3;">${title}</p>
+                <p style="margin:0;font-size:14px;color:#8a97a8;line-height:1.6;">${body}</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>`;
+
+    const content = `
+      <p style="margin:0 0 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#3b97f5;">The new RepRush ⚡</p>
+      <h1 style="margin:0 0 8px;font-size:25px;font-weight:800;color:#ffffff;letter-spacing:-0.3px;">
+        We rebuilt it, ${name || 'there'}.
+      </h1>
+      <p style="margin:0 0 24px;font-size:15px;color:#8a97a8;line-height:1.6;">
+        RepRush just got a complete redesign — new look, new engine, and a lot more app.
+        <strong style="color:#e8edf3;">Every workout, set, PR and bodyweight entry you have ever
+        logged is exactly where you left it.</strong> Nothing was reset. Same email, same password.
+      </p>
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:12px;">
+        <tr>
+          <td style="background:#0b0f17;border:1px solid #232c3a;border-radius:12px;padding:24px 24px 6px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              ${feature('🏅', 'Ranks, and a body that shows them', 'Every lift is scored against real strength standards for your bodyweight, sex and age — Bronze up to Olympian. Your whole history has already been scored, so your ranks are live the moment you sign in.')}
+              ${feature('🫀', 'Recovery Zone', 'A full-body map that shows what is trained, what is fatigued and what is ready today — so you never guess what to hit.')}
+              ${feature('🧠', 'Workouts that build themselves', 'Tell it how long you have; it picks the recovered, lowest-ranked muscles and fits a session to the clock, around your equipment and any injuries.')}
+              ${feature('📋', 'Routines &amp; programs', 'Build your own split, save it in a folder, share it with a link — and Today&rsquo;s Workout follows your program automatically.')}
+              ${feature('📱', 'A tracker made for the gym floor', 'Big set grid, custom keypad, plate calculator, background-safe rest timer, and last session&rsquo;s numbers in every row.')}
+              ${feature('📶', 'Works with no signal', 'Log the whole session in a basement gym. It syncs when you come back up — and it cannot double-log a set.')}
+              ${feature('👥', 'Friends, feed &amp; leaderboards', 'Add friends, react to their sessions, and compare on eight different boards.')}
+              ${feature('🔥', 'Streaks, levels, quests and medals', 'XP, levels, Spark to spend on cosmetics, daily and weekly quests, streak freezes and a medal cabinet — all calculated from the training you have already done.')}
+              ${feature('📈', 'Progress you can actually read', 'Per-exercise history with PRs, a health log for eleven measurements, and the numbers in kg or lb, your choice.')}
+              ${feature('🎨', '34 themes', 'Plus a real dark and light mode, and an install-to-home-screen app.')}
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0 8px;">
+        <tr>
+          <td bgcolor="#0a80f5" style="background:#0a80f5;background-image:linear-gradient(90deg,#0a80f5,#046cc8);border-radius:12px;">
+            <a href="${frontendUrl}/home"
+               style="display:inline-block;padding:15px 36px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;letter-spacing:0.3px;">
+              Open the new RepRush &rarr;
+            </a>
+          </td>
+        </tr>
+      </table>
+
+      <p style="margin:16px 0 0;font-size:13px;color:#5b6677;line-height:1.6;">
+        Found something off? There is a <strong style="color:#8a97a8;">Feedback</strong> tile on your
+        Profile now — it takes screenshots and goes straight to us.
+      </p>
+      <p style="margin:14px 0 0;font-size:12px;color:#46505f;">Train. Track. Rush. 💪</p>
+    `;
+
+    if (this.resend) {
+      return this.sendEmail(
+        {
+          from,
+          to: email,
+          subject: 'RepRush just got rebuilt ⚡ — your history is intact',
+          html: emailBase(content, 'New look, new ranks, new engine — and every rep you logged is still there.', this.logoUrl),
+        },
+        'v2 welcome email',
+      );
+    }
+    this.logger.log(`=== V2 WELCOME (dev) === To: ${email}`);
+    return null;
+  }
+
   async sendPasswordReset(email: string, newPassword: string) {
     const from = this.config.get<string>('RESEND_FROM_EMAIL') || 'RepRush <onboarding@resend.dev>';
 
