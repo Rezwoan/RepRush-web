@@ -984,6 +984,41 @@ All three land on the same mistake, and it was mine: **the data model, not the s
       that ties it. An exercise never performed returns an empty history rather than an error, and
       a junk id does the same. Boot self-checks green, zero ERROR lines, prod 200 and untouched.
 
+### Round five — in-app feedback, and an engineering standard (2026-08-08)
+
+- [x] **`docs/ENGINEERING.md`** — the code and documentation standard, written for AI agents and
+      **binding on all new code**. Referenced from `AGENTS.md` and step 4 of `SESSION_START.md`'s
+      boot sequence. It codifies what this project learned the hard way: file headers state *why*,
+      exported symbols state contracts, non-obvious lines carry a *why* not a *what*, rejected
+      alternatives are recorded, shortcuts are marked `ponytail:` with their ceiling — plus the
+      correctness rules (validate at the trust boundary, additive schema only, one runnable check
+      per piece of non-trivial logic, and **every new writer needs a named reader in the same
+      change**). §1 opens with the four disconnection defects that motivated it.
+- [x] **Feedback** (`docs/v2/FEEDBACK.md`). P10 pulled a Feedback tile because it opened a
+      coming-soon for a form with no backend; this is the real thing. Message required, topic and
+      screenshots optional — the most useful report is the one someone actually sends.
+      **Its reader shipped in the same change**: an admin inbox with status filters, attachments,
+      captured client context and triage.
+- [x] **Images go to disk, not the database.** sql.js rewrites the whole file on every flush, so a
+      base64 screenshot in a column would slow every unrelated write for as long as the row existed
+      — the same reasoning that keeps photos off posts, except feedback genuinely needs them, so
+      the bytes go to `backend/uploads/feedback/` (gitignored, so `git reset --hard` cannot delete
+      it) and the row keeps a filename. Served through an authenticated route, never statically.
+- [x] **Client-side compression** (`lib/image-compress.ts`): 1600px JPEG q0.82. Six phone
+      screenshots base64-encoded is ~40 MB against nginx's 12 MB cap; compressed they are
+      ~200–400 KB each. The canvas round-trip also drops EXIF, which carries GPS.
+- [x] **Exit check — verified on dev, including the security boundary:** boot self-check
+      `attachments ok`; message-only accepted with null topic; blank message **400**; an unknown
+      topic dropped rather than rejected; SVG and non-data-URL attachments **400**; author reads own
+      attachment **200**, a stranger **403**, no token **401**, path traversal **404**, a guessed
+      filename on your own report **404** (the membership check), non-admin `/all` **403**,
+      non-admin triage **403**, stranger delete **403**; admin sees all three with authors and sets
+      status, junk status **400**; deleting the report removed its file from disk. Zero ERROR lines,
+      prod 200, test accounts deleted.
+- [x] **Found by the check:** `mine` returned reports out of order. `createdAt` is second-granular,
+      so three reports sent in the same second sorted unstably on a screen claiming newest-first.
+      Fixed with an `id` tiebreaker.
+
 ### Still open — resume here
 
 - [ ] **Rebuild the admin panel in the v2 shell.** `app/admin/page.tsx` is still v1's 501-line page

@@ -893,3 +893,26 @@ Two rules that fall out of it:
   and no sentence explaining any of them; two of the four were deleted outright rather than
   explained, because both duplicated a screen that said it better (the Bodygraph, and the session's
   own rank strip). Explaining a duplicate does not make it worth reading.
+
+**P15 round five · 2026-08-08**
+
+- **`docs/ENGINEERING.md` is the code and documentation standard, and it is binding on new code.**
+  Read it at boot (step 4 of `SESSION_START.md`). Anything with its own data model or lifecycle also
+  gets a page under `docs/v2/`; `docs/v2/FEEDBACK.md` is the reference example.
+- **Files go on disk, never in a column.** `backend/uploads/` is gitignored, so `git reset --hard`
+  in the deploy cannot delete it — the same property that preserves `.env` and the database. It is
+  **not** covered by `deploy-dev.sh`'s DB snapshot. All file access routes through
+  `feedback/attachment.store.ts` (`saveDataUrl` / `readFile` / `deleteFiles`), so object storage
+  would be a one-file swap.
+- **Serving a user file needs three checks, not two:** a path guard on the filename (it arrives in
+  a URL and `../../.env` is a valid string), ownership of the parent row, **and membership** — that
+  the filename is listed on *that* row. Without the third, one valid id plus a guessed name reads
+  any file. Asserted at boot in `attachment.store.__selfcheck`.
+- Ordering rules that avoid visible breakage: on create, files are written **before** the row (a
+  row whose attachments 404 reads as data loss); on delete, the row goes **before** the files (an
+  orphaned byte beats a broken screen).
+- **`createdAt` is second-granular.** Any "newest first" list needs an `id` tiebreaker or rows
+  created in the same second shuffle. Found in feedback; likely applies elsewhere.
+- Uploads are base64 data URLs in the JSON body, not multipart — avoids adding multer for one form.
+  Affordable only because the client downscales first (`lib/image-compress.ts`, 1600px JPEG q0.82,
+  which also strips EXIF/GPS). nginx caps bodies at 12 MB.

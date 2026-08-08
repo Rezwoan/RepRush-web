@@ -120,7 +120,13 @@ export class FeedbackService {
 
   /** The reporter's own history, newest first, so a report is not a shout into a void. */
   async listMine(userId: number) {
-    const rows = await this.reports.find({ where: { userId }, order: { createdAt: 'DESC' } });
+    // `id` breaks the tie: `createdAt` is second-granular, so three reports
+    // sent in the same second come back in insertion order — which reads as a
+    // random shuffle on a screen that claims to be newest-first.
+    const rows = await this.reports.find({
+      where: { userId },
+      order: { createdAt: 'DESC', id: 'DESC' },
+    });
     return rows.map((r) => this.shape(r));
   }
 
@@ -133,7 +139,7 @@ export class FeedbackService {
    */
   async listAll(user: User) {
     this.assertAdmin(user);
-    const rows = await this.reports.find({ order: { createdAt: 'DESC' } });
+    const rows = await this.reports.find({ order: { createdAt: 'DESC', id: 'DESC' } });
     const authors = new Map(
       (await this.users.find()).map((u) => [u.id, { name: u.name, username: u.username ?? null }]),
     );
