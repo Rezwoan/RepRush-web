@@ -4,7 +4,7 @@ import { cmToIn, inToCm, kgToLb, lbToKg, type Units } from '@/lib/units';
 
 export interface Cosmetic {
   id: string;
-  kind: 'title' | 'border' | 'banner';
+  kind: 'title' | 'border' | 'banner' | 'theme';
   label: string;
   price: number;
   paint: string;

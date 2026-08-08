@@ -15,7 +15,6 @@ import {
   ArrowDown,
   ArrowUp,
   BarChart3,
-  Boxes,
   ChevronRight,
   Dumbbell,
   Flame,
@@ -53,8 +52,10 @@ import { StorePanel } from './store';
 import { CARD_TITLE, hhmm, type Overview } from './types';
 
 const SHORTCUTS = [
+  // One tile, not two: Store and Inventory were the same screen behind a
+  // `mode`, and showing them apart hid the fact that what you buy lands in the
+  // other one.
   { view: 'store', label: 'Store', icon: ShoppingBag },
-  { view: 'inventory', label: 'Inventory', icon: Boxes },
   { view: 'quests', label: 'Quests', icon: Target },
   { view: 'medals', label: 'Medals', icon: MedalIcon },
   { view: 'health', label: 'Health', icon: HeartPulse },
@@ -312,9 +313,17 @@ export default function ProfilePage() {
     if (view === 'routines' || view === 'exercises')
       return <RoutinesPanel tab={view} onBack={back} />;
     if (view === 'store' || view === 'inventory')
-      return <StorePanel mode={view} onBack={back} onChanged={() => reload(win)} />;
+      return (
+        <StorePanel
+          mode={view}
+          onBack={back}
+          onChanged={() => reload(win)}
+          onQuests={() => router.push('/profile?view=quests')}
+        />
+      );
     if (view === 'statistics') return <StatisticsPanel onBack={back} />;
-    if (view === 'quests') return <QuestsPanel onBack={back} />;
+    if (view === 'quests')
+      return <QuestsPanel onBack={back} onStore={() => router.push('/profile?view=store')} />;
     if (view === 'medals') return <MedalsPanel onBack={back} />;
     if (view === 'reactions') return <ReactionsPanel onBack={back} />;
     // Every shortcut above resolves to a real screen now, so this is only

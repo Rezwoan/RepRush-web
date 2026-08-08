@@ -210,7 +210,9 @@ export function EditProfile({
                 onClick={() => equip(c)}
                 className={cn(
                   'press flex w-full items-center gap-3 rounded-2xl border-2 p-3 text-left',
-                  header.cosmetics[c.kind]?.id === c.id
+                  // Edit Profile only equips the three profile cosmetics —
+                  // themes are applied in Settings, not worn on the header.
+                  header.cosmetics[c.kind as 'title' | 'border' | 'banner']?.id === c.id
                     ? 'border-primary bg-primary/10'
                     : 'border-border bg-card',
                   !c.owned && 'opacity-50',

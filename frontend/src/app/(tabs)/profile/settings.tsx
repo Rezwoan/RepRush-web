@@ -9,7 +9,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, ChevronRight } from 'lucide-react';
+import { Check, ChevronRight, Lock } from 'lucide-react';
 import { authApi, profileApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
@@ -17,11 +17,12 @@ import { cachePref } from '@/lib/feedback';
 import { THEMES } from '@/lib/themes';
 import { Button } from '@/components/ui/button';
 import { Segmented, Toggle } from '@/components/ui/controls';
+import { SparkAmount } from '@/components/ui/spark';
 import { ArtAttribution } from '@/components/art/attribution';
 import NotificationSettings from '@/components/profile/notification-settings';
 import { cn } from '@/lib/utils';
 import { Group, Panel, Row } from './panel';
-import type { Overview, Preferences } from './types';
+import type { Cosmetic, Overview, Preferences } from './types';
 
 type Screen =
   | 'root'
@@ -49,6 +50,28 @@ export function SettingsPanel({
   const { user, logout, refresh } = useAuth();
   const { themeId, setThemeId } = useTheme();
   const [screen, setScreen] = useState<Screen>('root');
+  const [themeStore, setThemeStore] = useState<{ currency: number; items: Cosmetic[] } | null>(null);
+  const [themeError, setThemeError] = useState('');
+
+  useEffect(() => {
+    if (screen !== 'themes' || themeStore) return;
+    profileApi
+      .store()
+      .then((r) => setThemeStore(r.data))
+      .catch(() => setThemeStore(null));
+  }, [screen, themeStore]);
+
+  const buyTheme = async (id: string) => {
+    setThemeError('');
+    try {
+      const r = await profileApi.buy(`theme.${id}`);
+      setThemeStore(r.data);
+      setThemeId(id);
+    } catch (e: any) {
+      setThemeError(e?.response?.data?.message ?? 'Could not buy that theme.');
+    }
+  };
+
   const [prefs, setPrefs] = useState<Preferences>(data.preferences);
   const [pw, setPw] = useState({ oldPassword: '', newPassword: '' });
   const [pwMsg, setPwMsg] = useState('');
@@ -97,29 +120,54 @@ export function SettingsPanel({
   }
 
   if (screen === 'themes') {
+    // Ownership comes from the store; the *applied* theme stays a client
+    // preference, because the pre-paint boot script has to choose one before
+    // any request could answer and it has to work offline.
+    const price = (id: string) => themeStore?.items.find((c) => c.id === `theme.${id}`);
     return (
-      <Panel title="Themes" onBack={back}>
+      <Panel
+        title="Themes"
+        onBack={back}
+        action={
+          <span className="nums rounded-full bg-secondary px-3 py-1 text-sm font-extrabold">
+            <SparkAmount amount={themeStore?.currency ?? 0} size={14} />
+          </span>
+        }
+      >
+        {themeError && <p className="mb-3 text-sm font-semibold text-destructive">{themeError}</p>}
         <div className="grid grid-cols-2 gap-2">
-          {THEMES.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setThemeId(t.id)}
-              className={cn(
-                'press flex items-center gap-2 rounded-2xl border-2 p-3 text-left',
-                themeId === t.id ? 'border-primary bg-primary/10' : 'border-border bg-card',
-              )}
-            >
-              <span
-                className="h-8 w-8 shrink-0 rounded-full border border-border"
-                style={{ background: `hsl(${t.primary} ${t.primarySat ?? 92}% 50%)` }}
-              />
-              <span className="min-w-0 flex-1 truncate text-sm font-bold">{t.name}</span>
-              {themeId === t.id && <Check size={16} className="text-primary" />}
-            </button>
-          ))}
+          {THEMES.map((t) => {
+            const item = price(t.id);
+            const owned = !item || item.owned || item.free;
+            return (
+              <button
+                key={t.id}
+                onClick={() => (owned ? setThemeId(t.id) : void buyTheme(t.id))}
+                className={cn(
+                  'press flex items-center gap-2 rounded-2xl border-2 p-3 text-left',
+                  themeId === t.id ? 'border-primary bg-primary/10' : 'border-border bg-card',
+                  !owned && 'opacity-80',
+                )}
+              >
+                <span
+                  className="h-8 w-8 shrink-0 rounded-full border border-border"
+                  style={{ background: `hsl(${t.primary} ${t.primarySat ?? 92}% 50%)` }}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-bold">{t.name}</span>
+                  {!owned && item && (
+                    <SparkAmount amount={item.price} size={11} className="text-xs" />
+                  )}
+                </span>
+                {themeId === t.id && owned && <Check size={16} className="text-primary" />}
+                {!owned && <Lock size={14} className="shrink-0 text-muted-foreground" />}
+              </button>
+            );
+          })}
         </div>
         <p className="mt-3 text-sm text-muted-foreground">
-          All {THEMES.length} themes are free. Cosmetics are what the earned currency buys.
+          Locked themes are bought with Spark, the same as any other cosmetic. Light and Dark are
+          always free.
         </p>
       </Panel>
     );

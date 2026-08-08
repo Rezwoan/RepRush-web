@@ -8,7 +8,7 @@
  * fact the sets cannot re-derive.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Check, Gift, Lock } from 'lucide-react';
+import { Check, Gift, Lock, ShoppingBag } from 'lucide-react';
 import { gameApi } from '@/lib/api';
 import { flushOutbox, queueClaim } from '@/lib/offline';
 import { cn } from '@/lib/utils';
@@ -114,7 +114,7 @@ function QuestRow({ q, onClaim }: { q: Quest; onClaim: (key: string) => void }) 
   );
 }
 
-export function QuestsPanel({ onBack }: { onBack: () => void }) {
+export function QuestsPanel({ onBack, onStore }: { onBack: () => void; onStore?: () => void }) {
   const { data, setData } = useGame();
   const [error, setError] = useState('');
 
@@ -160,10 +160,28 @@ export function QuestsPanel({ onBack }: { onBack: () => void }) {
             {data.level.intoLevel} / {data.level.nextLevelXp} XP
           </p>
         </div>
-        <span className="nums shrink-0 rounded-full bg-secondary px-3 py-1 text-sm font-extrabold">
-          <SparkAmount amount={data.currency} size={16} label />
-        </span>
+        {onStore ? (
+          <button
+            onClick={onStore}
+            className="press nums shrink-0 rounded-full bg-secondary px-3 py-1 text-sm font-extrabold"
+            aria-label="Spend your Spark in the store"
+          >
+            <SparkAmount amount={data.currency} size={16} label />
+          </button>
+        ) : (
+          <span className="nums shrink-0 rounded-full bg-secondary px-3 py-1 text-sm font-extrabold">
+            <SparkAmount amount={data.currency} size={16} label />
+          </span>
+        )}
       </div>
+
+      {/* The other half of the loop. Quests are where Spark comes from and the
+          Store is where it goes; nothing said so before. */}
+      {onStore && (
+        <Button variant="chunkyOutline" className="mb-4 w-full" onClick={onStore}>
+          <ShoppingBag size={16} /> Spend Spark in the store
+        </Button>
+      )}
 
       {error && <p className="mb-3 text-sm font-semibold text-destructive">{error}</p>}
 
