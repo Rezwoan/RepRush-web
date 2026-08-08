@@ -69,33 +69,57 @@ function DayCard({
   routine,
   suggested,
   onStart,
+  onEdit,
 }: {
   routine: RoutineSummary;
   suggested: boolean;
   onStart: () => void;
+  onEdit?: () => void;
 }) {
   return (
-    <button
-      onClick={onStart}
+    <div
       className={cn(
-        'press w-full rounded-2xl border-2 p-4 text-left',
+        'rounded-2xl border-2',
         suggested ? 'border-primary bg-primary/5' : 'border-border bg-card',
       )}
     >
-      <div className="flex items-center gap-2">
-        <span className="flex-1 truncate text-lg font-extrabold">{routine.name}</span>
-        {suggested && (
-          <span className="rounded-full bg-primary-fill px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-primary-foreground">
-            Next up
-          </span>
-        )}
-        <ChevronRight size={18} className="shrink-0 text-muted-foreground" />
-      </div>
-      <p className="mt-1 truncate text-sm text-muted-foreground">
-        {routine.exercises.length} exercises ·{' '}
-        {routine.exercises.map((e) => e.name).join(', ') || 'Empty'}
-      </p>
-    </button>
+      <button onClick={onStart} className="press w-full p-4 pb-2 text-left">
+        <div className="flex items-center gap-2">
+          <span className="flex-1 truncate text-lg font-extrabold">{routine.name}</span>
+          {suggested && (
+            <span className="rounded-full bg-primary-fill px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-primary-foreground">
+              Next up
+            </span>
+          )}
+          <ChevronRight size={18} className="shrink-0 text-muted-foreground" />
+        </div>
+        {/* The exercises, not just a count — you should be able to tell the
+            difference between two days without opening either. */}
+        <ul className="mt-2 space-y-0.5">
+          {routine.exercises.slice(0, 6).map((e, i) => (
+            <li key={`${e.exerciseId}-${i}`} className="truncate text-sm text-muted-foreground">
+              {e.name}
+            </li>
+          ))}
+          {routine.exercises.length > 6 && (
+            <li className="text-sm text-muted-foreground">
+              +{routine.exercises.length - 6} more
+            </li>
+          )}
+          {routine.exercises.length === 0 && (
+            <li className="text-sm text-muted-foreground">No exercises yet</li>
+          )}
+        </ul>
+      </button>
+      {onEdit && (
+        <button
+          onClick={onEdit}
+          className="press flex w-full items-center justify-center gap-1.5 border-t border-border/60 py-2 text-xs font-bold text-muted-foreground"
+        >
+          <Pencil size={13} /> Edit this day
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -257,6 +281,7 @@ export function RoutineChooser({
                 routine={r}
                 suggested={r.id === suggestedId}
                 onStart={() => onPickRoutine(r.id)}
+                onEdit={onManage}
               />
             ))}
             {primary.routines.length === 0 && (

@@ -27,7 +27,10 @@ api.interceptors.request.use((config) => {
  * exists and still talks to the API, so a blanket redirect would throw the user
  * out of signup the moment anything 401s.
  */
-const PUBLIC_ROUTES = ['/login', '/onboarding', '/welcome', '/kitchen-sink', '/u'];
+// `/routine/:code` is a shared-program link. It needs a session to *claim*, but
+// it must not be hijacked by the global 401 bounce — that would throw the code
+// away. The page sends the visitor to `/login?next=…` itself and comes back.
+const PUBLIC_ROUTES = ['/login', '/onboarding', '/welcome', '/kitchen-sink', '/u', '/routine'];
 
 const isPublicRoute = (path: string) =>
   PUBLIC_ROUTES.some((r) => path === r || path.startsWith(`${r}/`));
@@ -219,6 +222,11 @@ export const profileApi = {
   deleteFolder: (id: number) => api.delete(`/profile/folders/${id}`),
   /** Which program the Workout tab opens on. `null` clears it. */
   setDefaultFolder: (folderId: number | null) => api.post('/profile/folders/default', { folderId }),
+  /** Allocate (or re-read) a folder's share link. */
+  shareFolder: (id: number) => api.post(`/profile/folders/${id}/share`),
+  unshareFolder: (id: number) => api.delete(`/profile/folders/${id}/share`),
+  sharedFolder: (code: string) => api.get(`/profile/shared/${code}`),
+  claimSharedFolder: (code: string) => api.post(`/profile/shared/${code}/claim`),
   routinePackages: () => api.get('/profile/routine-packages'),
   claimPackage: (id: string) => api.post(`/profile/routine-packages/${id}/claim`),
 

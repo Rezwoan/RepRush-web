@@ -575,6 +575,7 @@ export class ProfileService {
         name: f.name,
         isDefault: !!f.isDefault,
         packageId: f.packageId ?? null,
+        shareCode: f.shareCode ?? null,
         routines: routines
           .filter((r) => r.folderId === f.id)
           .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
@@ -700,6 +701,111 @@ export class ProfileService {
     await this.routines.update({ id: routineId, userId }, { lastUsedAt: new Date() });
   }
 
+  // ── sharing a folder ──────────────────────────────────────────────
+
+  /**
+   * A share is a **fork**, not shared ownership.
+   *
+   * "Friends can use it, edit it, make their own" is a copy: they claim it and
+   * own the result outright, exactly like claiming a routine package. Shared
+   * mutable ownership would need a permission model nothing else in this app
+   * has, and would mean one person's edit silently rewriting someone else's
+   * training week.
+   *
+   * The code works for anyone holding it, like a referral code or a public
+   * profile link — a routine is not private data, and gating it on the friend
+   * graph would break the moment someone forwards the link.
+   */
+  private async freeShareCode(): Promise<string> {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no I/O/0/1 — these get read aloud
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const code = Array.from(
+        { length: 7 },
+        () => alphabet[Math.floor(Math.random() * alphabet.length)],
+      ).join('');
+      if (!(await this.folders.findOne({ where: { shareCode: code } }))) return code;
+    }
+    throw new BadRequestException('Could not allocate a share code');
+  }
+
+  /** Allocate the code on first share and hand back the link. Idempotent. */
+  async shareFolder(userId: number, folderId: number, frontendUrl: string) {
+    const folder = await this.folders.findOne({ where: { id: folderId, userId } });
+    if (!folder) throw new NotFoundException('Folder not found');
+    if (!folder.shareCode) {
+      folder.shareCode = await this.freeShareCode();
+      await this.folders.save(folder);
+    }
+    return {
+      code: folder.shareCode,
+      link: `${frontendUrl.replace(/\/$/, '')}/routine/${folder.shareCode}`,
+      name: folder.name,
+    };
+  }
+
+  /** Stop sharing. The already-claimed copies are theirs and stay theirs. */
+  async unshareFolder(userId: number, folderId: number) {
+    const folder = await this.folders.findOne({ where: { id: folderId, userId } });
+    if (!folder) throw new NotFoundException('Folder not found');
+    folder.shareCode = null;
+    await this.folders.save(folder);
+    return this.listRoutines(userId);
+  }
+
+  /** What the recipient sees before deciding: whose it is, and what is in it. */
+  async sharedFolder(code: string) {
+    const folder = await this.folders.findOne({ where: { shareCode: (code || '').toUpperCase() } });
+    if (!folder) throw new NotFoundException('That routine link is not valid');
+    const [owner, routines] = await Promise.all([
+      this.users.findOne({ where: { id: folder.userId } }),
+      this.routines.find({ where: { userId: folder.userId, folderId: folder.id } }),
+    ]);
+    return {
+      code: folder.shareCode,
+      name: folder.name,
+      owner: owner ? { name: owner.name, username: owner.username ?? null } : null,
+      routines: routines
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+        .map((r) => ({
+          name: r.name,
+          exercises: parseJson<any[]>(r.exercises, []),
+        })),
+    };
+  }
+
+  /** Copy it in. From here it is theirs — same as a claimed package. */
+  async claimSharedFolder(userId: number, code: string) {
+    const source = await this.folders.findOne({
+      where: { shareCode: (code || '').toUpperCase() },
+    });
+    if (!source) throw new NotFoundException('That routine link is not valid');
+    if (source.userId === userId) throw new BadRequestException('That is already your program');
+
+    const routines = await this.routines.find({
+      where: { userId: source.userId, folderId: source.id },
+    });
+
+    const folder = await this.folders.save(
+      this.folders.create({ userId, name: source.name.slice(0, 40) }),
+    );
+    let order = 0;
+    for (const r of routines.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))) {
+      await this.routines.save(
+        this.routines.create({
+          userId,
+          folderId: folder.id,
+          name: r.name,
+          sortOrder: order++,
+          // The copy carries no `lastUsedAt` and no `shareCode`: it is their
+          // program from now on, starting fresh, and re-sharing allocates a new
+          // code rather than pointing back at the original.
+          exercises: r.exercises,
+        }),
+      );
+    }
+    return this.listRoutines(userId);
+  }
+
   async createFolder(userId: number, name: string) {
     const clean = (name || '').trim().slice(0, 40);
     if (!clean) throw new BadRequestException('Name the folder first');
@@ -717,19 +823,66 @@ export class ProfileService {
     return this.listRoutines(userId);
   }
 
+  /**
+   * Normalise one routine exercise at the trust boundary.
+   *
+   * This used to be `JSON.stringify(whatever)` because nothing but our own
+   * picker wrote it. The editor makes sets, reps and rest user-editable, so the
+   * numbers are input now: they are clamped rather than trusted, unknown keys
+   * are dropped, and the exercise id has to name something real — a routine
+   * referencing a made-up id would claim fine and hand over an empty tracker.
+   *
+   * Returns null for anything unusable, so a single bad row cannot fail a save.
+   */
+  private normaliseRoutineExercise(raw: any, customIds: Set<string>) {
+    const exerciseId = typeof raw?.exerciseId === 'string' ? raw.exerciseId : '';
+    if (!exerciseId) return null;
+    const cat = this.catalog.find(exerciseId);
+    if (!cat && !customIds.has(exerciseId)) return null;
+
+    const int = (v: unknown, lo: number, hi: number, fallback: number) => {
+      const n = Math.round(Number(v));
+      return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : fallback;
+    };
+
+    const repMin = int(raw?.repMin, 1, 100, 8);
+    // Clamped against repMin, not just the range: a max below the min renders as
+    // an empty target and prescribes nothing.
+    const repMax = Math.max(repMin, int(raw?.repMax, 1, 100, Math.max(repMin, 12)));
+
+    return {
+      exerciseId,
+      name: cat?.name ?? String(raw?.name ?? exerciseId).slice(0, 80),
+      sets: int(raw?.sets, 1, 20, 3),
+      repMin,
+      repMax,
+      restSec: int(raw?.restSec, 0, 600, cat?.restSec ?? 90),
+    };
+  }
+
   async saveRoutine(
     userId: number,
     dto: { id?: number; name: string; folderId?: number | null; exercises?: unknown[] },
   ) {
     const name = (dto.name || '').trim().slice(0, 60);
     if (!name) throw new BadRequestException('Name the routine first');
-    const exercises = JSON.stringify(Array.isArray(dto.exercises) ? dto.exercises : []);
+
+    const custom = await this.userExercises.find({ where: { userId } });
+    const customIds = new Set(custom.map((c) => `custom:${c.id}`));
+    const list = (Array.isArray(dto.exercises) ? dto.exercises : [])
+      .slice(0, 30)
+      .map((raw) => this.normaliseRoutineExercise(raw, customIds))
+      .filter(Boolean);
+    const exercises = JSON.stringify(list);
 
     if (dto.id) {
       const existing = await this.routines.findOne({ where: { id: dto.id, userId } });
       if (!existing) throw new NotFoundException('Routine not found');
       existing.name = name;
-      existing.folderId = dto.folderId ?? null;
+      // `undefined` means "not being changed" and `null` means "move it out of
+      // its folder" — collapsing the two would pull a package day out of its
+      // program every time someone edited its sets.
+      if (dto.folderId !== undefined) existing.folderId = dto.folderId;
       existing.exercises = exercises;
       await this.routines.save(existing);
     } else {

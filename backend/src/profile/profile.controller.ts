@@ -12,6 +12,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser, Public } from '../auth/decorators';
 import { User } from '../users/user.entity';
@@ -30,6 +31,7 @@ export class ProfileController implements OnModuleInit {
   constructor(
     private profile: ProfileService,
     private catalog: CatalogService,
+    private config: ConfigService,
   ) {}
 
   onModuleInit() {
@@ -139,6 +141,34 @@ export class ProfileController implements OnModuleInit {
   @Post('folders/default')
   setDefaultFolder(@CurrentUser() user: User, @Body('folderId') folderId: number | null) {
     return this.profile.setDefaultFolder(user.id, folderId ?? null);
+  }
+
+  // ── sharing a folder ──────────────────────────────────────────────
+
+  @Post('folders/:id/share')
+  shareFolder(@CurrentUser() user: User, @Param('id', ParseIntPipe) id: number) {
+    return this.profile.shareFolder(
+      user.id,
+      id,
+      this.config.get('FRONTEND_URL') || 'https://reprush.rezwoan.codes',
+    );
+  }
+
+  @Delete('folders/:id/share')
+  unshareFolder(@CurrentUser() user: User, @Param('id', ParseIntPipe) id: number) {
+    return this.profile.unshareFolder(user.id, id);
+  }
+
+  /** Preview a shared program. Signed in, but not gated on the friend graph — a
+   *  routine is not private data and a forwarded link should still open. */
+  @Get('shared/:code')
+  sharedFolder(@Param('code') code: string) {
+    return this.profile.sharedFolder(code);
+  }
+
+  @Post('shared/:code/claim')
+  claimSharedFolder(@CurrentUser() user: User, @Param('code') code: string) {
+    return this.profile.claimSharedFolder(user.id, code);
   }
 
   // ── routine packages ──────────────────────────────────────────────

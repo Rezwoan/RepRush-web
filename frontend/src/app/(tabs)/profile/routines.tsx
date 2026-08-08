@@ -7,13 +7,14 @@
  * picker to exactly here.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { ChevronDown, Folder, FolderPlus, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, Folder, FolderPlus, Plus, Share2, Trash2 } from 'lucide-react';
 import { exercisesApi, profileApi } from '@/lib/api';
 import { MUSCLES } from '@/lib/muscles';
 import { Button } from '@/components/ui/button';
 import { Segmented } from '@/components/ui/controls';
 import { EmptyState } from '@/components/ui/display';
 import { Sheet } from '@/components/ui/sheet';
+import { RoutineEditor, withDefaults, type EditableRoutine, type RoutineExercise } from './routine-editor';
 import { EquipmentIcon, type Equipment } from '@/components/art/equipment-icon';
 import { cn } from '@/lib/utils';
 import { Panel } from './panel';
@@ -21,12 +22,6 @@ import { Panel } from './panel';
 const EQUIPMENT: Equipment[] = [
   'barbell', 'dumbbell', 'cable', 'machine', 'bodyweight', 'kettlebell', 'band', 'plate',
 ];
-
-interface RoutineExercise {
-  exerciseId: string;
-  name: string;
-  sets: number;
-}
 
 interface Routine {
   id: number;
@@ -37,7 +32,14 @@ interface Routine {
 }
 
 interface Library {
-  folders: { id: number; name: string; routines: Routine[] }[];
+  folders: {
+    id: number;
+    name: string;
+    routines: Routine[];
+    isDefault?: boolean;
+    packageId?: string | null;
+    shareCode?: string | null;
+  }[];
   loose: Routine[];
 }
 
@@ -54,13 +56,11 @@ export function RoutinesPanel({
   const [open, setOpen] = useState<Set<number>>(new Set());
   const [sheet, setSheet] = useState<'folder' | 'routine' | 'exercise' | null>(null);
 
-  // New-routine / new-folder / new-exercise drafts.
+  // New-folder / new-exercise drafts. Routines go through the editor.
   const [folderName, setFolderName] = useState('');
-  const [routine, setRoutine] = useState<{ name: string; folderId: number | null; exercises: RoutineExercise[] }>({
-    name: '',
-    folderId: null,
-    exercises: [],
-  });
+  const [editing, setEditing] = useState<EditableRoutine | null>(null);
+  const [share, setShare] = useState<{ name: string; link: string } | null>(null);
+  const [expandedRoutine, setExpandedRoutine] = useState<Set<number>>(new Set());
   const [draft, setDraft] = useState<{ name: string; primaryMuscle: string; equipment: string; mechanic: string }>(
     { name: '', primaryMuscle: MUSCLES[0].id, equipment: 'barbell', mechanic: 'compound' },
   );
@@ -89,34 +89,97 @@ export function RoutinesPanel({
     }
   };
 
-  const saveRoutine = async () => {
-    if (!routine.name.trim()) return;
-    const res = await profileApi.saveRoutine(routine).catch(() => null);
-    if (res) setLibrary(res.data);
-    setRoutine({ name: '', folderId: null, exercises: [] });
-    setSheet(null);
+  const blankRoutine = (folderId: number | null = null): EditableRoutine => ({
+    name: '',
+    folderId,
+    exercises: [],
+  });
+
+  /**
+   * A routine row. It used to be a name, a count and a delete button — you could
+   * not see which exercises were in it, let alone change one. It expands to the
+   * real list now, and the whole header opens the editor.
+   */
+  const RoutineRow = ({ r }: { r: Routine }) => {
+    const expanded = expandedRoutine.has(r.id);
+    return (
+      <div className="surface overflow-hidden">
+        <div className="flex items-center gap-2 p-3">
+          <button
+            onClick={() =>
+              setExpandedRoutine((s) => {
+                const next = new Set(s);
+                if (next.has(r.id)) next.delete(r.id);
+                else next.add(r.id);
+                return next;
+              })
+            }
+            aria-label={expanded ? `Hide ${r.name}'s exercises` : `Show ${r.name}'s exercises`}
+            aria-expanded={expanded}
+            className="press grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground"
+          >
+            <ChevronDown size={16} className={cn('transition-transform', expanded && 'rotate-180')} />
+          </button>
+          <button
+            onClick={() =>
+              setEditing({
+                id: r.id,
+                name: r.name,
+                folderId: r.folderId,
+                exercises: (r.exercises ?? []).map(withDefaults),
+              })
+            }
+            className="press min-w-0 flex-1 text-left"
+          >
+            <p className="truncate font-bold">{r.name}</p>
+            <p className="text-xs text-muted-foreground">
+              {r.exercises.length} exercise{r.exercises.length === 1 ? '' : 's'} · tap to edit
+            </p>
+          </button>
+          <button
+            aria-label={`Delete ${r.name}`}
+            className="press shrink-0 text-muted-foreground"
+            onClick={async () => {
+              const res = await profileApi.deleteRoutine(r.id).catch(() => null);
+              if (res) setLibrary(res.data);
+            }}
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
+
+        {expanded && (
+          <ul className="space-y-1 border-t border-border bg-muted/30 px-3 py-2">
+            {r.exercises.length === 0 && (
+              <li className="py-2 text-center text-sm text-muted-foreground">No exercises yet.</li>
+            )}
+            {r.exercises.map((e, i) => {
+              const x = withDefaults(e);
+              return (
+                <li key={`${x.exerciseId}-${i}`} className="flex items-baseline gap-2 py-1 text-sm">
+                  <span className="min-w-0 flex-1 truncate font-semibold">{x.name}</span>
+                  <span className="nums shrink-0 text-xs text-muted-foreground">
+                    {x.sets} × {x.repMin}–{x.repMax}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    );
   };
 
-  const RoutineRow = ({ r }: { r: Routine }) => (
-    <div className="surface flex items-center gap-3 p-3">
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-bold">{r.name}</p>
-        <p className="text-xs text-muted-foreground">
-          {r.exercises.length} exercise{r.exercises.length === 1 ? '' : 's'}
-        </p>
-      </div>
-      <button
-        aria-label={`Delete ${r.name}`}
-        className="press text-muted-foreground"
-        onClick={async () => {
-          const res = await profileApi.deleteRoutine(r.id).catch(() => null);
-          if (res) setLibrary(res.data);
-        }}
-      >
-        <Trash2 size={16} />
-      </button>
-    </div>
-  );
+  if (editing) {
+    return (
+      <RoutineEditor
+        initial={editing}
+        folders={library?.folders.map((f) => ({ id: f.id, name: f.name })) ?? []}
+        onBack={() => setEditing(null)}
+        onSaved={(lib) => setLibrary(lib)}
+      />
+    );
+  }
 
   return (
     <Panel
@@ -124,7 +187,7 @@ export function RoutinesPanel({
       onBack={onBack}
       action={
         <button
-          onClick={() => setSheet(tab === 'routines' ? 'routine' : 'exercise')}
+          onClick={() => (tab === 'routines' ? setEditing(blankRoutine()) : setSheet('exercise'))}
           aria-label="Create"
           className="press text-primary"
         >
@@ -179,14 +242,34 @@ export function RoutinesPanel({
                       <RoutineRow key={r.id} r={r} />
                     ))}
                     <button
-                      onClick={async () => {
-                        const res = await profileApi.deleteFolder(f.id).catch(() => null);
-                        if (res) setLibrary(res.data);
-                      }}
-                      className="press w-full py-2 text-xs font-bold text-muted-foreground"
+                      onClick={() => setEditing(blankRoutine(f.id))}
+                      className="press flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-2.5 text-sm font-bold text-muted-foreground"
                     >
-                      Delete folder (keeps its routines)
+                      <Plus size={15} /> Add a day
                     </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={async () => {
+                          const res = await profileApi.shareFolder(f.id).catch(() => null);
+                          if (res) {
+                            setShare({ name: res.data.name, link: res.data.link });
+                            void load();
+                          }
+                        }}
+                        className="press flex flex-1 items-center justify-center gap-1.5 py-2 text-xs font-bold text-primary"
+                      >
+                        <Share2 size={14} /> {f.shareCode ? 'Share link' : 'Share with friends'}
+                      </button>
+                      <button
+                        onClick={async () => {
+                          const res = await profileApi.deleteFolder(f.id).catch(() => null);
+                          if (res) setLibrary(res.data);
+                        }}
+                        className="press flex-1 py-2 text-xs font-bold text-muted-foreground"
+                      >
+                        Delete folder
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -202,7 +285,7 @@ export function RoutinesPanel({
               title="No routines yet"
               description="Save a session you like and it lands here, ready to start again."
               action={
-                <Button variant="chunky" size="cta" onClick={() => setSheet('routine')}>
+                <Button variant="chunky" size="cta" onClick={() => setEditing(blankRoutine())}>
                   New routine
                 </Button>
               }
@@ -272,87 +355,33 @@ export function RoutinesPanel({
         </div>
       </Sheet>
 
-      <Sheet open={sheet === 'routine'} onOpenChange={() => setSheet(null)} title="New routine">
+      <Sheet
+        open={!!share}
+        onOpenChange={(v) => !v && setShare(null)}
+        title={`Share ${share?.name ?? 'program'}`}
+      >
         <div className="space-y-3 pb-2">
-          <input
-            value={routine.name}
-            onChange={(e) => setRoutine({ ...routine, name: e.target.value })}
-            placeholder="Routine name"
-            className="w-full rounded-2xl border-2 border-border bg-card px-4 py-3 font-semibold outline-none focus:border-primary"
-          />
-          {library && library.folders.length > 0 && (
-            <select
-              value={routine.folderId ?? ''}
-              onChange={(e) =>
-                setRoutine({ ...routine, folderId: e.target.value ? parseInt(e.target.value, 10) : null })
-              }
-              className="w-full rounded-2xl border-2 border-border bg-card px-4 py-3 font-semibold outline-none"
-            >
-              <option value="">No folder</option>
-              {library.folders.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </select>
-          )}
-
-          <div className="space-y-2">
-            {routine.exercises.map((e, i) => (
-              <div key={`${e.exerciseId}-${i}`} className="flex items-center gap-2 rounded-xl bg-muted/50 p-2.5">
-                <span className="flex-1 truncate text-sm font-bold">{e.name}</span>
-                <span className="nums text-xs text-muted-foreground">{e.sets} sets</span>
-                <button
-                  aria-label={`Remove ${e.name}`}
-                  onClick={() =>
-                    setRoutine({ ...routine, exercises: routine.exercises.filter((_, j) => j !== i) })
-                  }
-                  className="press text-muted-foreground"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
-
-          <Button variant="chunkyOutline" onClick={openPicker}>
-            <Plus size={16} className="mr-2" /> Exercise
+          <p className="text-sm text-muted-foreground">
+            Anyone with this link can take a copy of the program. Their copy is theirs — editing it
+            never touches yours.
+          </p>
+          <p className="break-all rounded-2xl border-2 border-border bg-card px-4 py-3 text-sm font-semibold">
+            {share?.link}
+          </p>
+          <Button
+            variant="chunky"
+            size="cta"
+            onClick={async () => {
+              if (!share) return;
+              // Web Share where it exists, clipboard where it does not — the
+              // same pair the referral invite already uses.
+              const data = { title: share.name, text: `My ${share.name} program on RepRush`, url: share.link };
+              if (navigator.share) await navigator.share(data).catch(() => {});
+              else await navigator.clipboard?.writeText(share.link).catch(() => {});
+            }}
+          >
+            <Share2 size={16} className="mr-2" /> Send to a friend
           </Button>
-          <Button variant="chunky" size="cta" disabled={!routine.name.trim()} onClick={saveRoutine}>
-            Save routine
-          </Button>
-        </div>
-      </Sheet>
-
-      <Sheet open={picking} onOpenChange={setPicking} title="Add an exercise">
-        <div className="space-y-2 pb-2">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search the catalog"
-            className="w-full rounded-2xl border-2 border-border bg-card px-4 py-3 font-semibold outline-none focus:border-primary"
-          />
-          <div className="max-h-[45vh] space-y-1.5 overflow-y-auto">
-            {catalog
-              .filter((e) => !query || e.name.toLowerCase().includes(query.toLowerCase()))
-              .slice(0, 40)
-              .map((e) => (
-                <button
-                  key={e.id}
-                  onClick={() => {
-                    setRoutine((r) => ({
-                      ...r,
-                      exercises: [...r.exercises, { exerciseId: e.id, name: e.name, sets: 3 }],
-                    }));
-                    setPicking(false);
-                  }}
-                  className="press flex w-full items-center gap-3 rounded-xl bg-card p-2.5 text-left"
-                >
-                  <EquipmentIcon equipment={e.equipment as Equipment} size={20} />
-                  <span className="min-w-0 flex-1 truncate text-sm font-bold">{e.name}</span>
-                </button>
-              ))}
-          </div>
         </div>
       </Sheet>
 

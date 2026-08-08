@@ -32,6 +32,15 @@ export class RoutineFolder {
   @Column({ nullable: true })
   packageId: string;
 
+  /**
+   * Share link code, allocated on first share. Same shape and same reasoning as
+   * `User.referralCode`: a unique *index* rather than a unique column, because a
+   * unique column makes SQLite rebuild the table on the next `synchronize`.
+   */
+  @Index({ unique: true })
+  @Column({ nullable: true })
+  shareCode: string;
+
   @CreateDateColumn()
   createdAt: Date;
 }
