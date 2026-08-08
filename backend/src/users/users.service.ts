@@ -21,8 +21,34 @@ export class UsersService {
     return this.userRepo.findOne({ where: { id } });
   }
 
+  /**
+   * Look an account up by email, **case-insensitively**.
+   *
+   * SQLite's default collation is BINARY, so a plain equality match makes
+   * `Foo@Gmail.com` and `foo@gmail.com` two different people. That was survivable
+   * while the only door was a password form the user typed the same way each
+   * time; it stops being survivable now that Clerk matches returning users on
+   * their email (`AuthService.loginWithClerk`) and hands back whatever casing the
+   * identity provider stores. A miss there does not error — it silently creates a
+   * second, empty account and strands the real history on the first one.
+   *
+   * Fixed here rather than at the Clerk call site because every caller wants it:
+   * `login` should accept the address as typed, and `createUser`'s duplicate
+   * check should refuse a second account that differs only in case.
+   */
   async findByEmail(email: string): Promise<User> {
-    return this.userRepo.findOne({ where: { email } });
+    const normalised = String(email ?? '').trim().toLowerCase();
+    if (!normalised) return null;
+    return this.userRepo
+      .createQueryBuilder('u')
+      .where('LOWER(u.email) = :email', { email: normalised })
+      .getOne();
+  }
+
+  /** The linked-account fast path once someone has signed in through Clerk before. */
+  async findByClerkUserId(clerkUserId: string): Promise<User> {
+    if (!clerkUserId) return null;
+    return this.userRepo.findOne({ where: { clerkUserId } });
   }
 
   async findByUsername(username: string): Promise<User> {
