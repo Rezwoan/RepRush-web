@@ -20,7 +20,23 @@ import { NextResponse } from 'next/server';
  * request, so an unconfigured deployment gets a pass-through instead — the
  * password login keeps working and the app is unaffected.
  */
-const clerkConfigured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+/**
+ * **Both** keys, not just the publishable one.
+ *
+ * `clerkMiddleware()` needs `CLERK_SECRET_KEY` in the Next *server* process —
+ * the backend having it is not enough, they are separate processes with
+ * separate env files. Gating on the publishable key alone shipped a middleware
+ * that threw `Missing secretKey` on every request, so all five tab routes
+ * returned 500 and production was down until the key was added. The deploy's
+ * health check caught it, but only after the restart.
+ *
+ * Requiring both means a half-configured deployment quietly falls back to
+ * password login instead of white-screening, which is the behaviour every other
+ * optional integration here already has (push, mail, Clerk on the backend).
+ */
+const clerkConfigured = Boolean(
+  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY,
+);
 
 export default clerkConfigured ? clerkMiddleware() : () => NextResponse.next();
 
