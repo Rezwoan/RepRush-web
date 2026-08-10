@@ -1,4 +1,5 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
@@ -169,10 +170,17 @@ export class SeedService implements OnModuleInit {
     const existing = await this.usersService.findByEmail(adminEmail);
     if (existing) return existing.id;
 
-    const adminPassword = this.config.get('ADMIN_PASSWORD') || 'RepRush@Admin2025';
+    const configuredPassword = this.config.get('ADMIN_PASSWORD');
+    // No well-known default: an unset ADMIN_PASSWORD gets a random one-time
+    // password instead, so a self-hoster who skips the env var never ends up
+    // with a publicly-documented admin login.
+    const adminPassword = configuredPassword || randomBytes(9).toString('base64url');
     try {
       const { user } = await this.usersService.createUser(adminEmail, 'Rezwoan (Admin)', adminPassword, UserRole.ADMIN);
       this.logger.log(`Admin account created: ${adminEmail}`);
+      if (!configuredPassword) {
+        this.logger.warn(`ADMIN_PASSWORD was not set — generated one-time password: ${adminPassword}`);
+      }
       return user.id;
     } catch (e) {
       this.logger.warn(`Failed to seed admin: ${e.message}`);

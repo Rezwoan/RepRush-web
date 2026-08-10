@@ -4,6 +4,12 @@ A self-hostable gym tracking Progressive Web App (PWA) for teams and individuals
 
 The whole stack — NestJS API, Next.js frontend, SQLite database — runs on hardware you already own; a Raspberry Pi is enough. No vendor account, no third-party analytics, no training data leaving the box.
 
+<p align="center">
+  <img src="docs/screenshots/dashboard.jpg" width="32%" alt="Home dashboard: today's workout, muscle split, recovery zone" />
+  <img src="docs/screenshots/calculator.jpg" width="32%" alt="1RM calculator using the Epley progressive-overload formula" />
+  <img src="docs/screenshots/profile.jpg" width="32%" alt="Profile page with rank, streak, and stats" />
+</p>
+
 ## Features
 
 - **Authentication** — Invite-based sign-up, JWT persistence, password management
@@ -70,10 +76,11 @@ Frontend runs on `http://localhost:3000`
 
 ### 3. Create Admin Account
 
-The admin account is seeded on first backend start from the `ADMIN_EMAIL` and
-`ADMIN_PASSWORD` you set in `backend/.env`. Set them to your own values before
-that first start — `.env.example` ships a well-known placeholder password, and
-leaving it in place on an internet-facing instance hands anyone admin.
+The admin account is seeded on first backend start using `ADMIN_EMAIL` and
+`ADMIN_PASSWORD` from `backend/.env`. Set `ADMIN_PASSWORD` yourself, or leave
+it unset and read the random one-time password the backend prints to its
+startup log — either way, there's no fixed default to leave in place on an
+internet-facing instance.
 
 Sign in at `http://localhost:3000` with those credentials, then invite the rest
 of your gym from the admin panel.

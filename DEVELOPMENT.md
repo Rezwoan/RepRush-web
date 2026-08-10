@@ -246,7 +246,7 @@ Progress bars show `current_1rm / target` as a percentage.
 
 On first startup (`AppModule` bootstrap), a seed runs if no users exist:
 - Admin email: `frezwoan+reprush@gmail.com`
-- Password: set via `ADMIN_PASSWORD` env var (default: `RepRush@Admin2025`)
+- Password: set via `ADMIN_PASSWORD` env var; unset generates a random one-time password, logged once on first start
 - Role: `admin`
 
 ---

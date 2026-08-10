@@ -97,6 +97,7 @@ echo    Frontend: cd frontend ^&^& npm run dev
 echo.
 echo  Admin login:
 echo    Email:    frezwoan+reprush@gmail.com
-echo    Password: RepRush@Admin2025
+echo    Password: set ADMIN_PASSWORD in backend\.env before first start,
+echo               or read the generated one from the backend's startup log
 echo ==============================================
 pause
