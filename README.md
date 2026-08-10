@@ -1,6 +1,8 @@
 # RepRush 🏋️
 
-A full-featured gym tracking Progressive Web App (PWA) for teams and individuals. Track workouts, monitor progress, compete on leaderboards, and get AI-driven progressive overload recommendations.
+A self-hostable gym tracking Progressive Web App (PWA) for teams and individuals. Track workouts, monitor progress, compete on leaderboards, and get progressive-overload recommendations computed from your own lifting history.
+
+The whole stack — NestJS API, Next.js frontend, SQLite database — runs on hardware you already own; a Raspberry Pi is enough. No vendor account, no third-party analytics, no training data leaving the box.
 
 ## Features
 
@@ -68,7 +70,13 @@ Frontend runs on `http://localhost:3000`
 
 ### 3. Create Admin Account
 
-After starting the backend, the admin account is auto-seeded. See `DEVELOPMENT.md` for credentials.
+The admin account is seeded on first backend start from the `ADMIN_EMAIL` and
+`ADMIN_PASSWORD` you set in `backend/.env`. Set them to your own values before
+that first start — `.env.example` ships a well-known placeholder password, and
+leaving it in place on an internet-facing instance hands anyone admin.
+
+Sign in at `http://localhost:3000` with those credentials, then invite the rest
+of your gym from the admin panel.
 
 ## Environment Variables
 
@@ -103,4 +111,10 @@ Designed to run on a Raspberry Pi (Linux ARM). See `DEVELOPMENT.md` → Deployme
 
 ## License
 
-Private — All rights reserved.
+[GNU Affero General Public License v3.0](LICENSE) (`AGPL-3.0-only`).
+
+You are free to use, modify, and self-host RepRush. If you run a modified version
+as a network service, the AGPL requires you to offer that service's users the
+source of your changes under the same license.
+
+Copyright (c) 2026 Din Muhammad Rezwoan.
