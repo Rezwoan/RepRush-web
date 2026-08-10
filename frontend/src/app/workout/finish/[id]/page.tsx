@@ -132,7 +132,8 @@ export default function FinishPage() {
 
   return (
     <div className="min-h-[100dvh] pb-32">
-      <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-border bg-background/90 px-4 py-3 backdrop-blur-xl">
+      {/* Notch inset added to the header's own padding — 0 without a notch. */}
+      <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-border bg-background/90 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur-xl">
         <button
           onClick={() => router.back()}
           aria-label="Back to session"

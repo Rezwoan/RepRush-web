@@ -208,7 +208,31 @@ export default function SessionPage() {
     [logged],
   );
 
-  const commit = (ex: PlannedExercise, index: number, planned: PlannedSet) => {
+  // Tick the last set of an exercise and it folds itself away while the next
+  // one still owing sets opens — finishing a set walks you down the list with
+  // no tap. Only on the transition into done: re-opening a finished exercise to
+  // fix a number must not slam shut under your thumb.
+  //
+  // "Next" wraps past the end, because the one you skipped earlier is what is
+  // left to do, and reaching the bottom of the list is not the end of a workout.
+  const wasDone = useRef<Record<string, boolean>>({});
+  useEffect(() => {
+    const owing = (e: PlannedExercise) => loggedFor(e.exerciseId).length < e.sets.length;
+    exercises.forEach((ex, i) => {
+      const done = ex.sets.length > 0 && !owing(ex);
+      if (done && !wasDone.current[ex.exerciseId]) {
+        const next = [...exercises.slice(i + 1), ...exercises.slice(0, i)].find(owing);
+        setCollapsed((c) => ({
+          ...c,
+          [ex.exerciseId]: true,
+          ...(next && { [next.exerciseId]: false }),
+        }));
+      }
+      wasDone.current[ex.exerciseId] = done;
+    });
+  }, [exercises, loggedFor]);
+
+  const commit =(ex: PlannedExercise, index: number, planned: PlannedSet) => {
     const key = slotKey(ex.exerciseId, index);
     const draft = drafts[key];
     // The keypad types in whatever unit the column is labelled with; the set is
@@ -431,9 +455,14 @@ export default function SessionPage() {
   return (
     <div className="min-h-[100dvh] pb-40">
       {/* ── sticky header ── */}
+      {/* The top padding carries the notch inset *on top of* its own 0.75rem,
+          because the app is `viewport-fit=cover` and this header sticks to the
+          real top of the screen — under the Dynamic Island, where Leave and
+          Finish were untappable. `env()` is 0 anywhere without a notch, so the
+          calc collapses back to `py-3` on Android and on desktop. */}
       <header
         className={cn(
-          'sticky top-0 z-30 flex items-center gap-3 border-b border-border px-4 py-3 backdrop-blur-xl',
+          'sticky top-0 z-30 flex items-center gap-3 border-b border-border px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur-xl',
           timer.active ? 'bg-primary-fill text-primary-foreground' : 'bg-background/90',
         )}
       >
@@ -490,8 +519,12 @@ export default function SessionPage() {
               onAddWarmup={() => addWarmup(ex)}
               onRemoveSet={(i) => removeSet(ex, i)}
               onSwap={() => setSwapping(ex.exerciseId)}
-              collapsed={!!collapsed[ex.exerciseId]}
-              onCollapse={() => setCollapsed((c) => ({ ...c, [ex.exerciseId]: !c[ex.exerciseId] }))}
+              // Unset means collapsed: a session opens as a list of exercises,
+              // not as every set of every one of them at once.
+              collapsed={collapsed[ex.exerciseId] ?? true}
+              onCollapse={() =>
+                setCollapsed((c) => ({ ...c, [ex.exerciseId]: !(c[ex.exerciseId] ?? true) }))
+              }
               onRemove={() => setExercises((l) => l.filter((e) => e.exerciseId !== ex.exerciseId))}
               showRankStrip={settings.showRankStrip}
               onCommit={(i, planned) => commit(ex, i, planned)}
@@ -744,7 +777,13 @@ function SetRow({
         onBlur={() => setOpen(false)}
         disabled={!armed}
         aria-label={`Remove ${label}`}
-        className="absolute inset-y-0 right-0 grid w-20 place-items-center bg-destructive text-xs font-extrabold uppercase tracking-wider text-destructive-foreground"
+        // Hidden while closed rather than relying on the row to cover it: a
+        // completed row is `bg-success/15`, which tailwind-merge swaps in *for*
+        // `bg-card`, so it is translucent and the red shows straight through.
+        className={cn(
+          'absolute inset-y-0 right-0 grid w-20 place-items-center bg-destructive text-xs font-extrabold uppercase tracking-wider text-destructive-foreground transition-opacity',
+          !open && 'opacity-0',
+        )}
       >
         <span className="flex flex-col items-center gap-0.5">
           <Trash2 size={16} />
@@ -862,6 +901,16 @@ function ExerciseCard({
           <MoreVertical size={18} />
         </button>
       </div>
+
+      {/* How far through this exercise you are. In the header rather than the
+          set grid, because collapsed is how a card spends most of a session. */}
+      <Bar
+        value={rows.length ? logged.length / rows.length : 0}
+        color="hsl(var(--success))"
+        height={5}
+        className="mx-3 mb-3"
+        label={`${logged.length} of ${rows.length} sets done`}
+      />
 
       {!collapsed && (
         <>

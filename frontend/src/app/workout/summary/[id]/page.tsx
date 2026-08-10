@@ -146,7 +146,7 @@ export default function SummaryPage() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -18 }}
           transition={spring.soft}
-          className="mx-auto flex min-h-[100dvh] max-w-2xl flex-col px-5 py-8"
+          className="mx-auto flex min-h-[100dvh] max-w-2xl flex-col px-5 pb-8 pt-[calc(2rem+env(safe-area-inset-top))]"
         >
           {current === 'summary' && (
             <StepSummary

@@ -235,7 +235,11 @@ function Carousel({ onDone, onBack }: { onDone: () => void; onBack: () => void }
     // the full width of the window and the CTA stretched to 910px on a laptop,
     // so the funnel went from a full-bleed page to a narrow column the moment
     // the first question appeared.
-    <div className="mx-auto flex min-h-[100dvh] w-full max-w-lg flex-col px-6 pb-8 pt-14">
+    //
+    // `max()`, not a sum: 3.5rem already clears the notch on most phones, and
+    // adding the inset on top of it would push Back a third of the way down an
+    // iPhone. Whichever is larger wins, so Android keeps its 3.5rem exactly.
+    <div className="mx-auto flex min-h-[100dvh] w-full max-w-lg flex-col px-6 pb-8 pt-[max(3.5rem,calc(1rem+env(safe-area-inset-top)))]">
       <div className="flex items-center justify-between">
         {/* Back existed on every question step but not here, and the carousel is
             the step *after* the splash — which is the only screen carrying
