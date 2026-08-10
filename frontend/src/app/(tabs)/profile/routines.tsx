@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Segmented } from '@/components/ui/controls';
 import { EmptyState } from '@/components/ui/display';
 import { Sheet } from '@/components/ui/sheet';
+import { ShareBlock } from '@/components/ui/share';
 import {
   RoutineEditor,
   setSummary,
@@ -399,23 +400,14 @@ export function RoutinesPanel({
             Anyone with this link can take a copy of the program. Their copy is theirs — editing it
             never touches yours.
           </p>
-          <p className="break-all rounded-2xl border-2 border-border bg-card px-4 py-3 text-sm font-semibold">
-            {share?.link}
-          </p>
-          <Button
-            variant="chunky"
-            size="cta"
-            onClick={async () => {
-              if (!share) return;
-              // Web Share where it exists, clipboard where it does not — the
-              // same pair the referral invite already uses.
-              const data = { title: share.name, text: `My ${share.name} program on RepRush`, url: share.link };
-              if (navigator.share) await navigator.share(data).catch(() => {});
-              else await navigator.clipboard?.writeText(share.link).catch(() => {});
-            }}
-          >
-            <Share2 size={16} className="mr-2" /> Send to a friend
-          </Button>
+          {share && (
+            <ShareBlock
+              link={share.link}
+              title={share.name}
+              text={`My ${share.name} program on RepRush`}
+              className="pt-1"
+            />
+          )}
         </div>
       </Sheet>
 

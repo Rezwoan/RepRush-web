@@ -13,6 +13,13 @@
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
+/**
+ * The absolute address of a public profile — what a share or a QR hands over,
+ * where `ProfileLink` only ever needs the in-app path.
+ */
+export const profileUrl = (username: string) =>
+  `${typeof window === 'undefined' ? '' : window.location.origin}/u/${username}`;
+
 export function ProfileLink({
   username,
   className,

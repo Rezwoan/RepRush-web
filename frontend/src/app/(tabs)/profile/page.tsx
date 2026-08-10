@@ -23,6 +23,7 @@ import {
   MessageSquare,
   Pill,
   Settings,
+  Share2,
   ShoppingBag,
   Target,
 } from 'lucide-react';
@@ -39,7 +40,9 @@ import { Sheet } from '@/components/ui/sheet';
 import { RankBadge } from '@/components/art/rank-badge';
 import { BodygraphPair } from '@/components/art/bodygraph';
 import { Mascot } from '@/components/art/mascot';
+import { ShareSheet } from '@/components/ui/share';
 import { ProfileCard } from '@/components/profile/profile-card';
+import { profileUrl } from '@/components/profile/profile-link';
 import { useProfile } from './header';
 import { EditProfile } from './edit';
 import { ConsumablesPanel } from './consumables';
@@ -368,6 +371,7 @@ export default function ProfilePage() {
   const view = params.get('view') ?? '';
   const { data, ready, reload, window: win, changeWindow, setData } = useProfile();
   const [editingLayout, setEditingLayout] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   const go = useCallback(
     (v: string) => router.push(v ? `/profile?view=${v}` : '/profile'),
@@ -470,7 +474,18 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-3 pb-6 pt-4">
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-end gap-2">
+        {/* Only with a handle: `/u/[username]` is the only public address a
+            profile has, so there is nothing to share until one is set. */}
+        {data.header.username && (
+          <button
+            onClick={() => setSharing(true)}
+            aria-label="Share profile"
+            className="press grid h-11 w-11 place-items-center rounded-full bg-secondary"
+          >
+            <Share2 size={20} />
+          </button>
+        )}
         <button
           onClick={() => go('settings')}
           aria-label="Settings"
@@ -479,6 +494,17 @@ export default function ProfilePage() {
           <Settings size={20} />
         </button>
       </div>
+
+      {data.header.username && (
+        <ShareSheet
+          open={sharing}
+          onOpenChange={setSharing}
+          heading="Share your profile"
+          link={profileUrl(data.header.username)}
+          title={data.header.name}
+          text={`My RepRush profile — @${data.header.username}`}
+        />
+      )}
 
       <ProfileCard
         header={data.header}

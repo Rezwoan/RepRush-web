@@ -13,7 +13,6 @@ import { motion } from 'framer-motion';
 import {
   Check,
   ChevronDown,
-  Copy,
   Gift,
   Search,
   Share2,
@@ -29,6 +28,7 @@ import { Button } from '@/components/ui/button';
 import { Chip, Segmented, TabBarLinks } from '@/components/ui/controls';
 import { Bar, EmptyState } from '@/components/ui/display';
 import { Sheet } from '@/components/ui/sheet';
+import { ShareBlock } from '@/components/ui/share';
 import { RankChip } from '@/components/art/rank-badge';
 import { Avatar, type PublicUser } from '@/components/social/feed';
 import { ProfileLink } from '@/components/profile/profile-link';
@@ -134,6 +134,7 @@ function AddFriendSheet({
 }) {
   const [q, setQ] = useState('');
   const [hits, setHits] = useState<SearchHit[] | null>(null);
+  const [invite, setInvite] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -159,28 +160,35 @@ function AddFriendSheet({
     onChanged();
   };
 
-  const share = async () => {
-    if (!link) return;
-    // Web Share where it exists (SPEC §8), clipboard everywhere else. No
-    // fallback modal — a copied link is a share.
-    if (navigator.share) {
-      await navigator.share({ title: 'RepRush', text: 'Train with me on RepRush', url: link }).catch(() => {});
-    } else {
-      await navigator.clipboard?.writeText(link).catch(() => {});
-    }
-  };
-
   return (
     <Sheet open={open} onOpenChange={onOpenChange} title="Add friends">
       <div className="space-y-3 pb-2">
         <div className="flex gap-2">
-          <Button variant="chunkyLight" className="flex-1" onClick={share} disabled={!link}>
+          <Button
+            variant={invite ? 'chunky' : 'chunkyLight'}
+            className="flex-1"
+            onClick={() => setInvite((v) => !v)}
+            disabled={!link}
+          >
             <Share2 size={16} className="mr-2" /> Invite
           </Button>
           <Button variant="chunkyLight" className="flex-1" onClick={onReferrals}>
             <Gift size={16} className="mr-2" /> Referrals
           </Button>
         </div>
+
+        {/* Inline rather than a second sheet on top of this one: the person
+            you are inviting is usually standing next to you, and a stacked
+            sheet hides the search they came here for. */}
+        {invite && link && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="surface p-4"
+          >
+            <ShareBlock link={link} text="Train with me on RepRush" />
+          </motion.div>
+        )}
 
         <div className="relative">
           <Search
@@ -500,7 +508,6 @@ function BoardsPanel() {
 function ReferralsPanel({ data, reload }: { data: Referral | null; reload: () => void }) {
   const [code, setCode] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
 
   if (!data) return <div className="surface my-4 h-64 animate-pulse opacity-60" />;
@@ -519,18 +526,6 @@ function ReferralsPanel({ data, reload }: { data: Referral | null; reload: () =>
     setBusy(false);
   };
 
-  const share = async () => {
-    if (navigator.share) {
-      await navigator
-        .share({ title: 'RepRush', text: `Join me on RepRush — my code is ${data.code}`, url: data.link })
-        .catch(() => {});
-      return;
-    }
-    await navigator.clipboard?.writeText(data.link).catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
-  };
-
   return (
     <div className="space-y-4 py-4">
       <div className="surface p-5 text-center">
@@ -538,17 +533,7 @@ function ReferralsPanel({ data, reload }: { data: Referral | null; reload: () =>
           Your referral code
         </p>
         <p className="nums my-2 text-4xl font-extrabold tracking-[0.2em] text-primary">{data.code}</p>
-        <Button variant="chunky" size="cta" onClick={share}>
-          {copied ? (
-            <>
-              <Copy size={18} className="mr-2" /> Link copied
-            </>
-          ) : (
-            <>
-              <Share2 size={18} className="mr-2" /> Invite friends
-            </>
-          )}
-        </Button>
+        <ShareBlock link={data.link} text={`Join me on RepRush — my code is ${data.code}`} />
       </div>
 
       {!data.claimedFrom && (

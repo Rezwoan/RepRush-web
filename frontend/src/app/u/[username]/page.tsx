@@ -12,11 +12,14 @@
  */
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { Share2 } from 'lucide-react';
 import { profileApi } from '@/lib/api';
 import { type Rank } from '@/lib/ranks';
 import { Button } from '@/components/ui/button';
 import { EmptyState, StatTile } from '@/components/ui/display';
+import { ShareSheet } from '@/components/ui/share';
 import { ProfileCard, type ProfileCardHeader } from '@/components/profile/profile-card';
+import { profileUrl } from '@/components/profile/profile-link';
 
 interface PublicProfile {
   header: ProfileCardHeader;
@@ -43,6 +46,7 @@ export default function PublicProfilePage() {
   const router = useRouter();
   const [data, setData] = useState<PublicProfile | null>(null);
   const [missing, setMissing] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
     profileApi
@@ -74,13 +78,31 @@ export default function PublicProfilePage() {
   const hours = Math.round(data.minutes / 60);
 
   return (
-    <div className="mx-auto max-w-lg space-y-3 px-4 pb-10 pt-4">
+    <div className="mx-auto max-w-lg space-y-3 px-4 pb-10 pt-[calc(1rem+env(safe-area-inset-top))]">
       <ProfileCard
         header={data.header}
         level={data.levels.level}
         bodyrank={data.bodyrank}
         standing={data.standing}
         streak={data.streak}
+        action={
+          <button
+            onClick={() => setSharing(true)}
+            aria-label="Share profile"
+            className="press grid h-9 w-9 place-items-center rounded-full bg-secondary"
+          >
+            <Share2 size={16} />
+          </button>
+        }
+      />
+
+      <ShareSheet
+        open={sharing}
+        onOpenChange={setSharing}
+        heading={`Share @${username}`}
+        link={profileUrl(username)}
+        title={data.header.name}
+        text={`${data.header.name} on RepRush`}
       />
 
       <div className="grid grid-cols-3 gap-2">
